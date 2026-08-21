@@ -10,7 +10,7 @@ import {WorkerProcessor} from "./processor.js";
 type ProcessResult="succeeded"|"retry_wait"|"failed"|"cancelled"|"not_claimed";
 
 export function taskDeliveryHttpStatus(result:ProcessResult,currentStatus?:string):200|503{
-  return result==="not_claimed"&&currentStatus==="running"?503:200;
+  return result==="not_claimed"&&(currentStatus==="queued"||currentStatus==="running")?503:200;
 }
 
 export function buildWorker(){

@@ -8,7 +8,8 @@ describe("Cloud Tasks delivery response",()=>{
     expect(taskDeliveryHttpStatus("not_claimed","succeeded")).toBe(200);
     expect(taskDeliveryHttpStatus("not_claimed","cancelled")).toBe(200);
   });
-  it("asks Cloud Tasks to retry only while the current attempt is running",()=>{
+  it("asks Cloud Tasks to retry while queued work is contended or the current attempt is running",()=>{
+    expect(taskDeliveryHttpStatus("not_claimed","queued")).toBe(503);
     expect(taskDeliveryHttpStatus("not_claimed","running")).toBe(503);
   });
 });
