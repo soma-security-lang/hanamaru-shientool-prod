@@ -68,6 +68,7 @@ fi
 identity_auth_domain="${NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN:?NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN is required}"
 audio_path="${LIVE_E2E_AUDIO_PATH:?LIVE_E2E_AUDIO_PATH is required}"
 [[ -r "$audio_path" && -s "$audio_path" ]] || { echo "LIVE_E2E_AUDIO_PATH must be a readable non-empty anonymous fixture" >&2; exit 2; }
+audio_path="$(cd "$(dirname "$audio_path")" && pwd)/$(basename "$audio_path")"
 web_service="${WEB_SERVICE:-hanamaru-pilot-web}"
 stage_web_service="${STAGE_WEB_SERVICE:-hanamaru-pilot-stage-web}"
 api_service="${API_SERVICE:-hanamaru-pilot-api}"

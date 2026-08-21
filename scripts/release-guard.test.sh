@@ -80,6 +80,7 @@ grep -q 'green_stage_web="$(latest_created_revision "$stage_web_service")"' "$re
 grep -q -- '--to-revisions="$green_stage_web=100"' "$release_script"
 grep -q -- 'e2e/routes.spec.ts e2e/real-stack.spec.ts --workers=1' "$release_script"
 grep -q '\[REDACTED\]' "$release_script"
+grep -q 'audio_path="$(cd "$(dirname "$audio_path")" && pwd)/$(basename "$audio_path")"' "$release_script"
 echo "public services keep invoker IAM disabled on every Green revision"
 grep -q 'Referer:.*web_referrer' "$release_script"
 echo "Identity Platform refresh honors the browser-restricted API key"
