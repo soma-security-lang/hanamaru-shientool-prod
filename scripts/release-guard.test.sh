@@ -96,7 +96,7 @@ grep -q 'CRITICAL: rollback is incomplete' "$release_script"
 grep -q 'source-commit=$source_commit' "$release_script"
 grep -q 'git diff --quiet.*git diff --cached --quiet' "$release_script"
 grep -q 'git ls-remote origin refs/heads/main' "$release_script"
-[[ "$(grep -c 'playwright test e2e/routes.spec.ts e2e/real-stack.spec.ts' "$release_script")" -eq 2 ]]
+[[ "$(grep -c '^  run_live_e2e$' "$release_script")" -eq 2 ]]
 echo "release validates the fixed authenticated Stage origin, exact image digest and complete rollback"
 
 stage_origin_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/configure-fixed-stage-origin.sh"
