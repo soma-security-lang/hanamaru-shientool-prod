@@ -49,14 +49,18 @@ test("audio upload, STT, speaker confirmation and AI review complete through liv
   await page.locator('input[type="file"]').setInputFiles(audioPath!);
   await expect.poll(()=>page.locator("textarea[aria-label^='発話']").count(),{timeout:180_000}).toBeGreaterThan(0);
   await expect(page.getByText(/人物を識別する番号ではなく/)).toBeVisible();
-  const continueWithRisk=page.getByRole("button",{name:"内容を確認して利用継続"});if(await continueWithRisk.count())await continueWithRisk.click();
+  const continueWithRisk=page.getByRole("button",{name:"内容を確認して利用継続"});
+  const qualityClear=page.getByText("音声品質の自動確認で注意事項は見つかりませんでした。");
+  const qualityContinued=page.getByText("確認して利用継続する判断を記録済みです。");
+  await expect.poll(async()=>Number(await continueWithRisk.isVisible().catch(()=>false))+Number(await qualityClear.isVisible().catch(()=>false))+Number(await qualityContinued.isVisible().catch(()=>false)),{timeout:remoteAcceptance?300_000:60_000}).toBeGreaterThan(0);
+  if(await continueWithRisk.isVisible()){await continueWithRisk.click();await expect(qualityContinued).toBeVisible({timeout:30_000});}
   const speakerSelects=page.locator("select[aria-label$='の役割']");
   for(let index=0;index<await speakerSelects.count();index++)await speakerSelects.nth(index).selectOption(index%2===0?"staff":"customer");
   await page.getByRole("button",{name:"文字起こしを確定"}).click();
   await expect(page.getByRole("button",{name:"確定しました"})).toBeVisible();
-  await page.goto(`/visits/${visitId}/review/input`);await expect(page.getByRole("button",{name:/AI振り返りを作成/})).toBeEnabled();await page.getByRole("button",{name:/AI振り返りを作成/}).click();
+  await page.goto(`/visits/${visitId}/review/input`);await expect(page.getByRole("button",{name:/AI振り返りを作成/})).toBeEnabled({timeout:30_000});await page.getByRole("button",{name:/AI振り返りを作成/}).click();
   await expect(page).toHaveURL(new RegExp(`/visits/${visitId}/review$`));
-  await expect.poll(()=>page.locator("button[aria-pressed]").count(),{timeout:180_000}).toBeGreaterThanOrEqual(6);
+  await expect.poll(()=>page.locator("button[aria-pressed]").count(),{timeout:remoteAcceptance?600_000:180_000}).toBeGreaterThanOrEqual(6);
   await page.getByRole("button",{name:"確認を完了"}).click();await expect(page.getByRole("button",{name:"確認済み"})).toBeVisible();
 });
 });
