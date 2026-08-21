@@ -47,6 +47,23 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
       expect(JSON.stringify(user.rows[0])).not.toContain(email);
       const roles=await pool.query<{role_code:string;scope_type:string}>("SELECT r.role_code,ra.scope_type FROM role_assignments ra JOIN roles r ON r.id=ra.role_id WHERE ra.organization_id=$1 ORDER BY r.role_code",[organizationId]);
       expect(roles.rows).toEqual([{role_code:"content_approver",scope_type:"organization"},{role_code:"educator",scope_type:"organization"},{role_code:"manager",scope_type:"organization"}]);
+      expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(false);
+
+      await pool.query("UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);
+      const reappliedAfterOperationalChange=await bootstrapProduction(pool,config,true);
+      expect(reappliedAfterOperationalChange).toMatchObject({mode:"apply",created:[]});
+      expect(reappliedAfterOperationalChange.existing).toHaveLength(22);
+      expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(true);
+
+      const dryRunAfterOperationalChange=await bootstrapProduction(pool,config);
+      expect(dryRunAfterOperationalChange).toMatchObject({mode:"dry-run",created:[]});
+      expect(dryRunAfterOperationalChange.existing).toHaveLength(22);
+      expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(true);
+
+      await pool.query("UPDATE feature_flags SET target_rule='{\"branchIds\":[]}'::jsonb WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);
+      await expect(bootstrapProduction(pool,config)).rejects.toThrow("BOOTSTRAP_DRIFT: feature_flag:team_analytics.target_rule");
+      await pool.query("UPDATE feature_flags SET target_rule='{}'::jsonb WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);
+
       await expect(bootstrapProduction(pool,{...config,organizationName:"Drifted Organization"},true)).rejects.toThrow("BOOTSTRAP_DRIFT: organization.name");
     }finally{
       if(organizationId){

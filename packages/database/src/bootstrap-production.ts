@@ -331,7 +331,8 @@ async function bootstrap(client:PoolClient,config:ProductionBootstrapConfig,appl
     const rows=await client.query<{enabled:boolean;target_rule:unknown;owner_membership_id:string;expires_at:Date|null;rollback_note:string}>("SELECT enabled,target_rule,owner_membership_id,expires_at,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key=$2 FOR UPDATE",[organization.id,definition.key]);
     const flag=exactlyOne(`feature_flag:${definition.key}`,rows.rows);
     if(flag){
-      assertEqual(`feature_flag:${definition.key}`,"enabled",flag.enabled,definition.enabled);
+      // enabled is an operational value. Bootstrap supplies it only on first
+      // creation and must not roll back a later authorized runtime decision.
       assertEqual(`feature_flag:${definition.key}`,"target_rule",flag.target_rule,{});
       assertEqual(`feature_flag:${definition.key}`,"owner_membership_id",flag.owner_membership_id,membership.id);
       assertEqual(`feature_flag:${definition.key}`,"expires_at",flag.expires_at,null);
