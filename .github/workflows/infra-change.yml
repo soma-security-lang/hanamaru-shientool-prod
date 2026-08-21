@@ -102,7 +102,7 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.9.8 }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: infra-plan-summary, path: .artifacts/approved-infra-plan }
       - name: Re-plan, compare and apply the approved infrastructure change
         env:
