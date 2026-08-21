@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from "vitest";
 import {dispatchOnce,enqueueRetentionScans} from "./dispatcher.js";
-import {aggregateReviewChunks,classifyFailure,cleanupExpiredUploadObjects,driveCopyObjectName,reviewChunks,transcriptQualityInputChunks,transcriptQualityMetrics} from "./processor.js";
+import {aggregateReviewChunks,classifyFailure,cleanupExpiredUploadObjects,deterministicTranscriptQualityFlags,driveCopyObjectName,reviewChunks,transcriptQualityInputChunks,transcriptQualityMetrics} from "./processor.js";
 describe("dispatcher",()=>{it("publishes claimed outbox events once",async()=>{const system=vi.fn().mockResolvedValueOnce({rows:[{id:"e",event_type:"job.dispatch",aggregate_id:"j",payload_redacted:{job_type:"review"}}],rowCount:1}).mockResolvedValueOnce({rows:[],rowCount:0});const dispatch=vi.fn().mockResolvedValue({taskName:"task/j"});await expect(dispatchOnce({system} as never,{dispatch})).resolves.toEqual({claimed:1,published:1});expect(dispatch).toHaveBeenCalledWith("j","review","e");expect(system).toHaveBeenCalledTimes(2);});});
 describe("retention scheduler",()=>{it("returns the number of tenant scans created",async()=>{const system=vi.fn().mockResolvedValue({rows:[{created:2}]});await expect(enqueueRetentionScans({system} as never)).resolves.toEqual({created:2});});});
 describe("Drive object names",()=>{it("uses a different write-once object for every copy attempt",()=>{const prefix="organizations/org/visits/visit/recordings/import/copies/";const first=driveCopyObjectName("org","visit","import","copy-1");const second=driveCopyObjectName("org","visit","import","copy-2");expect(first).toBe(`${prefix}copy-1/source`);expect(second).toBe(`${prefix}copy-2/source`);expect(first).not.toBe(second);});});
@@ -26,6 +26,10 @@ describe("transcript quality",()=>{
       {id:"3",start_ms:3000,end_ms:4000,speaker_label:"chunk-001:1",text:"c"},
     ],5000);
     expect(metrics).toEqual({segmentCount:3,chunkCount:2,maxLabelsPerChunk:2,speechOccupancyRatio:.6});
+  });
+  it("warns at four labels in one chunk but not at the normal two-party boundary",()=>{
+    expect(deterministicTranscriptQualityFlags({segmentCount:2,chunkCount:1,maxLabelsPerChunk:2,speechOccupancyRatio:.8})).toEqual([]);
+    expect(deterministicTranscriptQualityFlags({segmentCount:7,chunkCount:1,maxLabelsPerChunk:4,speechOccupancyRatio:.86})).toEqual(["many_speakers"]);
   });
   it("classifies contract and evidence failures for structured monitoring",()=>{
     expect(classifyFailure(new Error("review evidence references an unknown segment"),false)).toBe("EVIDENCE_INVALID");

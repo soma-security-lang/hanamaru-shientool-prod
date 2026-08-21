@@ -272,6 +272,10 @@ export function transcriptQualityMetrics(segments:QualitySegment[],durationMs:nu
   };
 }
 
+export function deterministicTranscriptQualityFlags(metrics:QualityMetrics):Array<"many_speakers">{
+  return metrics.maxLabelsPerChunk>=4?["many_speakers"]:[];
+}
+
 function isRetryable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : "";
   return /PROVIDER_TEMPORARY|QUOTA|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|timeout|ECONNRESET|ETIMEDOUT|429|502|503|504/i.test(
@@ -341,7 +345,7 @@ export class WorkerProcessor {
     });
     if(!prepared)return;
     const metrics=transcriptQualityMetrics(prepared.segments,prepared.durationMs);
-    const deterministicFlags=metrics.maxLabelsPerChunk>4?["many_speakers" as const]:[];
+    const deterministicFlags=deterministicTranscriptQualityFlags(metrics);
     let status:"evaluated"|"assessment_unavailable"="evaluated";
     let modelName:string|null=null;
     let qualityFailureClass:"MODEL_OUTPUT_INVALID"|"EVIDENCE_INVALID"|null=null;

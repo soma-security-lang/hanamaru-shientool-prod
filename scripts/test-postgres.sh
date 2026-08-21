@@ -9,7 +9,7 @@ pg_bin="$(hanamaru_pg_bin)"
 pg_tmp="$(mktemp -d "${TMPDIR:-/tmp}/hanamaru-pg.XXXXXX")"
 pg_data="$pg_tmp/data"
 pg_socket="$pg_tmp/socket"
-pg_port="55432"
+pg_port="${TEST_POSTGRES_PORT:-55432}"
 api_pid=""
 worker_pid=""
 
