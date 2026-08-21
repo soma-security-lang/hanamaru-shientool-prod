@@ -84,7 +84,7 @@ jobs:
           approved="$(tr ',' '\n' <<<"$APPROVED_ADDRESSES" | LC_ALL=C sort -u | paste -sd, -)"
           [[ "$actual" == "$approved" ]]
           find "$RUNNER_TEMP/infra-plan.json" .artifacts/current-release/infra-tfplan -type f -delete
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: infra-plan-summary
           path: .artifacts/current-release/infra-plan-summary.json
