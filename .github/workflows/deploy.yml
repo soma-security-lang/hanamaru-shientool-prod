@@ -99,7 +99,7 @@ jobs:
         run: pnpm --filter @hanamaru/web exec playwright install --with-deps chromium
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.9.8 }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: terraform-plan-summary, path: .artifacts/approved-plan }
       - name: Prepare one anonymous live E2E case
         env:
