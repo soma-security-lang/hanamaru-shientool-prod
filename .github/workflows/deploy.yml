@@ -56,7 +56,7 @@ jobs:
           build_id="$(gcloud builds list --project="$PROJECT_ID" --region="$REGION" --filter="substitutions._GIT_SHA=$GITHUB_SHA AND status=SUCCESS" --sort-by=~createTime --limit=1 --format='value(id)')"
           test "$build_id" != ""
           echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with: { terraform_version: 1.9.8 }
       - name: Terraform plan
         env:
@@ -97,7 +97,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Playwright Chromium
         run: pnpm --filter @hanamaru/web exec playwright install --with-deps chromium
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with: { terraform_version: 1.9.8 }
       - uses: actions/download-artifact@v4
         with: { name: terraform-plan-summary, path: .artifacts/approved-plan }
