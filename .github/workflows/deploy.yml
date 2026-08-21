@@ -71,7 +71,7 @@ jobs:
           test "$(jq '[.changes[]?|select(.actions|index("delete"))]|length' .artifacts/current-release/terraform-plan-summary.json)" -eq 0
           jq -e 'all(.changes[]; (.actions == ["update"]) and (.address | IN("google_cloud_run_v2_service.api","google_cloud_run_v2_service.web","google_cloud_run_v2_service.worker","google_cloud_run_v2_job.database_migrate","google_cloud_run_v2_job.database_provision_roles","google_cloud_run_v2_job.database_bootstrap","google_cloud_run_v2_job.content_import")))' .artifacts/current-release/terraform-plan-summary.json >/dev/null
           find "$RUNNER_TEMP/tfplan.json" .artifacts/current-release/tfplan -type f -delete
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: terraform-plan-summary
           path: .artifacts/current-release/terraform-plan-summary.json
