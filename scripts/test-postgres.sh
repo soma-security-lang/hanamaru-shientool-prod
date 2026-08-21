@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "$0")/.." && pwd)"
-pg_bin="$(brew --prefix postgresql@16)/bin"
+# shellcheck source=./local-lib.sh
+source "$repo_dir/scripts/local-lib.sh"
+hanamaru_use_node22
+pg_bin="$(hanamaru_pg_bin)"
 pg_tmp="$(mktemp -d "${TMPDIR:-/tmp}/hanamaru-pg.XXXXXX")"
 pg_data="$pg_tmp/data"
 pg_socket="$pg_tmp/socket"

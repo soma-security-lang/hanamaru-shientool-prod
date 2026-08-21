@@ -92,10 +92,22 @@ hanamaru_require_env() {
 }
 
 hanamaru_pg_bin() {
-  local prefix
+  local prefix candidate version
   prefix="$(brew --prefix postgresql@16 2>/dev/null || true)"
-  [[ -n "$prefix" && -x "$prefix/bin/postgres" ]] || hanamaru_fail "Homebrew PostgreSQL 16 が見つかりません。"
-  printf '%s/bin' "$prefix"
+  for candidate in \
+    "${prefix:+$prefix/bin}" \
+    "/usr/lib/postgresql/16/bin" \
+    "$(dirname "$(command -v postgres 2>/dev/null || printf '/not-found/postgres')")"; do
+    [[ -x "$candidate/postgres" ]] || continue
+    version="$($candidate/postgres --version 2>/dev/null || true)"
+    case "$version" in
+      *"PostgreSQL) 16."*|*"PostgreSQL 16."*) ;;
+      *) continue ;;
+    esac
+    printf '%s' "$candidate"
+    return 0
+  done
+  hanamaru_fail "PostgreSQL 16 が見つかりません。"
 }
 
 hanamaru_port_in_use() {
