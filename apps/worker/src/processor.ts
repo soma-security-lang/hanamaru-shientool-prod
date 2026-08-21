@@ -64,6 +64,7 @@ type HandlerOutcome="deferred"|void;
 type ReviewResult=Awaited<ReturnType<PlatformProviders["ai"]["review"]>>;
 type QualitySegment={id:string;start_ms:number;end_ms:number;speaker_label:string|null;text:string};
 type QualityMetrics={segmentCount:number;chunkCount:number;maxLabelsPerChunk:number;speechOccupancyRatio:number};
+type DeterministicQualityFlag="many_speakers"|"possible_media"|"long_non_dialogue";
 
 export const QUALITY_ASSESSMENT_MAX_SEGMENTS_PER_REQUEST=160;
 export const QUALITY_ASSESSMENT_MAX_TEXT_CHARACTERS_PER_SEGMENT=1000;
@@ -276,6 +277,41 @@ export function deterministicTranscriptQualityFlags(metrics:QualityMetrics):Arra
   return metrics.maxLabelsPerChunk>=4?["many_speakers"]:[];
 }
 
+export function deterministicTranscriptQualityAssessment(segments:QualitySegment[],durationMs:number):{
+  flags:DeterministicQualityFlag[];
+  evidenceSegmentIds:string[];
+}{
+  const metrics=transcriptQualityMetrics(segments,durationMs);
+  const flags=new Set<DeterministicQualityFlag>(deterministicTranscriptQualityFlags(metrics));
+  const evidence=new Set<string>();
+  if(flags.has("many_speakers")){
+    const labelsByChunk=new Map<string,Set<string>>();
+    for(const segment of segments){
+      const chunk=speakerChunk(segment.speaker_label);const labels=labelsByChunk.get(chunk)??new Set<string>();
+      if(segment.speaker_label)labels.add(segment.speaker_label);labelsByChunk.set(chunk,labels);
+    }
+    const riskyChunks=new Set([...labelsByChunk].filter(([,labels])=>labels.size>=4).map(([chunk])=>chunk));
+    for(const segment of segments.filter(item=>riskyChunks.has(speakerChunk(item.speaker_label))).slice(0,5))evidence.add(segment.id);
+  }
+  const mediaPattern=/番組|放送|動画|ポッドキャスト|ニュース|視聴者|CM|広告|朗読|収録済み/iu;
+  const mediaSegments=segments.filter(segment=>mediaPattern.test(segment.text));
+  const mediaSpeechMs=mediaSegments.reduce((sum,segment)=>sum+Math.max(0,segment.end_ms-segment.start_ms),0);
+  if(mediaSegments.length>=2&&mediaSpeechMs>=30_000){flags.add("possible_media");for(const segment of mediaSegments.slice(0,5))evidence.add(segment.id);}
+  const speechByLabel=new Map<string,{duration:number;segments:QualitySegment[]}>();
+  for(const segment of segments){
+    if(!segment.speaker_label)continue;const current=speechByLabel.get(segment.speaker_label)??{duration:0,segments:[]};
+    current.duration+=Math.max(0,segment.end_ms-segment.start_ms);current.segments.push(segment);speechByLabel.set(segment.speaker_label,current);
+  }
+  const totalSpeechMs=[...speechByLabel.values()].reduce((sum,item)=>sum+item.duration,0);
+  const dominant=[...speechByLabel.values()].sort((a,b)=>b.duration-a.duration)[0];
+  if(dominant&&dominant.duration>=120_000&&totalSpeechMs>0&&dominant.duration/totalSpeechMs>=.8&&(flags.has("possible_media")||dominant.duration>=180_000)){
+    flags.add("long_non_dialogue");
+    const samples=[dominant.segments[0],dominant.segments[Math.floor(dominant.segments.length/2)],dominant.segments.at(-1)];
+    for(const segment of samples)if(segment)evidence.add(segment.id);
+  }
+  return{flags:[...flags],evidenceSegmentIds:[...evidence]};
+}
+
 function isRetryable(error: unknown): boolean {
   const message = error instanceof Error ? error.message : "";
   return /PROVIDER_TEMPORARY|QUOTA|RESOURCE_EXHAUSTED|DEADLINE_EXCEEDED|timeout|ECONNRESET|ETIMEDOUT|429|502|503|504/i.test(
@@ -345,13 +381,14 @@ export class WorkerProcessor {
     });
     if(!prepared)return;
     const metrics=transcriptQualityMetrics(prepared.segments,prepared.durationMs);
-    const deterministicFlags=deterministicTranscriptQualityFlags(metrics);
+    const deterministic=deterministicTranscriptQualityAssessment(prepared.segments,prepared.durationMs);
+    const deterministicFlags=deterministic.flags;
     let status:"evaluated"|"assessment_unavailable"="evaluated";
     let modelName:string|null=null;
     let qualityFailureClass:"MODEL_OUTPUT_INVALID"|"EVIDENCE_INVALID"|null=null;
     let confidence:number|null=deterministicFlags.length?1:null;
     const flags=new Set<string>(deterministicFlags);
-    const evidenceIds=new Set<string>();
+    const evidenceIds=new Set<string>(deterministic.evidenceSegmentIds);
     try{
       if(!prepared.segments.length)throw new Error("quality assessment requires transcript segments");
       for(const chunk of transcriptQualityInputChunks(prepared.segments)){
@@ -373,9 +410,10 @@ export class WorkerProcessor {
       flags.clear();
       for(const flag of deterministicFlags)flags.add(flag);
       flags.add("assessment_unavailable");
-      confidence=null;
+      confidence=deterministicFlags.length?1:null;
       modelName=null;
       evidenceIds.clear();
+      for(const id of deterministic.evidenceSegmentIds)evidenceIds.add(id);
       const classified=classifyFailure(error,isRetryable(error));
       qualityFailureClass=classified==="MODEL_OUTPUT_INVALID"||classified==="EVIDENCE_INVALID"?classified:null;
     }
