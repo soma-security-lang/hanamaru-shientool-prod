@@ -34,7 +34,7 @@
     "eslint-config-next": "16.3.0",
     "jsdom": "^30.0.1",
     "pdf-lib": "1.17.1",
-    "typescript": "^5",
+    "typescript": "^7",
     "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@11.17.0"
