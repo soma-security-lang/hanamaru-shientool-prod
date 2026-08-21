@@ -41,7 +41,16 @@ jobs:
           GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
         run: scripts/github-release-preflight.sh
       - name: Build digest-pinned images and provenance
-        run: gcloud builds submit --project="$PROJECT_ID" --region="$REGION" --config=cloudbuild.yaml --substitutions=_GIT_SHA="$GITHUB_SHA",_API_BASE_URL="${{ vars.API_BASE_URL }}",_IDENTITY_AUTH_DOMAIN="${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}",_PROJECT_NUMBER="${{ vars.GOOGLE_CLOUD_PROJECT_NUMBER }}"
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          IDENTITY_AUTH_DOMAIN: ${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}
+          PROJECT_NUMBER: ${{ vars.GOOGLE_CLOUD_PROJECT_NUMBER }}
+        run: |
+          gcloud builds submit \
+            --project="$PROJECT_ID" \
+            --region="$REGION" \
+            --config=cloudbuild.yaml \
+            --substitutions="_GIT_SHA=${GITHUB_SHA},_API_BASE_URL=${API_BASE_URL},_IDENTITY_AUTH_DOMAIN=${IDENTITY_AUTH_DOMAIN},_PROJECT_NUMBER=${PROJECT_NUMBER}"
       - name: Resolve immutable image digests
         id: images
         shell: bash
