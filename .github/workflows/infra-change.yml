@@ -32,7 +32,7 @@ jobs:
       web_image: ${{ steps.images.outputs.web_image }}
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_INFRA_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_INFRA_SERVICE_ACCOUNT }}
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_INFRA_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_INFRA_SERVICE_ACCOUNT }}
