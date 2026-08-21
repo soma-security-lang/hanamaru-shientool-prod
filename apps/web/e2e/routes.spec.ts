@@ -5,6 +5,7 @@ import {resolve} from "node:path";
 import {createLiveSession,installLiveSession,type LiveSession} from "./auth";
 
 const managerToken=process.env.LIVE_E2E_GOOGLE_ID_TOKEN??process.env.LIVE_E2E_IDENTITY_PLATFORM_ID_TOKEN;
+const remoteAcceptance=process.env.E2E_REMOTE==="1";
 test.skip(process.env.REAL_STACK_E2E!=="1"||!managerToken,"live stack and an approved manager identity token are required");
 
 const viewports=[["mobile",390,844],["tablet",834,1112],["desktop",1440,900]] as const;
@@ -42,7 +43,7 @@ test.afterAll(async()=>{await managerSession?.api.dispose();});
 test.beforeEach(async({context})=>{await installLiveSession(context,managerSession);});
 
 test("all 20 canonical routes render semantic content from the live local stack",async({page})=>{
-  test.setTimeout(120_000);
+  test.setTimeout(remoteAcceptance?300_000:120_000);
   for(const [id,route] of routes()){
     await page.goto(route);
     await expect(page.locator("main"),id).toBeVisible();
@@ -150,7 +151,7 @@ test("keyboard interaction and 44px targets remain available",async({page})=>{
 });
 
 test("all 20 screens have zero serious or critical axe violations",async({page})=>{
-  test.setTimeout(180_000);await page.emulateMedia({reducedMotion:"reduce"});
+  test.setTimeout(remoteAcceptance?600_000:180_000);await page.emulateMedia({reducedMotion:"reduce"});
   for(const [,route] of routes()){
     await page.goto(route);
     const results=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa","wcag22aa"]).analyze();
@@ -168,6 +169,6 @@ test("assessor is denied every administration route without query role overrides
 });
 
 test("captures the 60 current local-product images",async({page})=>{
-  test.setTimeout(300_000);const output=resolve(process.env.HITL_SCREENSHOT_DIR??".artifacts/hitl-screenshots-web");await mkdir(output,{recursive:true});
+  test.setTimeout(remoteAcceptance?900_000:300_000);const output=resolve(process.env.HITL_SCREENSHOT_DIR??".artifacts/hitl-screenshots-web");await mkdir(output,{recursive:true});
   for(const [viewport,width,height] of viewports){await page.setViewportSize({width,height});for(const [id,route] of routes()){await page.goto(route);await expect(page.locator("main h1")).toBeVisible();await page.screenshot({path:resolve(output,`${id}-${viewport}.png`),fullPage:true,caret:"initial",animations:"disabled"});}}
 });

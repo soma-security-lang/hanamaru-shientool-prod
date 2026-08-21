@@ -3,6 +3,7 @@ import {PDFDocument,StandardFonts} from "pdf-lib";
 import {createLiveSession,installLiveSession,type LiveSession} from "./auth";
 
 const managerToken=process.env.LIVE_E2E_GOOGLE_ID_TOKEN??process.env.LIVE_E2E_IDENTITY_PLATFORM_ID_TOKEN;
+const remoteAcceptance=process.env.E2E_REMOTE==="1";
 test.skip(process.env.REAL_STACK_E2E!=="1"||!managerToken,"live stack and an approved manager identity token are required");
 let session:LiveSession;let visitId=process.env.LIVE_E2E_EXISTING_VISIT_ID??"";
 test.beforeAll(async()=>{session=await createLiveSession(managerToken!);expect(session.me.roles).toContain("manager");});
@@ -21,7 +22,7 @@ async function visitPdf(){
 test.describe.serial("live browser workflow",()=>{
 test("PDF import and preparation cross API, storage, workers, AI and PostgreSQL",async({page})=>{
   test.skip(Boolean(process.env.LIVE_E2E_EXISTING_VISIT_ID),"using an existing visit to resume a provider workflow");
-  test.setTimeout(180_000);
+  test.setTimeout(remoteAcceptance?600_000:180_000);
   await page.goto("/visits");
   await page.getByRole("link",{name:"PDFから訪問を登録"}).click();
   await page.locator('input[type="file"]').setInputFiles({name:"visit-information.pdf",mimeType:"application/pdf",buffer:await visitPdf()});
@@ -42,7 +43,7 @@ test("PDF import and preparation cross API, storage, workers, AI and PostgreSQL"
 });
 
 test("audio upload, STT, speaker confirmation and AI review complete through live providers",async({page})=>{
-  const audioPath=process.env.LIVE_E2E_AUDIO_PATH;test.skip(!audioPath,"LIVE_E2E_AUDIO_PATH is required for live Speech-to-Text");expect(visitId).not.toBe("");test.setTimeout(300_000);
+  const audioPath=process.env.LIVE_E2E_AUDIO_PATH;test.skip(!audioPath,"LIVE_E2E_AUDIO_PATH is required for live Speech-to-Text");expect(visitId).not.toBe("");test.setTimeout(remoteAcceptance?1_800_000:300_000);
   await page.goto(`/visits/${visitId}/transcription`);
   await page.getByRole("checkbox",{name:/録音同意/}).check();
   await page.locator('input[type="file"]').setInputFiles(audioPath!);

@@ -315,6 +315,15 @@ role_status="$(curl --silent --show-error -o "$state_dir/assessor-role.json" -w 
   -H "Idempotency-Key: ${release_id}-assessor-role" --data '{"roles":["assessor"]}' \
   "$main_api_url/api/v1/admin/users/$assessor_membership_id/roles")"
 [[ "$role_status" == 200 ]] || { echo "assessor role preparation failed" >&2; exit 5; }
+run_live_e2e(){
+  # Remote acceptance is intentionally serial: the workstation/network path is
+  # part of the gate and must not be saturated by parallel browser contexts.
+  # Playwright can include request headers in failures, so redact bearer values
+  # before anything reaches release evidence or the terminal.
+  pnpm --filter @hanamaru/web exec playwright test \
+    e2e/routes.spec.ts e2e/real-stack.spec.ts --workers=1 2>&1 |
+    sed -E 's/(authorization: Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g'
+}
 REAL_STACK_E2E=1 E2E_REMOTE=1 \
   E2E_WEB_BASE_URL="$stage_web_url" E2E_API_BASE_URL="$main_api_url/api/v1" \
   NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY="$identity_api_key" \
@@ -327,7 +336,7 @@ REAL_STACK_E2E=1 E2E_REMOTE=1 \
   LIVE_E2E_ASSESSOR_IDENTITY_PLATFORM_REFRESH_TOKEN="$assessor_refresh_token" \
   LIVE_E2E_ASSESSOR_IDENTITY_PLATFORM_LOCAL_ID="$assessor_local_id" \
   LIVE_E2E_AUDIO_PATH="$audio_path" \
-  pnpm --filter @hanamaru/web exec playwright test e2e/routes.spec.ts e2e/real-stack.spec.ts
+  run_live_e2e
 
 for percent in 1 10 50 100; do
   blue=$((100-percent))
@@ -356,7 +365,7 @@ REAL_STACK_E2E=1 E2E_REMOTE=1 \
   LIVE_E2E_ASSESSOR_IDENTITY_PLATFORM_REFRESH_TOKEN="$assessor_refresh_token" \
   LIVE_E2E_ASSESSOR_IDENTITY_PLATFORM_LOCAL_ID="$assessor_local_id" \
   LIVE_E2E_AUDIO_PATH="$audio_path" \
-  pnpm --filter @hanamaru/web exec playwright test e2e/routes.spec.ts e2e/real-stack.spec.ts
+  run_live_e2e
 
 release_guard_clear
 jq -n \
