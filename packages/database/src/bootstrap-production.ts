@@ -331,12 +331,11 @@ async function bootstrap(client:PoolClient,config:ProductionBootstrapConfig,appl
     const rows=await client.query<{enabled:boolean;target_rule:unknown;owner_membership_id:string;expires_at:Date|null;rollback_note:string}>("SELECT enabled,target_rule,owner_membership_id,expires_at,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key=$2 FOR UPDATE",[organization.id,definition.key]);
     const flag=exactlyOne(`feature_flag:${definition.key}`,rows.rows);
     if(flag){
-      // enabled is an operational value. Bootstrap supplies it only on first
-      // creation and must not roll back a later authorized runtime decision.
+      // These values are changed together by the audited feature-flag API.
+      // Bootstrap supplies their defaults only on first creation and must not
+      // roll back a later authorized runtime decision or its audit reason.
       assertEqual(`feature_flag:${definition.key}`,"target_rule",flag.target_rule,{});
-      assertEqual(`feature_flag:${definition.key}`,"owner_membership_id",flag.owner_membership_id,membership.id);
       assertEqual(`feature_flag:${definition.key}`,"expires_at",flag.expires_at,null);
-      assertEqual(`feature_flag:${definition.key}`,"rollback_note",flag.rollback_note,definition.rollbackNote);
     }else if(apply){
       await client.query("INSERT INTO feature_flags(organization_id,flag_key,enabled,target_rule,owner_membership_id,rollback_note) VALUES($1,$2,$3,'{}',$4,$5)",[organization.id,definition.key,definition.enabled,membership.id,definition.rollbackNote]);
     }

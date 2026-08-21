@@ -24,6 +24,7 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
     const pool=createPool(databaseUrl);
     let organizationId:string|undefined;
     let userId:string|undefined;
+    let operationalUserId:string|undefined;
     try{
       const dryRun=await bootstrapProduction(pool,config);
       expect(dryRun.mode).toBe("dry-run");
@@ -49,16 +50,21 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
       expect(roles.rows).toEqual([{role_code:"content_approver",scope_type:"organization"},{role_code:"educator",scope_type:"organization"},{role_code:"manager",scope_type:"organization"}]);
       expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(false);
 
-      await pool.query("UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);
+      operationalUserId=randomUUID();
+      const operationalMembershipId=randomUUID();
+      const operationalIdentityHash=createHash("sha256").update(operationalUserId).digest("hex");
+      await pool.query("INSERT INTO users(id,provider_subject_hash,email_hash,email_masked,display_name) VALUES($1,$2,$2,'o***@redacted.invalid','Operational Manager')",[operationalUserId,operationalIdentityHash]);
+      await pool.query("INSERT INTO memberships(id,organization_id,user_id,branch_id) VALUES($1,$2,$3,$4)",[operationalMembershipId,organizationId,operationalUserId,config.ids.branch]);
+      await pool.query("UPDATE feature_flags SET enabled=true,owner_membership_id=$2,rollback_note='運用判断による継続',updated_at=now() WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId,operationalMembershipId]);
       const reappliedAfterOperationalChange=await bootstrapProduction(pool,config,true);
       expect(reappliedAfterOperationalChange).toMatchObject({mode:"apply",created:[]});
       expect(reappliedAfterOperationalChange.existing).toHaveLength(22);
-      expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(true);
+      expect((await pool.query<{enabled:boolean;owner_membership_id:string;rollback_note:string}>("SELECT enabled,owner_membership_id,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]).toEqual({enabled:true,owner_membership_id:operationalMembershipId,rollback_note:"運用判断による継続"});
 
       const dryRunAfterOperationalChange=await bootstrapProduction(pool,config);
       expect(dryRunAfterOperationalChange).toMatchObject({mode:"dry-run",created:[]});
       expect(dryRunAfterOperationalChange.existing).toHaveLength(22);
-      expect((await pool.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]?.enabled).toBe(true);
+      expect((await pool.query<{enabled:boolean;owner_membership_id:string;rollback_note:string}>("SELECT enabled,owner_membership_id,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]).toEqual({enabled:true,owner_membership_id:operationalMembershipId,rollback_note:"運用判断による継続"});
 
       await pool.query("UPDATE feature_flags SET target_rule='{\"branchIds\":[]}'::jsonb WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);
       await expect(bootstrapProduction(pool,config)).rejects.toThrow("BOOTSTRAP_DRIFT: feature_flag:team_analytics.target_rule");
@@ -73,6 +79,7 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
         await pool.query("DELETE FROM retention_policies WHERE organization_id=$1",[organizationId]);
         await pool.query("DELETE FROM role_assignments WHERE organization_id=$1",[organizationId]);
         await pool.query("DELETE FROM memberships WHERE organization_id=$1",[organizationId]);
+        if(operationalUserId)await pool.query("DELETE FROM users WHERE id=$1",[operationalUserId]);
         if(userId)await pool.query("DELETE FROM users WHERE id=$1",[userId]);
         await pool.query("DELETE FROM branches WHERE organization_id=$1",[organizationId]);
         await pool.query("DELETE FROM organizations WHERE id=$1",[organizationId]);
