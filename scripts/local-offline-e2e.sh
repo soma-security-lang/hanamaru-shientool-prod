@@ -102,6 +102,7 @@ hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offli
 
 hanamaru_info "全20画面、PDF→準備、音声→文字起こし→振り返り、RBAC、axe、60画像を実走します。"
 OFFLINE_STACK_E2E=1 \
+  E2E_REMOTE=1 \
   E2E_WEB_BASE_URL="http://127.0.0.1:$web_port" \
   E2E_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
   OFFLINE_E2E_SCREENSHOT_DIR="$evidence_dir/screenshots" \
