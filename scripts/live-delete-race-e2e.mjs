@@ -13,6 +13,7 @@ async function request(path,{method="GET",body,expected=[200]}={}){
   if(!expected.includes(response.status))throw new Error(`${method} ${path} returned ${response.status}: ${payload.code??"unexpected response"}`);
   return{status:response.status,payload};
 }
+/** @param {string} jobId @param {number} [timeoutMs] */
 async function pollJob(jobId,timeoutMs=180_000){
   const deadline=Date.now()+timeoutMs;
   while(Date.now()<deadline){

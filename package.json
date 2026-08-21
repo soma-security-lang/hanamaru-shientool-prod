@@ -15,7 +15,7 @@
     "build:packages": "pnpm --filter @hanamaru/contracts build && pnpm --filter @hanamaru/platform build && pnpm --filter @hanamaru/database build",
     "lint": "pnpm -r --if-present lint && eslint packages/*/src --max-warnings=0",
     "typecheck": "pnpm -r --if-present typecheck && pnpm typecheck:scripts",
-    "typecheck:scripts": "tsc --allowJs --checkJs --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --types node scripts/live-google-e2e.mjs scripts/live-product-auth-e2e.mjs scripts/live-delete-race-e2e.mjs scripts/mint-live-e2e-identity.mjs",
+    "typecheck:scripts": "pnpm --filter @hanamaru/platform build && tsc --allowJs --checkJs --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --types node scripts/live-google-e2e.mjs scripts/live-product-auth-e2e.mjs scripts/live-delete-race-e2e.mjs scripts/mint-live-e2e-identity.mjs",
     "test": "pnpm build:packages && pnpm test:release-guard && pnpm -r --if-present test",
     "test:release-guard": "bash scripts/release-guard.test.sh",
     "test:workflows": "bash scripts/check-workflows.sh",

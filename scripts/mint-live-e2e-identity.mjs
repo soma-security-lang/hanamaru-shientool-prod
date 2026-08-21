@@ -3,15 +3,18 @@
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+/** @param {string} name */
 const required = (name) => {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
 };
+/** @param {Response} response @param {string} stage */
 const json = async (response, stage) => {
   if (!response.ok) throw new Error(`${stage} failed (${response.status})`);
   return response.json();
 };
+/** @param {string} value */
 const base64url = (value) => Buffer.from(value).toString("base64url");
 
 const projectId = required("GCP_PROJECT_ID");

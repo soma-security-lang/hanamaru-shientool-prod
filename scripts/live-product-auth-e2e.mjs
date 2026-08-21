@@ -57,7 +57,8 @@ try {
     apiKey,
     appName: "[DEFAULT]",
   };
-  await context.addInitScript(({ key, value }) => {
+  await context.addInitScript(/** @param {{key:string,value:string}} input */ (input) => {
+    const { key, value } = input;
     sessionStorage.setItem(key, value);
     localStorage.removeItem(key);
   }, { key: storageKey, value: JSON.stringify(authUser) });

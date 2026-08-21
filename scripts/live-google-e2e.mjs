@@ -10,17 +10,20 @@ import {
   createGoogleSpeechProvider,
 } from "../packages/platform/dist/index.js";
 
+/** @param {string} name */
 const required = (name) => {
   const value = process.env[name];
   if (!value) throw new Error(`missing:${name}`);
   return value;
 };
 
+/** @param {string} stage */
 const safeFailure = (stage) => {
   console.error(`Google live E2E failed at ${stage}. Provider raw errors and credentials are intentionally not printed.`);
   process.exitCode = 1;
 };
 
+/** @param {string} path */
 function audioMime(path) {
   const extension = extname(path).toLowerCase();
   const known = new Map([
