@@ -10,7 +10,6 @@ source "$(cd "$(dirname "$0")" && pwd)/local-lib.sh"
 
 hanamaru_use_node22
 hanamaru_require_command pnpm
-hanamaru_require_command brew
 hanamaru_require_command curl
 hanamaru_require_command lsof
 hanamaru_require_command jq
@@ -23,7 +22,7 @@ for port in "$web_port" "$api_port" "$worker_port" "$postgres_port"; do
   hanamaru_port_in_use "$port" && hanamaru_fail "offline E2E port $port は使用中です。対象processを確認してください。"
 done
 
-pg_bin="$(brew --prefix postgresql@16)/bin"
+pg_bin="$(hanamaru_pg_bin)"
 runtime_dir="$(mktemp -d "${TMPDIR:-/tmp}/hanamaru-offline-e2e.XXXXXX")"
 pg_data="$runtime_dir/postgres"
 pg_socket="$runtime_dir/socket"
