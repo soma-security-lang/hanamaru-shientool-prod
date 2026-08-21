@@ -76,6 +76,8 @@ grep -q 'run deploy "$api_service".*--no-invoker-iam-check' "$release_script"
 grep -q 'run deploy "$web_service".*--no-invoker-iam-check' "$release_script"
 grep -q 'run deploy "$stage_web_service"' "$release_script"
 grep -A1 'run deploy "$stage_web_service"' "$release_script" | grep -q -- '--no-invoker-iam-check'
+grep -q 'green_stage_web="$(latest_created_revision "$stage_web_service")"' "$release_script"
+grep -q -- '--to-revisions="$green_stage_web=100"' "$release_script"
 echo "public services keep invoker IAM disabled on every Green revision"
 grep -q 'Referer:.*web_referrer' "$release_script"
 echo "Identity Platform refresh honors the browser-restricted API key"

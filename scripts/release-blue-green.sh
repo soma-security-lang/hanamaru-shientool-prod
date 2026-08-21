@@ -117,6 +117,9 @@ traffic_revision(){
 latest_revision(){
   "${gcloud_cmd[@]}" run services describe "$1" --region="$region" --format='value(status.latestReadyRevisionName)'
 }
+latest_created_revision(){
+  "${gcloud_cmd[@]}" run services describe "$1" --region="$region" --format='value(status.latestCreatedRevisionName)'
+}
 service_tag_url(){ "${gcloud_cmd[@]}" run services describe "$1" --region="$region" --format=json | jq -er --arg tag "$tag" '.status.traffic[]|select(.tag==$tag)|.url'; }
 service_tag_revision(){ "${gcloud_cmd[@]}" run services describe "$1" --region="$region" --format=json | jq -er --arg tag "$tag" '.status.traffic[]|select(.tag==$tag)|.revisionName'; }
 revision_image(){ "${gcloud_cmd[@]}" run revisions describe "$1" --region="$region" --format=json | jq -er '.status.imageDigest // .spec.containers[0].image'; }
@@ -294,10 +297,16 @@ wait_revision "$main_api_url/health/ready" "$green_api"
 # temporarily widen Identity, API-key or Storage origin boundaries.
 "${gcloud_cmd[@]}" run deploy "$stage_web_service" --region="$region" --image="$web_image" \
   --labels="$release_labels" --no-invoker-iam-check --quiet
-green_stage_web="$(latest_revision "$stage_web_service")"
+green_stage_web="$(latest_created_revision "$stage_web_service")"
+[[ -n "$green_stage_web" && "$green_stage_web" != "$blue_stage_web" ]] || {
+  echo "fixed Stage did not create a new revision" >&2
+  exit 5
+}
+assert_revision_image "$green_stage_web" "$web_image"
+"${gcloud_cmd[@]}" run services update-traffic "$stage_web_service" --region="$region" \
+  --to-revisions="$green_stage_web=100" --quiet
 stage_web_url="$("${gcloud_cmd[@]}" run services describe "$stage_web_service" --region="$region" --format='value(status.url)')"
 wait_http "$stage_web_url/login" 90 5 3
-assert_revision_image "$green_stage_web" "$web_image"
 
 manager_token="$(refresh_identity "$manager_refresh_token" "$stage_web_url/")"
 assessor_token="$(refresh_identity "$assessor_refresh_token" "$stage_web_url/")"
