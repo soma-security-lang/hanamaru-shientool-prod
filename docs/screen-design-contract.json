@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 1,
+  "sourceMode": "external-design-master",
+  "requiredHeadings": [
+    "Apple Webデザイン意図",
+    "寸法付きレイアウト",
+    "Semantic structure",
+    "表示・入力・操作",
+    "Motion / accessibility",
+    "9共通状態",
+    "Role / capability / feature flag",
+    "Data / adapter boundary",
+    "テストシナリオ",
+    "HITL受入条件",
+    "PoC対応"
+  ],
+  "states": [
+    "initial",
+    "loading",
+    "empty",
+    "success",
+    "partial",
+    "failure",
+    "retry",
+    "forbidden",
+    "deleted"
+  ],
+  "viewports": [
+    "1440",
+    "834",
+    "390"
+  ],
+  "screens": [
+    {
+      "id": "SCR-001",
+      "filename": "SCR-001-login.md",
+      "sha256": "d04b7bbf2110b4998c21a4853afa95c56403497320b143730025221560265e5c",
+      "routes": [
+        "/login"
+      ]
+    },
+    {
+      "id": "SCR-002",
+      "filename": "SCR-002-home.md",
+      "sha256": "ac43c72c114e8db38c9171b6634ab98e5a05f5c5f36f0933688cc34f5aade261",
+      "routes": [
+        "/"
+      ]
+    },
+    {
+      "id": "SCR-003",
+      "filename": "SCR-003-visit-list.md",
+      "sha256": "8e879f9ca2add36cb4c79fd9c508dfa5621bc2fb10b407887cbad21f0f8a18c0",
+      "routes": [
+        "/visits"
+      ]
+    },
+    {
+      "id": "SCR-004",
+      "filename": "SCR-004-visit-edit.md",
+      "sha256": "83756b7a0c745fed30943d4ddd1b46a350f1c9245cae75d50112c6a840636e73",
+      "routes": [
+        "/visits/:id/import"
+      ]
+    },
+    {
+      "id": "SCR-005",
+      "filename": "SCR-005-pdf-extraction.md",
+      "sha256": "4c65e6ddc95fea406728712e6de76770925b3b9cf06a9b0643b17c5dc989bf46",
+      "routes": [
+        "/visits/:id/preparation"
+      ]
+    },
+    {
+      "id": "SCR-006",
+      "filename": "SCR-006-recording-import.md",
+      "sha256": "b0a0b5dd7a6e057712cfdf881bdc953c2479ee4c90e55c239f0c46885aaae7c7",
+      "routes": [
+        "/visits/:id/transcription"
+      ]
+    },
+    {
+      "id": "SCR-007",
+      "filename": "SCR-007-transcription-status.md",
+      "sha256": "a7a910aa6392038854965cd146428f7960ef370a60e2166b2911041ed765a6e6",
+      "routes": [
+        "/visits/:id/review/input"
+      ]
+    },
+    {
+      "id": "SCR-008",
+      "filename": "SCR-008-transcript-editor.md",
+      "sha256": "98de1237ed2cff235461801ad45dbec80df45b57e328968a1c7d4767b1bc3fe2",
+      "routes": [
+        "/visits/:id/review"
+      ]
+    },
+    {
+      "id": "SCR-009",
+      "filename": "SCR-009-review-result.md",
+      "sha256": "e2ea04f5c10c3fcb54e55e4a8969a17215c0a666ba3b612f36952cbdfa064959",
+      "routes": [
+        "/reviews"
+      ]
+    },
+    {
+      "id": "SCR-010",
+      "filename": "SCR-010-history.md",
+      "sha256": "3d66c1de423d45a04a155cb09a9ed5dc85b945f699c0a89006cbff150be5686c",
+      "routes": [
+        "/knowledge/talks"
+      ]
+    },
+    {
+      "id": "SCR-011",
+      "filename": "SCR-011-talk-search.md",
+      "sha256": "f141f675982b85ce3b8ebcbea97df4fc251b3e8f8c4f5b0d711e989cff6f5d71",
+      "routes": [
+        "/knowledge/flows"
+      ]
+    },
+    {
+      "id": "SCR-012",
+      "filename": "SCR-012-reference-search.md",
+      "sha256": "c09e756d1f997474e9862e685bb225b53403a72c65fab302d02fd0f24dcc3ac4",
+      "routes": [
+        "/knowledge/reference"
+      ]
+    },
+    {
+      "id": "SCR-013",
+      "filename": "SCR-013-training.md",
+      "sha256": "de722fac5ab4b26c1ba9564a8e0cb498d88f603ec2f4c84979f59ac11ba3f6bb",
+      "routes": [
+        "/knowledge/manuals"
+      ]
+    },
+    {
+      "id": "SCR-014",
+      "filename": "SCR-014-user-admin.md",
+      "sha256": "9f156eedcf8c1f822b24efcd2b1c545cf82862af3a18cf6c85461cec645b7651",
+      "routes": [
+        "/training/videos"
+      ]
+    },
+    {
+      "id": "SCR-015",
+      "filename": "SCR-015-job-admin.md",
+      "sha256": "b8d435633b8d6fb34609dfecbcd99facda61e39e375c063b22c564cf9664b114",
+      "routes": [
+        "/training/roleplay"
+      ]
+    },
+    {
+      "id": "SCR-016",
+      "filename": "SCR-016-content-admin.md",
+      "sha256": "dfd6d7e1b5a1c484bf0c5978484078097842cb2b224f5ba13cc2c1712eb762ec",
+      "routes": [
+        "/admin/contents"
+      ]
+    },
+    {
+      "id": "SCR-017",
+      "filename": "SCR-017-retention-delete.md",
+      "sha256": "cb9f5bd85c5e8e93fd5d5d98ceaebdd67e457c33c50a7ee817946464ae599481",
+      "routes": [
+        "/admin/users"
+      ]
+    },
+    {
+      "id": "SCR-018",
+      "filename": "SCR-018-audit-incident.md",
+      "sha256": "c67ce01813366529fe97f57fbf765b2b32d553dab4d42939000184679655bd86",
+      "routes": [
+        "/admin/operations"
+      ]
+    },
+    {
+      "id": "SCR-019",
+      "filename": "SCR-019-content-approval.md",
+      "sha256": "430d07b765bb21359488430e095afd4b90843531a3ed9e74409af8a0857b35d9",
+      "routes": [
+        "/admin/approvals"
+      ]
+    },
+    {
+      "id": "SCR-020",
+      "filename": "SCR-020-team-analytics.md",
+      "sha256": "da23fc7679295712b2c6f63bef9c84de72a848944e0940224f1b709ede57dcd1",
+      "routes": [
+        "/admin/analytics"
+      ]
+    }
+  ]
+}
