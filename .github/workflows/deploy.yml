@@ -1,0 +1,187 @@
+name: Production candidate
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [pilot, prod]
+        required: true
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  packages: read
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+env:
+  PROJECT_ID: monocle-503402
+  REGION: asia-northeast1
+jobs:
+  build-plan:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
+      web_image: ${{ steps.images.outputs.web_image }}
+      build_id: ${{ steps.images.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Release governance preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_DEPLOY_SERVICE_ACCOUNT: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+        run: scripts/github-release-preflight.sh
+      - name: Build digest-pinned images and provenance
+        run: gcloud builds submit --project="$PROJECT_ID" --region="$REGION" --config=cloudbuild.yaml --substitutions=_GIT_SHA="$GITHUB_SHA",_API_BASE_URL="${{ vars.API_BASE_URL }}",_IDENTITY_AUTH_DOMAIN="${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}",_PROJECT_NUMBER="${{ vars.GOOGLE_CLOUD_PROJECT_NUMBER }}"
+      - name: Resolve immutable image digests
+        id: images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repository="$REGION-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot"
+          for component in api worker web; do
+            digest="$(gcloud artifacts docker images describe "$repository/$component:$GITHUB_SHA" --project="$PROJECT_ID" --format='value(image_summary.fully_qualified_digest)')"
+            test "$digest" != ""
+            echo "${component}_image=$digest" >> "$GITHUB_OUTPUT"
+          done
+          build_id="$(gcloud builds list --project="$PROJECT_ID" --region="$REGION" --filter="substitutions._GIT_SHA=$GITHUB_SHA AND status=SUCCESS" --sort-by=~createTime --limit=1 --format='value(id)')"
+          test "$build_id" != ""
+          echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - name: Terraform plan
+        env:
+          API_IMAGE: ${{ steps.images.outputs.api_image }}
+          WORKER_IMAGE: ${{ steps.images.outputs.worker_image }}
+          WEB_IMAGE: ${{ steps.images.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        run: |
+          TF_PLAN_PATH=.artifacts/current-release/tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/tfplan" > "$RUNNER_TEMP/tfplan.json"
+          jq '{formatVersion:.format_version,terraformVersion:.terraform_version,changes:[.resource_changes[]?|select(.change.actions != ["no-op"])|{address,mode,type,actions:.change.actions}]|sort_by(.address)}' "$RUNNER_TEMP/tfplan.json" > .artifacts/current-release/terraform-plan-summary.json
+          test "$(jq '[.changes[]?|select(.actions|index("delete"))]|length' .artifacts/current-release/terraform-plan-summary.json)" -eq 0
+          jq -e 'all(.changes[]; (.actions == ["update"]) and (.address | IN("google_cloud_run_v2_service.api","google_cloud_run_v2_service.web","google_cloud_run_v2_service.worker","google_cloud_run_v2_job.database_migrate","google_cloud_run_v2_job.database_provision_roles","google_cloud_run_v2_job.database_bootstrap","google_cloud_run_v2_job.content_import")))' .artifacts/current-release/terraform-plan-summary.json >/dev/null
+          find "$RUNNER_TEMP/tfplan.json" .artifacts/current-release/tfplan -type f -delete
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-summary
+          path: .artifacts/current-release/terraform-plan-summary.json
+          retention-days: 14
+  apply:
+    needs: build-plan
+    environment: ${{ format('{0}-apply', inputs.environment) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.17.0 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: pnpm
+      - name: Install the audited release toolchain
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm --filter @hanamaru/web exec playwright install --with-deps chromium
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - uses: actions/download-artifact@v4
+        with: { name: terraform-plan-summary, path: .artifacts/approved-plan }
+      - name: Prepare one anonymous live E2E case
+        env:
+          IDENTITY_PLATFORM_AUTH_DOMAIN: ${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}
+          E2E_SIGNING_SERVICE_ACCOUNT: ${{ secrets.E2E_SIGNING_SERVICE_ACCOUNT }}
+          E2E_MANAGER_EMAIL: ${{ secrets.LIVE_E2E_MANAGER_EMAIL }}
+          E2E_ASSESSOR_EMAIL: ${{ secrets.LIVE_E2E_ASSESSOR_EMAIL }}
+          E2E_AUDIO_GCS_URI: ${{ vars.LIVE_E2E_AUDIO_GCS_URI }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          evidence_dir="$RUNNER_TEMP/hanamaru-release-evidence"
+          install -d -m 0700 "$evidence_dir"
+          echo "HANAMARU_RELEASE_EVIDENCE_DIR=$evidence_dir" >> "$GITHUB_ENV"
+          identity_api_key="$(gcloud secrets versions access latest --project="$PROJECT_ID" --secret=hanamaru-pilot-identity-platform-api-key)"
+          printf '::add-mask::%s\n' "$identity_api_key"
+          printf '%s' "$identity_api_key" > "$evidence_dir/identity-api-key"
+          chmod 0600 "$evidence_dir/identity-api-key"
+          access_token="$(gcloud auth print-access-token)"
+          printf '::add-mask::%s\n' "$access_token"
+          for actor in manager assessor; do
+            email_var="E2E_${actor^^}_EMAIL"
+            output="$evidence_dir/$actor-identity.json"
+            GCP_PROJECT_ID="$PROJECT_ID" \
+              GCLOUD_ACCESS_TOKEN="$access_token" \
+              IDENTITY_PLATFORM_API_KEY="$identity_api_key" \
+              E2E_EMAIL="${!email_var}" \
+              E2E_SIGNING_SERVICE_ACCOUNT="$E2E_SIGNING_SERVICE_ACCOUNT" \
+              E2E_IDENTITY_OUTPUT="$output" \
+              IDENTITY_PLATFORM_AUTH_DOMAIN="$IDENTITY_PLATFORM_AUTH_DOMAIN" \
+              node scripts/mint-live-e2e-identity.mjs
+          done
+          gcloud storage cp "$E2E_AUDIO_GCS_URI" "$evidence_dir/anonymous-audio"
+          chmod 0600 "$evidence_dir/anonymous-audio"
+          test -s "$evidence_dir/anonymous-audio"
+          {
+            echo "LIVE_E2E_MANAGER_IDENTITY_FILE=$evidence_dir/manager-identity.json"
+            echo "LIVE_E2E_ASSESSOR_IDENTITY_FILE=$evidence_dir/assessor-identity.json"
+            echo "IDENTITY_PLATFORM_API_KEY_FILE=$evidence_dir/identity-api-key"
+            echo "LIVE_E2E_AUDIO_PATH=$evidence_dir/anonymous-audio"
+          } >> "$GITHUB_ENV"
+      - name: Re-plan and verify the approved application-only change set
+        env:
+          API_IMAGE: ${{ needs.build-plan.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.build-plan.outputs.worker_image }}
+          WEB_IMAGE: ${{ needs.build-plan.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        run: |
+          TF_PLAN_PATH=.artifacts/current-release/tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/tfplan" > "$RUNNER_TEMP/tfplan.json"
+          jq '{formatVersion:.format_version,terraformVersion:.terraform_version,changes:[.resource_changes[]?|select(.change.actions != ["no-op"])|{address,mode,type,actions:.change.actions}]|sort_by(.address)}' "$RUNNER_TEMP/tfplan.json" > "$RUNNER_TEMP/terraform-plan-summary.json"
+          diff -u .artifacts/approved-plan/terraform-plan-summary.json "$RUNNER_TEMP/terraform-plan-summary.json"
+          test "$(jq '[.changes[]?|select(.actions|index("delete"))]|length' "$RUNNER_TEMP/terraform-plan-summary.json")" -eq 0
+          jq -e 'all(.changes[]; (.actions == ["update"]) and (.address | IN("google_cloud_run_v2_service.api","google_cloud_run_v2_service.web","google_cloud_run_v2_service.worker","google_cloud_run_v2_job.database_migrate","google_cloud_run_v2_job.database_provision_roles","google_cloud_run_v2_job.database_bootstrap","google_cloud_run_v2_job.content_import")))' "$RUNNER_TEMP/terraform-plan-summary.json" >/dev/null
+          find "$RUNNER_TEMP/tfplan.json" "$RUNNER_TEMP/terraform-plan-summary.json" .artifacts/current-release/tfplan -type f -delete
+      - name: Blue/Green deployment and staged traffic promotion
+        env:
+          API_IMAGE: ${{ needs.build-plan.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.build-plan.outputs.worker_image }}
+          WEB_IMAGE: ${{ needs.build-plan.outputs.web_image }}
+          BUILD_ID: ${{ needs.build-plan.outputs.build_id }}
+          RELEASE_ID: ${{ github.sha }}
+          LIVE_E2E_ASSESSOR_MEMBERSHIP_ID: ${{ vars.LIVE_E2E_ASSESSOR_MEMBERSHIP_ID }}
+          NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN: ${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}
+        run: scripts/release-blue-green.sh
+      - name: Verify Terraform drift is zero after Blue/Green promotion
+        env:
+          API_IMAGE: ${{ needs.build-plan.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.build-plan.outputs.worker_image }}
+          WEB_IMAGE: ${{ needs.build-plan.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TF_PLAN_PATH=.artifacts/current-release/post-release-tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/post-release-tfplan" > "$RUNNER_TEMP/post-release-tfplan.json"
+          test "$(jq '[.resource_changes[]?|select(.change.actions != ["no-op"])]|length' "$RUNNER_TEMP/post-release-tfplan.json")" -eq 0
+          find "$RUNNER_TEMP/post-release-tfplan.json" .artifacts/current-release/post-release-tfplan -type f -delete
+      - name: Remove release evidence
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${HANAMARU_RELEASE_EVIDENCE_DIR:-}" && -d "$HANAMARU_RELEASE_EVIDENCE_DIR" ]]; then
+            find "$HANAMARU_RELEASE_EVIDENCE_DIR" -type f -exec shred -u {} + 2>/dev/null || rm -rf "$HANAMARU_RELEASE_EVIDENCE_DIR"
+          fi

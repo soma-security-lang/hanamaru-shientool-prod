@@ -1,0 +1,139 @@
+name: Infrastructure change
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [pilot, prod]
+        required: true
+      change_reference:
+        description: Approved ticket or change record
+        type: string
+        required: true
+      approved_addresses:
+        description: Exact comma-separated Terraform addresses expected to change
+        type: string
+        required: true
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: infra-${{ inputs.environment }}
+  cancel-in-progress: false
+env:
+  PROJECT_ID: monocle-503402
+  REGION: asia-northeast1
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
+      web_image: ${{ steps.images.outputs.web_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_INFRA_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_INFRA_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Governance preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          GCP_WIF_PROVIDER: ${{ secrets.GCP_INFRA_WORKLOAD_IDENTITY_PROVIDER }}
+          GCP_INFRA_SERVICE_ACCOUNT: ${{ secrets.GCP_INFRA_SERVICE_ACCOUNT }}
+        run: scripts/github-infra-preflight.sh
+      - name: Validate change metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$CHANGE_REFERENCE" =~ [A-Za-z0-9] ]] && [[ ${#CHANGE_REFERENCE} -ge 8 ]]
+          [[ "$APPROVED_ADDRESSES" != *" "* ]]
+          [[ "$APPROVED_ADDRESSES" != "" ]]
+        env:
+          CHANGE_REFERENCE: ${{ inputs.change_reference }}
+          APPROVED_ADDRESSES: ${{ inputs.approved_addresses }}
+      - name: Resolve currently deployed immutable images
+        id: images
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for component in api worker web; do
+            image="$(gcloud run services describe "hanamaru-pilot-$component" --project="$PROJECT_ID" --region="$REGION" --format='value(spec.template.spec.containers[0].image)')"
+            [[ "$image" == *"@sha256:"* ]]
+            echo "${component}_image=$image" >> "$GITHUB_OUTPUT"
+          done
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - name: Plan and enforce the exact non-application change set
+        env:
+          API_IMAGE: ${{ steps.images.outputs.api_image }}
+          WORKER_IMAGE: ${{ steps.images.outputs.worker_image }}
+          WEB_IMAGE: ${{ steps.images.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+          APPROVED_ADDRESSES: ${{ inputs.approved_addresses }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TF_PLAN_PATH=.artifacts/current-release/infra-tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/infra-tfplan" > "$RUNNER_TEMP/infra-plan.json"
+          jq '{formatVersion:.format_version,terraformVersion:.terraform_version,changes:[.resource_changes[]?|select(.change.actions != ["no-op"])|{address,mode,type,actions:.change.actions}]|sort_by(.address)}' "$RUNNER_TEMP/infra-plan.json" > .artifacts/current-release/infra-plan-summary.json
+          jq -e 'all(.changes[]; (.actions == ["create"] or .actions == ["update"]) and (.address|startswith("google_cloud_run_v2_service.")|not) and (.address|startswith("google_cloud_run_v2_job.")|not) and (.address|startswith("google_sql_database_instance.")|not))' .artifacts/current-release/infra-plan-summary.json >/dev/null
+          actual="$(jq -r '[.changes[].address]|sort|join(",")' .artifacts/current-release/infra-plan-summary.json)"
+          approved="$(tr ',' '\n' <<<"$APPROVED_ADDRESSES" | LC_ALL=C sort -u | paste -sd, -)"
+          [[ "$actual" == "$approved" ]]
+          find "$RUNNER_TEMP/infra-plan.json" .artifacts/current-release/infra-tfplan -type f -delete
+      - uses: actions/upload-artifact@v4
+        with:
+          name: infra-plan-summary
+          path: .artifacts/current-release/infra-plan-summary.json
+          retention-days: 14
+  apply:
+    needs: plan
+    environment: ${{ format('{0}-infra-apply', inputs.environment) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_INFRA_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_INFRA_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - uses: actions/download-artifact@v4
+        with: { name: infra-plan-summary, path: .artifacts/approved-infra-plan }
+      - name: Re-plan, compare and apply the approved infrastructure change
+        env:
+          API_IMAGE: ${{ needs.plan.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.plan.outputs.worker_image }}
+          WEB_IMAGE: ${{ needs.plan.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+          APPROVED_ADDRESSES: ${{ inputs.approved_addresses }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TF_PLAN_PATH=.artifacts/current-release/infra-tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/infra-tfplan" > "$RUNNER_TEMP/infra-plan.json"
+          jq '{formatVersion:.format_version,terraformVersion:.terraform_version,changes:[.resource_changes[]?|select(.change.actions != ["no-op"])|{address,mode,type,actions:.change.actions}]|sort_by(.address)}' "$RUNNER_TEMP/infra-plan.json" > "$RUNNER_TEMP/infra-plan-summary.json"
+          diff -u .artifacts/approved-infra-plan/infra-plan-summary.json "$RUNNER_TEMP/infra-plan-summary.json"
+          jq -e 'all(.changes[]; (.actions == ["create"] or .actions == ["update"]) and (.address|startswith("google_cloud_run_v2_service.")|not) and (.address|startswith("google_cloud_run_v2_job.")|not) and (.address|startswith("google_sql_database_instance.")|not))' "$RUNNER_TEMP/infra-plan-summary.json" >/dev/null
+          actual="$(jq -r '[.changes[].address]|sort|join(",")' "$RUNNER_TEMP/infra-plan-summary.json")"
+          approved="$(tr ',' '\n' <<<"$APPROVED_ADDRESSES" | LC_ALL=C sort -u | paste -sd, -)"
+          [[ "$actual" == "$approved" ]]
+          terraform -chdir=infra/terraform apply -auto-approve "$GITHUB_WORKSPACE/.artifacts/current-release/infra-tfplan"
+          find "$RUNNER_TEMP/infra-plan.json" "$RUNNER_TEMP/infra-plan-summary.json" .artifacts/current-release/infra-tfplan -type f -delete
+      - name: Verify post-apply drift is zero
+        env:
+          API_IMAGE: ${{ needs.plan.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.plan.outputs.worker_image }}
+          WEB_IMAGE: ${{ needs.plan.outputs.web_image }}
+          ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TF_PLAN_PATH=.artifacts/current-release/post-infra-tfplan scripts/live-terraform-plan.sh
+          terraform -chdir=infra/terraform show -json "$GITHUB_WORKSPACE/.artifacts/current-release/post-infra-tfplan" > "$RUNNER_TEMP/post-infra-plan.json"
+          test "$(jq '[.resource_changes[]?|select(.change.actions != ["no-op"])]|length' "$RUNNER_TEMP/post-infra-plan.json")" -eq 0
+          find "$RUNNER_TEMP/post-infra-plan.json" .artifacts/current-release/post-infra-tfplan -type f -delete

@@ -1,0 +1,27 @@
+name: hanamaru-local-postgres
+
+# Optional PostgreSQL 16 helper for Docker hosts. It is intentionally not the
+# primary application runtime: `pnpm local:up` runs the production-built Web,
+# API and Worker directly on 127.0.0.1 so the localhost-only cookie exception
+# remains fail-closed and Application Default Credentials never need to be
+# copied into a container. No Google API credential is accepted by this file.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hanamaru
+      POSTGRES_USER: hanamaru_migrator_local
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?set LOCAL_POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hanamaru_migrator_local -d hanamaru"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    ports:
+      - "127.0.0.1:${LOCAL_POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

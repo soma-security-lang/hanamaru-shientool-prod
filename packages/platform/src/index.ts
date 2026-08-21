@@ -1,0 +1,11 @@
+export * from "./types.js";
+export { probeAudioSource,probeAudioStream,probeVideoSource,probeVideoStream,type AudioMetadata,type VideoMetadata } from "./media.js";
+export { acceptLocalUpload,acceptLocalUploadStream,createLocalProviders } from "./local.js";
+export { cloudRunAudience,createGcpProviders,createLocalConnectedProviders,createGcpStorageProvider,createGoogleAiProvider,createGoogleDriveProvider } from "./gcp.js";
+export { CHIRP3_MODEL,buildChirp3BatchRequest,createGoogleSpeechProvider,parseChirp3BatchResponse } from "./google-speech.js";
+import { createGcpProviders,createLocalConnectedProviders } from "./gcp.js";
+import { createLocalProviders } from "./local.js";
+import { createCipheriv,createDecipheriv,createHash,randomBytes } from "node:crypto";
+import type { TokenCipher } from "./types.js";
+export function createProviders() { const mode=process.env.PROVIDER_MODE ?? "local"; if(process.env.NODE_ENV==="production"&&!['gcp','local-connected'].includes(mode))throw new Error("PROVIDER_MODE must be gcp or local-connected in production"); if(mode==="gcp")return createGcpProviders(); if(mode==="local-connected")return createLocalConnectedProviders(); if(mode==="local")return createLocalProviders(); throw new Error(`Unsupported PROVIDER_MODE: ${mode}`); }
+export function createTokenCipher():TokenCipher{const configured=process.env.TOKEN_ENCRYPTION_KEY_B64;if(process.env.NODE_ENV==="production"&&!configured)throw new Error("TOKEN_ENCRYPTION_KEY_B64 is required in production");const key=configured?Buffer.from(configured,"base64"):createHash("sha256").update("hanamaru-local-token-key").digest();if(key.byteLength!==32)throw new Error("TOKEN_ENCRYPTION_KEY_B64 must decode to 32 bytes");const keyVersion=process.env.TOKEN_ENCRYPTION_KEY_VERSION??"local-v1";return{keyVersion,encrypt(plainText){const iv=randomBytes(12);const cipher=createCipheriv("aes-256-gcm",key,iv);const encrypted=Buffer.concat([cipher.update(plainText,"utf8"),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),encrypted]);},decrypt(cipherText){const iv=cipherText.subarray(0,12),tag=cipherText.subarray(12,28),payload=cipherText.subarray(28);const decipher=createDecipheriv("aes-256-gcm",key,iv);decipher.setAuthTag(tag);return Buffer.concat([decipher.update(payload),decipher.final()]).toString("utf8");}};}

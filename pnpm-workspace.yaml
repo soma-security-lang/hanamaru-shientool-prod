@@ -1,0 +1,22 @@
+packages:
+  - apps/*
+  - packages/*
+
+overrides:
+  uuid: ^11.1.1
+
+onlyBuiltDependencies:
+  - '@firebase/util'
+  - '@google/genai'
+  - esbuild
+  - onnxruntime-node
+  - protobufjs
+  - unrs-resolver
+allowBuilds:
+  '@firebase/util': true
+  '@google/genai': true
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: false
+  unrs-resolver: true

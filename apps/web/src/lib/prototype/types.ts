@@ -1,0 +1,6 @@
+export type Role = "assessor" | "manager" | "educator" | "content_approver" | "system_admin";
+export type UiScenario = "initial" | "loading" | "empty" | "success" | "partial" | "failure" | "retry" | "forbidden" | "deleted";
+export type ScreenKind = "auth" | "aiHome" | "visitList" | "visitImport" | "visitPreparation" | "transcription" | "reviewInput" | "reviewResult" | "reviews" | "talks" | "flows" | "reference" | "manuals" | "videos" | "roleplay" | "contentsAdmin" | "usersAdmin" | "operations" | "approval" | "analytics" | "dashboard" | "collection" | "form" | "document" | "recording" | "job" | "transcript" | "review" | "history" | "knowledge" | "training" | "users" | "jobs" | "contents" | "retention" | "audit";
+export interface Metric { label: string; value: string; detail: string; tone?: "neutral" | "accent" | "success" | "warning" | "danger"; }
+export interface ScreenSection { title: string; description: string; items: string[]; tone?: "neutral" | "accent" | "success" | "warning" | "danger"; }
+export interface ScreenSpec { id: `SCR-${string}`; name: string; eyebrow: string; summary: string; routes: string[]; kind: ScreenKind; roles: Role[]; featureFlag?: string; primaryAction: string; secondaryAction?: string; pocElements: string[]; metrics: Metric[]; sections: ScreenSection[]; }

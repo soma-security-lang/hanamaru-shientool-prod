@@ -1,0 +1,5 @@
+import type { HanamaruRepository } from "@hanamaru/database";
+import type { TaskProvider } from "@hanamaru/platform";
+interface EventRow{id:string;organization_id:string;event_type:string;aggregate_id:string;payload_redacted:{job_type?:string}}
+export async function dispatchOnce(repository:HanamaruRepository,tasks:TaskProvider,limit=20){const claimed=await repository.system<EventRow>("SELECT * FROM claim_outbox($1,60)",[limit]);let published=0;for(const event of claimed.rows){if(event.event_type!=="job.dispatch")continue;const result=await tasks.dispatch(event.aggregate_id,String(event.payload_redacted.job_type??"job"),event.id);await repository.system("SELECT mark_outbox_published($1,$2)",[event.id,result.taskName]);published++;}return {claimed:claimed.rowCount??0,published};}
+export async function enqueueRetentionScans(repository:HanamaruRepository){const result=await repository.system<{created:number}>("SELECT schedule_retention_scans(current_date) created");return{created:Number(result.rows[0]?.created??0)};}

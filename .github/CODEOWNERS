@@ -1,0 +1,4 @@
+* @soma-security-lang/owners
+/infra/ @soma-security-lang/owners
+/packages/database/migrations/ @soma-security-lang/owners
+/.github/workflows/ @soma-security-lang/owners

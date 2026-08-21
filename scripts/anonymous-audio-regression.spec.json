@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "profile": "normal_dialogue",
+      "description": "匿名の査定員と顧客による通常の二者接客",
+      "expectedQualityFlags": [],
+      "expectedOutcome": "review_allowed_after_speaker_confirmation"
+    },
+    {
+      "profile": "multi_speaker",
+      "description": "匿名の複数話者が短時間で交代する会話",
+      "expectedQualityFlags": ["many_speakers"],
+      "expectedOutcome": "explicit_confirmation_required"
+    },
+    {
+      "profile": "media_mix",
+      "description": "匿名の接客会話と長い放送風モノローグの混在",
+      "expectedQualityFlags": ["possible_media", "long_non_dialogue"],
+      "expectedOutcome": "explicit_confirmation_required"
+    }
+  ]
+}

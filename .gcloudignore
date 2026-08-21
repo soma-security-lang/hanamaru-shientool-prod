@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.artifacts
+**/playwright-report
+**/test-results
+.tmp
+.pgdata
+output
+**/.terraform
+.env*
+!.env.example

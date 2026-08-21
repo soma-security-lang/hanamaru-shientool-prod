@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-11T13:04:07.366Z",
+  "source": {
+    "path_hint": "PoC repository app.html",
+    "repository": "soma-security-lang/hanamaru-shientool",
+    "git_commit": "1c40c3ecd521a8640af3f6b6e98f36b029dde8dc",
+    "sha256": "defc22f7a8efb85113ed6cc2442441d4b523b95cff9db97298f6b53cda4c1f3f"
+  },
+  "counts": {
+    "total": 1676,
+    "by_type": {
+      "talk": 1156,
+      "flow": 159,
+      "glossary": 107,
+      "price": 76,
+      "manual": 6,
+      "legal": 4,
+      "video": 0,
+      "roleplay": 168
+    }
+  },
+  "validation": {
+    "duplicate_legacy_ids": [],
+    "duplicate_original_hashes": [
+      "7d854ba4ce4253df7d4151edea1bbe4b322db0f7c3d6ac289e5b5f252415f7c7",
+      "7766d33421c9d61e5b13b1f484eb9d428f0c319ff6c96093efe59090265e14d6",
+      "f5d7c16b1e024fa4c4276e5dfc17b5dcb9f6bd54724edd8430cdff5186f11d78",
+      "55d9e982bad90cbabf200f5ec57bdb61f853b1058a008416dae7f69606f91f41",
+      "b2126c50b90a9668e99c0d493a538ec51aeb63cab659aaa85940acf1b5013765",
+      "140cf5cbf3e14d1f514a06ed41c9daa904f41c69f8b701bfed52b9c14deb02aa",
+      "c4774b635eb41a115a124257ac2dbd9743da8d7df8519cd5c5498431e2df2b76",
+      "652c4b5a4a18a1602e0c5267f361adc61b75db1a538e82fe78f751dbc6cc9588",
+      "10ef5f50ad6ed6fd9ba342347d4358bf8b76d118ffd213794ca993860cf208d1",
+      "217a1e2a2d42e62ae81c94628050b24847b90bb68cb7c5806d2226396a9b96f1",
+      "534cc53681095679f06b5ceb32514ef90dd81dd64e8a22102d0c985f3e139a63",
+      "08e598fe8067e254c8e62506a8eba100e6942cf539e644553971793a5d8e5b7b",
+      "152f64c9df01dbf43d788e6a1ec52779971fc89582329c79250fa577fc922e37",
+      "858309140d36c05fc2f8ca45aaef87105f570752042c94deedd663d71ad9c56e",
+      "5043b2e0e9b414b29801a12303725138317bbbec2d23637c7bafafad664a1db0",
+      "47ae0af159fce043842ccaf861a62de1036811c8e88a7456dd83d3b5d8943fcd",
+      "c0d337beb82e1d4c1c9bf372a693ce6c5387a0087b77c46850bde751d00bf581",
+      "609e42ab9fe155762b8effc563d9c91cd8ebf63b123724188b1cace1ef50ac04",
+      "1e15350c4a431b68d00b0d70d889ebb7c0adba6840e8867d27a9f7dd58c7a22b",
+      "37ceb768015648f024e8d8413b16b28ae80cf398f34903a9575a586c68cc3e56",
+      "ad22759c046edca9a02ebf2408008bc394b17a5e97c8296bf110026b0c435fd6",
+      "ab1ee1fd1d7266a3d4ec4bc2eedb63b99d96a0be3602aecba04d23a17dbcb591",
+      "49b6b6685a380449f08299179ce59f314ef6049710cd674a0f88fa0f0d1ae6e2",
+      "e626d643aee05af4b77730b6fe08873741fe276becda3ea0f1a994973afe2437",
+      "51610859aeea6b7a68507d23d02d363deb353ef950959512bb5662ad4a6da86d",
+      "b278f795c4492cc2f803f1dae2fb94ba5d486cbc1d14cf12a0fa3a6bd26a1490",
+      "5ef71c8d77bcf24d2f2feb91908d17099ce350e0190987ab6a6ef7d4165fedae",
+      "51ceaf699cd650491fef3340eb61ca33ac0c55e762a2e3ea8d612bf3e36404cc",
+      "02ffbeeef15df3360df90111b96fcc6394d0002813786590fc2f146650b7e97c",
+      "feea1c2ef4262e0be342a12fd18938e7c3dd54a0492ce3da52ee325be1c59cae",
+      "cb00879dfbaf14b0b707ecf5de6617b577edbf40f8c43051f0cae560206c635a",
+      "e815089f55f2e39e42a7c706b356bf14ca7c887e45614758c8f762c1b6dfa0e0",
+      "fe90d38646b36600af4b91f1066470226338f6301ae0888d115aab7a9d8bdb57",
+      "adb482318e48964d3753e877ba08f09b5d7fdeb8f925d7c9a8877565efe16e90",
+      "35897aa29b700ad40ba4a92228298ade9653ca63ce210febd595ce9b0eaee232",
+      "c29ff4156cfede540d17e371024ca15676510a1d72ee733c292a36de19478928",
+      "61e14e4567d85ab62460dda342fc8fa4f913c907b42a01c4ee3a8cdff65f03ff",
+      "8fd988494edfd53f0fe6d4719d5bc7c03ad32d7177afdcc427a0bc4a477d826d",
+      "cdcfc656af395fc615bcabd538422e94873cecc6cf179b72dc8f3e059e43996a",
+      "6ecbd94088f5c2625541c30e7891dc8a58eb15b577e180596a91277b11d0f6b1",
+      "0adb161b19d0ae46eaa9c1f33f106a055c76bd0f8baf4059480f821cb9f7bdac",
+      "47f0211ac91c2a1b312dd5b27ccd425ebcaa9d1967e27b750add9763f371455e",
+      "dc354890def8f50d5417675c74aeee259b7a7df5418c5aa2d2dc60a1f10e03fb",
+      "dca5328e5b1b908743dc9e4fd9f831e0da84d193ce6227afd0affed2f909d9fb",
+      "86d2758a9f0d8146bc9df600fb9deb796e255772d87aeb4b361019e0c6875917",
+      "b371f6b72a8316282ef86acbb6e8502ed338db21f804860b44759a5df881fbe8",
+      "2435c8545d462b0d432acf4af035f1c605dee6ec07e7fa4ee47f8e7feadad350",
+      "de9b8f91165d5da85cc8afbc6b0b0df6e6b0234ba6560cc04be1f2424051b07c",
+      "fa1e1eeb001c4652dae25dac32d53a20f06c9dfde030b2e1c8f12bd6dc74b1df",
+      "08263acfc39dc1f7fdac3a3d4eb4f8c4c288ddce364980386b7e0b69353a9368",
+      "c07c5819589c92f168ba2ae3e2d83fc50321cb9843b7dbd871e2244db524f0f5",
+      "c7c1437d44f852a5927d8006dc4ab4ada728aecc16df880ab52e52f9f4de60eb",
+      "3b67b46693c6575438633fde6e23b35ecbd2444819ed804047d01707a77b7894",
+      "3fd868836e3919fa75a6dc44a000bded0689064cc40863c6685c998a8d1a3de8",
+      "06411b691f34949bea572dc50eee6b23f8386586687c63c57ba9f183f9aa3f56",
+      "1068f14e29e58aabf9018fb64773e68997b52a3d2e499a10371b6f5cc0237929",
+      "d05d81f0b3f7c9fe47c89df42f0770d4556c7e1b7d0add80cc5a6bba48c47524",
+      "a2ad0c57f17dc29b5efe3aa7dec4e3415a7781c1571ba2316c6de2f226b001bd",
+      "c76823ddf31a8d5eaf0240eacaa6cd7481f96681a1a0591f0ed0def58e06773b",
+      "99df5844d7211a5dcb958a6df74da24da684a677347f07786ce904fa5ad33442",
+      "77d4ea3dbeb8da1003737dcfd125d486dad8ecf954261ec3ff56c9011a7b5ffa",
+      "e51c28cb8f0612459c9ab72a4a3a6b09c982d18f9e3f07691965f97b2b9ab85b",
+      "8df468536b9f95fd209d64468e4f1a476ff2996f029a0de332a2ac8c2865047a",
+      "b3a502bdc73aeb0d391c323b448e3061ebf49d34a901501cb24aa08fb93f4e83",
+      "7f9adcd596504801ca4c916bbef31236def9b94fed5afa5a4988b9d7dc48f6b4",
+      "e47b815b51c92a912175520706ebd7156baebcfe9564634c7eb68a6beb7b13d0",
+      "2ca1de2d0df6cbb5bd0ca53205585bbe4ed8f516a64dabc55484260fb926d991",
+      "5437a113f6048e0da7d60472c4e5b5240639a51cda992193ff141c186f141258",
+      "9c4d0fcdc5a9ab9473ae7db013f0b177bd048e09a10fd11513cbff8fdaf3e9e1"
+    ],
+    "missing_required": []
+  },
+  "unresolved_sources": [
+    {
+      "type": "video",
+      "storage": "localStorage:hanamaru_video",
+      "status": "unavailable",
+      "reason": "公開HTMLとGit管理ソースに登録済み動画データが存在しない"
+    },
+    {
+      "type": "manual",
+      "storage": "localStorage:hanamaru_manuals",
+      "status": "unavailable",
+      "reason": "管理画面から追加された端末ローカルデータはGit管理ソースから取得不能"
+    },
+    {
+      "type": "all",
+      "storage": "Google Sheets / GAS",
+      "status": "not_imported_in_ui_phase",
+      "reason": "UI HITL前の外部データ読取・API接続対象外"
+    }
+  ],
+  "rules": {
+    "target_publication_state": "draft",
+    "reason": "PoC表示済みであっても、承認者・版・現行性が確認できるまで新システムでは公開しない",
+    "personal_data": "実顧客データ、認証情報、APIキーは取り込まない"
+  }
+}

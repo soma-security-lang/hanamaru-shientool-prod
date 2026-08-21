@@ -1,0 +1,52 @@
+{
+  "name": "hanamaru-shientool-prod",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": "22.x",
+    "pnpm": "11.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @hanamaru/web dev",
+    "dev:api": "pnpm --filter @hanamaru/api dev",
+    "dev:worker": "pnpm --filter @hanamaru/worker dev",
+    "build": "pnpm -r --if-present build",
+    "build:packages": "pnpm --filter @hanamaru/contracts build && pnpm --filter @hanamaru/platform build && pnpm --filter @hanamaru/database build",
+    "lint": "pnpm -r --if-present lint && eslint packages/*/src --max-warnings=0",
+    "typecheck": "pnpm -r --if-present typecheck && pnpm typecheck:scripts",
+    "typecheck:scripts": "tsc --allowJs --checkJs --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck scripts/live-google-e2e.mjs scripts/live-product-auth-e2e.mjs scripts/live-delete-race-e2e.mjs scripts/mint-live-e2e-identity.mjs",
+    "test": "pnpm build:packages && pnpm test:release-guard && pnpm -r --if-present test",
+    "test:release-guard": "bash scripts/release-guard.test.sh",
+    "test:workflows": "bash scripts/check-workflows.sh",
+    "test:db": "bash scripts/test-postgres.sh",
+    "test:db:roles": "bash scripts/test-local-db-roles.sh",
+    "test:security": "node scripts/security-scan.mjs",
+    "test:quality-gate": "node --test scripts/quality-eval.test.mjs",
+    "quality:evaluate": "node scripts/quality-eval.mjs",
+    "infra:validate": "terraform -chdir=infra/terraform fmt -check -recursive && terraform -chdir=infra/terraform validate && node scripts/validate-runtime-contract.mjs",
+    "gcp:ha-preflight": "bash scripts/cloud-sql-ha-cutover-preflight.sh",
+    "test:local": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:db && pnpm build && pnpm infra:validate && pnpm test:security && pnpm docs:validate && pnpm test:e2e",
+    "test:e2e": "pnpm --filter @hanamaru/web test:e2e",
+    "test:e2e:offline": "bash scripts/local-offline-e2e.sh",
+    "db:migrate": "pnpm --filter @hanamaru/database migrate",
+    "db:bootstrap:production": "pnpm --filter @hanamaru/database bootstrap:production",
+    "db:roles:provision:production": "pnpm --filter @hanamaru/database roles:provision:production",
+    "content:build": "node scripts/build-content-bundle.mjs",
+    "poc:extract": "node scripts/extract-poc-content.mjs",
+    "docs:validate": "node scripts/validate-screen-docs.mjs",
+    "local:preflight": "bash scripts/local-preflight.sh",
+    "local:up": "bash scripts/local-up.sh",
+    "local:status": "bash scripts/local-status.sh",
+    "local:down": "bash scripts/local-down.sh",
+    "local:e2e:auth": "bash scripts/local-auth-e2e.sh",
+    "local:e2e:google": "bash scripts/local-google-e2e.sh",
+    "local:verify": "bash scripts/local-verify.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.39.1",
+    "typescript-eslint": "^8.46.4"
+  }
+}
