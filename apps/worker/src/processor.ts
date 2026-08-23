@@ -1001,9 +1001,13 @@ export class WorkerProcessor {
     });
 
     if(prepared.completed){
+      const completedCleanupToken=this.transcriptionCleanupToken(prepared.operation.provider_operation_state);
+      if(cleanupTranscription&&completedCleanupToken)await cleanupTranscription(completedCleanupToken).catch(()=>undefined);
+      await this.repository.withContext(ctx,async tx=>{
+        await tx.query("UPDATE jobs SET provider_operation_id=NULL,provider_operation_state='{}'::jsonb,provider_operation_started_at=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,job.id]);
+        await tx.query("UPDATE operational_alerts SET status='resolved',resolved_at=now(),last_seen_at=now() WHERE organization_id=$1 AND job_id=$2 AND status='active' AND failure_class IN ('STT_HEARTBEAT_STALE','STT_LRO_TIMEOUT')",[job.organization_id,job.id]);
+      });
       await this.assessTranscriptQuality(ctx,job.organization_id,prepared.transcriptId);
-      if(cleanupTranscription)await cleanupTranscription(this.transcriptionCleanupToken(prepared.operation.provider_operation_state)).catch(()=>undefined);
-      await this.repository.withContext(ctx,async tx=>tx.query("UPDATE jobs SET provider_operation_state='{}'::jsonb,updated_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,job.id]));
       return;
     }
     const recording:TranscriptionRecording=prepared.recording;
@@ -1163,11 +1167,14 @@ export class WorkerProcessor {
       );
       return transcriptId;
     });
-    await this.assessTranscriptQuality(ctx,job.organization_id,transcriptId);
     if(durable){
       if(cleanupTranscription)await cleanupTranscription(cleanupToken).catch(()=>undefined);
-      await this.repository.withContext(ctx,async tx=>tx.query("UPDATE jobs SET provider_operation_state='{}'::jsonb,updated_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,job.id]));
+      await this.repository.withContext(ctx,async tx=>{
+        await tx.query("UPDATE jobs SET provider_operation_id=NULL,provider_operation_state='{}'::jsonb,provider_operation_started_at=NULL,updated_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,job.id]);
+        await tx.query("UPDATE operational_alerts SET status='resolved',resolved_at=now(),last_seen_at=now() WHERE organization_id=$1 AND job_id=$2 AND status='active' AND failure_class IN ('STT_HEARTBEAT_STALE','STT_LRO_TIMEOUT')",[job.organization_id,job.id]);
+      });
     }
+    await this.assessTranscriptQuality(ctx,job.organization_id,transcriptId);
   }
 
   private async preparation(

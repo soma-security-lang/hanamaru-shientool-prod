@@ -38,6 +38,7 @@ WITH candidates AS (
          GREATEST(0,extract(epoch FROM now()-provider_operation_started_at)::int)
     FROM jobs WHERE job_type='transcribe' AND provider_operation_id IS NOT NULL
      AND status IN ('running','retry_wait') AND provider_operation_started_at<now()-interval '9 hours'
+     AND NOT EXISTS(SELECT 1 FROM transcripts t WHERE t.organization_id=jobs.organization_id AND t.job_id=jobs.id)
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'RETRY_WAIT_OVERDUE','warning',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-available_at)::int)

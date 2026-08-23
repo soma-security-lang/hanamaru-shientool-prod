@@ -105,7 +105,9 @@ describe.skipIf(!databaseUrl)("durable Chirp 3 operation polling",()=>{
       expect(pollTranscription).toHaveBeenCalledTimes(2);
       expect(pollTranscription).toHaveBeenNthCalledWith(1,operationId);
       expect(pollTranscription).toHaveBeenNthCalledWith(2,operationId);
-      expect(cleanupTranscription).not.toHaveBeenCalled();
+      expect(cleanupTranscription).toHaveBeenCalledTimes(1);
+      const postSttState=await pool.query<{provider_operation_id:string|null;provider_operation_started_at:Date|null;provider_operation_state:Record<string,unknown>}>("SELECT provider_operation_id,provider_operation_started_at,provider_operation_state FROM jobs WHERE id=$1",[jobId]);
+      expect(postSttState.rows[0]).toEqual({provider_operation_id:null,provider_operation_started_at:null,provider_operation_state:{}});
       const qualityUnavailable=await pool.query<{status:string;model_name:string|null;failure_class:string|null;flags:string[]}>("SELECT status,model_name,failure_class,flags FROM transcript_quality_assessments WHERE transcript_id=(SELECT id FROM transcripts WHERE job_id=$1)",[jobId]);
       expect(qualityUnavailable.rows[0]).toEqual({status:"assessment_unavailable",model_name:null,failure_class:"MODEL_OUTPUT_INVALID",flags:["assessment_unavailable"]});
       await pool.query(
@@ -118,9 +120,10 @@ describe.skipIf(!databaseUrl)("durable Chirp 3 operation polling",()=>{
       await expect(processor.process(jobId,"durable-quality-retry")).resolves.toBe("succeeded");
       expect(startTranscription).toHaveBeenCalledTimes(1);
       expect(pollTranscription).toHaveBeenCalledTimes(2);
+      expect(cleanupTranscription).toHaveBeenCalledTimes(1);
       expect(cleanupTranscription).toHaveBeenCalledWith("local-validation/stt-input/integration");
-      const completed=await pool.query<{status:string;attempt_count:number;input_redacted:Record<string,unknown>;provider_operation_state:Record<string,unknown>}>("SELECT status,attempt_count,input_redacted,provider_operation_state FROM jobs WHERE id=$1",[jobId]);
-      expect(completed.rows[0]).toEqual({status:"succeeded",attempt_count:3,input_redacted:{},provider_operation_state:{}});
+      const completed=await pool.query<{status:string;attempt_count:number;input_redacted:Record<string,unknown>;provider_operation_id:string|null;provider_operation_started_at:Date|null;provider_operation_state:Record<string,unknown>}>("SELECT status,attempt_count,input_redacted,provider_operation_id,provider_operation_started_at,provider_operation_state FROM jobs WHERE id=$1",[jobId]);
+      expect(completed.rows[0]).toEqual({status:"succeeded",attempt_count:3,input_redacted:{},provider_operation_id:null,provider_operation_started_at:null,provider_operation_state:{}});
       const transcript=await pool.query<{provider_operation_id:string;full_text:string}>("SELECT provider_operation_id,full_text FROM transcripts WHERE organization_id=$1 AND job_id=$2",[organizationId,jobId]);
       expect(transcript.rows[0]).toEqual({provider_operation_id:operationId,full_text:"匿名の文字起こし結果"});
       expect(assessTranscriptQuality).toHaveBeenCalledTimes(2);

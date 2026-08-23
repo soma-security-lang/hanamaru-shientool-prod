@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {prepareVertexTranscriptQualityInput,retryableReviewContractError,retryableTranscriptQualityContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt} from "./gcp.js";
+import {prepareVertexTranscriptQualityInput,retryableReviewContractError,retryableTranscriptQualityContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt,vertexTranscriptQualityOutputSchema} from "./gcp.js";
 
 describe("Vertex AI extraction contract",()=>{
   it("keeps the model response schema separate from the business form schema",()=>{
@@ -29,6 +29,10 @@ describe("Vertex AI review parity contract",()=>{
 });
 
 describe("Vertex AI transcript quality bounds",()=>{
+  it("constrains every evidence id to the current transcript chunk",()=>{
+    const schema=vertexTranscriptQualityOutputSchema(["E0001","E0002"]) as {properties:{flags:{items:{properties:{evidenceSegmentIds:{items:{enum:string[]}}}}}}};
+    expect(schema.properties.flags.items.properties.evidenceSegmentIds.items.enum).toEqual(["E0001","E0002"]);
+  });
   it("repairs only model-contract failures and never retries quota or configuration errors in-process",()=>{
     expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: model returned invalid JSON"))).toBe(true);
     expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment"))).toBe(true);

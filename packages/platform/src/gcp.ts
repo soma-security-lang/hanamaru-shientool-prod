@@ -136,6 +136,20 @@ export function vertexReviewGenerationConfig(repair=false):Record<string,unknown
   return{temperature:repair?0.1:0.3,maxOutputTokens:8192};
 }
 
+export function vertexTranscriptQualityOutputSchema(evidenceIds:string[]):Record<string,unknown>{
+  return{
+    type:"OBJECT",required:["flags"],
+    properties:{flags:{type:"ARRAY",maxItems:2,items:{
+      type:"OBJECT",required:["type","confidence","evidenceSegmentIds"],
+      properties:{
+        type:{type:"STRING",enum:["possible_media","long_non_dialogue"]},
+        confidence:{type:"NUMBER",minimum:0,maximum:1},
+        evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:5,items:{type:"STRING",enum:evidenceIds}},
+      },
+    }}},
+  };
+}
+
 export function createGcpStorageProvider(config:StorageConfig,storage=new Storage({projectId:config.projectId})):StorageProvider {
   const bucket=storage.bucket(config.bucket);
   return {
@@ -261,17 +275,8 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
     },
     async assessTranscriptQuality(input){
       const {aliases,prompt}=prepareVertexTranscriptQualityInput(input);
-      const schema={
-        type:"OBJECT",required:["flags"],
-        properties:{flags:{type:"ARRAY",maxItems:2,items:{
-          type:"OBJECT",required:["type","confidence","evidenceSegmentIds"],
-          properties:{
-            type:{type:"STRING",enum:["possible_media","long_non_dialogue"]},
-            confidence:{type:"NUMBER",minimum:0,maximum:1},
-            evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:5,items:{type:"STRING"}},
-          },
-        }}},
-      };
+      const evidenceIds=[...aliases.keys()];
+      const schema=vertexTranscriptQualityOutputSchema(evidenceIds);
       const run=async(repair:boolean)=>{
         const repairInstruction=repair
           ?"\n前回の応答は契約検証に失敗しました。flags以外を返さず、typeは列挙値、confidenceは0から1、evidenceSegmentIdsは入力のEから始まるIDだけを一字一句そのまま使用してください。該当なしならflagsを空配列にしてください。"
@@ -289,8 +294,9 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
           const confidence=Number(item.confidence);
           if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: transcript quality confidence is invalid");
           if(!Array.isArray(item.evidenceSegmentIds)||!item.evidenceSegmentIds.length)throw new Error("PROVIDER_PERMANENT: transcript quality evidence is required");
-          const evidenceSegmentIds=[...new Set(item.evidenceSegmentIds.map(String).map(id=>aliases.get(id)).filter((id):id is string=>Boolean(id)))];
-          if(evidenceSegmentIds.length!==new Set(item.evidenceSegmentIds.map(String)).size)throw new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment");
+          const rawEvidenceIds=item.evidenceSegmentIds.map(value=>String(value).trim());
+          const evidenceSegmentIds=[...new Set(rawEvidenceIds.map(id=>aliases.get(id)).filter((id):id is string=>Boolean(id)))];
+          if(evidenceSegmentIds.length!==new Set(rawEvidenceIds).size)throw new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment");
           return{type:type as "possible_media"|"long_non_dialogue",confidence,evidenceSegmentIds};
         });
         return{model:config.model,flags};
