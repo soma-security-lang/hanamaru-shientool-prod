@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {prepareVertexTranscriptQualityInput,retryableReviewContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt} from "./gcp.js";
+import {prepareVertexTranscriptQualityInput,retryableReviewContractError,retryableTranscriptQualityContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt} from "./gcp.js";
 
 describe("Vertex AI extraction contract",()=>{
   it("keeps the model response schema separate from the business form schema",()=>{
@@ -29,6 +29,14 @@ describe("Vertex AI review parity contract",()=>{
 });
 
 describe("Vertex AI transcript quality bounds",()=>{
+  it("repairs only model-contract failures and never retries quota or configuration errors in-process",()=>{
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: model returned invalid JSON"))).toBe(true);
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment"))).toBe(true);
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: duplicate transcript quality flag"))).toBe(true);
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: transcript quality request exceeds the segment limit"))).toBe(false);
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_TEMPORARY: quota"))).toBe(false);
+    expect(retryableTranscriptQualityContractError(new Error("PROVIDER_PERMANENT: approved model mismatch"))).toBe(false);
+  });
   it("normalizes and truncates every segment and keeps the complete prompt under its hard limit",()=>{
     const input={durationMs:8*60*60*1000,segments:Array.from({length:160},(_,index)=>({id:`segment-${index}`,startMs:index*1000,endMs:index*1000+900,speakerLabel:`chunk-${Math.floor(index/20)}:1`,text:`  Ａ${"x".repeat(5000)}  `}))};
     const prepared=prepareVertexTranscriptQualityInput(input);

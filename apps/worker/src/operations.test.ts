@@ -10,6 +10,7 @@ describe("operations scan",()=>{
     const query=vi.fn(async(sql:string)=>{statements.push(sql);return{rows:[],rowCount:1};});
     const repository={system,withContext:vi.fn(async(_ctx:unknown,operation:(tx:{query:typeof query})=>Promise<unknown>)=>operation({query}))};
     const alerts=await scanOperations(repository as never);
+    expect(String(system.mock.calls[0]?.[0])).toContain("qa.continuation_decision IS NULL");
     expect(alerts).toEqual([{organizationId:"org",jobId:"job",jobType:"transcribe",failureClass:"STT_HEARTBEAT_STALE",severity:"warning",attempt:2,maxAttempts:200,oldestAgeSeconds:240}]);
     expect(statements.some(sql=>sql.includes("UPDATE operational_alerts SET status='resolved'"))).toBe(true);
     expect(statements.some(sql=>sql.includes("INSERT INTO operational_alerts"))).toBe(true);

@@ -127,6 +127,11 @@ export function retryableReviewContractError(error:unknown):boolean{
   return /^PROVIDER_PERMANENT: (?:model output|model returned|invalid |missing review|review evidence)/u.test(error.message);
 }
 
+export function retryableTranscriptQualityContractError(error:unknown):boolean{
+  if(!(error instanceof Error))return false;
+  return /^PROVIDER_PERMANENT: (?:model output|model returned|transcript quality (?:flags?|confidence|evidence)|duplicate transcript quality flag)/u.test(error.message);
+}
+
 export function vertexReviewGenerationConfig(repair=false):Record<string,unknown>{
   return{temperature:repair?0.1:0.3,maxOutputTokens:8192};
 }
@@ -267,24 +272,30 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
           },
         }}},
       };
-      const parsed=await generate([{text:prompt}],schema,{temperature:0,maxOutputTokens:2048}) as {flags?:unknown};
-      if(!Array.isArray(parsed.flags))throw new Error("PROVIDER_PERMANENT: transcript quality flags are invalid");
-      const seen=new Set<string>();
-      const flags=parsed.flags.map((raw)=>{
-        if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("PROVIDER_PERMANENT: transcript quality flag is invalid");
-        const item=raw as Record<string,unknown>;
-        const type=String(item.type??"");
-        if(type!=="possible_media"&&type!=="long_non_dialogue")throw new Error("PROVIDER_PERMANENT: transcript quality flag type is invalid");
-        if(seen.has(type))throw new Error("PROVIDER_PERMANENT: duplicate transcript quality flag");
-        seen.add(type);
-        const confidence=Number(item.confidence);
-        if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: transcript quality confidence is invalid");
-        if(!Array.isArray(item.evidenceSegmentIds)||!item.evidenceSegmentIds.length)throw new Error("PROVIDER_PERMANENT: transcript quality evidence is required");
-        const evidenceSegmentIds=[...new Set(item.evidenceSegmentIds.map(String).map(id=>aliases.get(id)).filter((id):id is string=>Boolean(id)))];
-        if(evidenceSegmentIds.length!==new Set(item.evidenceSegmentIds.map(String)).size)throw new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment");
-        return{type:type as "possible_media"|"long_non_dialogue",confidence,evidenceSegmentIds};
-      });
-      return{model:config.model,flags};
+      const run=async(repair:boolean)=>{
+        const repairInstruction=repair
+          ?"\n前回の応答は契約検証に失敗しました。flags以外を返さず、typeは列挙値、confidenceは0から1、evidenceSegmentIdsは入力のEから始まるIDだけを一字一句そのまま使用してください。該当なしならflagsを空配列にしてください。"
+          :"";
+        const parsed=await generate([{text:`${prompt}${repairInstruction}`}],schema,{temperature:0,maxOutputTokens:2048}) as {flags?:unknown};
+        if(!Array.isArray(parsed.flags))throw new Error("PROVIDER_PERMANENT: transcript quality flags are invalid");
+        const seen=new Set<string>();
+        const flags=parsed.flags.map((raw)=>{
+          if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new Error("PROVIDER_PERMANENT: transcript quality flag is invalid");
+          const item=raw as Record<string,unknown>;
+          const type=String(item.type??"");
+          if(type!=="possible_media"&&type!=="long_non_dialogue")throw new Error("PROVIDER_PERMANENT: transcript quality flag type is invalid");
+          if(seen.has(type))throw new Error("PROVIDER_PERMANENT: duplicate transcript quality flag");
+          seen.add(type);
+          const confidence=Number(item.confidence);
+          if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: transcript quality confidence is invalid");
+          if(!Array.isArray(item.evidenceSegmentIds)||!item.evidenceSegmentIds.length)throw new Error("PROVIDER_PERMANENT: transcript quality evidence is required");
+          const evidenceSegmentIds=[...new Set(item.evidenceSegmentIds.map(String).map(id=>aliases.get(id)).filter((id):id is string=>Boolean(id)))];
+          if(evidenceSegmentIds.length!==new Set(item.evidenceSegmentIds.map(String)).size)throw new Error("PROVIDER_PERMANENT: transcript quality evidence references an unknown segment");
+          return{type:type as "possible_media"|"long_non_dialogue",confidence,evidenceSegmentIds};
+        });
+        return{model:config.model,flags};
+      };
+      try{return await run(false);}catch(error){if(!retryableTranscriptQualityContractError(error))throw error;return run(true);}
     },
     async review(input){
       if(input.modelName&&input.modelName!==config.model)throw new Error("PROVIDER_PERMANENT: approved prompt model does not match configured model");

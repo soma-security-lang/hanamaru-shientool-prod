@@ -368,11 +368,11 @@ export class WorkerProcessor {
     transcriptId:string,
   ):Promise<void>{
     const prepared=await this.repository.withContext(ctx,async tx=>{
-      const existing=await tx.query<{model_name:string|null}>(
-        "SELECT model_name FROM transcript_quality_assessments WHERE organization_id=$1 AND transcript_id=$2",
+      const existing=await tx.query<{model_name:string|null;continuation_decision:string|null}>(
+        "SELECT model_name,continuation_decision FROM transcript_quality_assessments WHERE organization_id=$1 AND transcript_id=$2",
         [organizationId,transcriptId],
       );
-      if(existing.rows[0]?.model_name)return null;
+      if(existing.rows[0]?.model_name||existing.rows[0]?.continuation_decision)return null;
       const transcript=await tx.query<{duration_ms:string}>(
         "SELECT r.duration_ms::text FROM transcripts t JOIN recordings r ON r.id=t.recording_id AND r.organization_id=t.organization_id WHERE t.organization_id=$1 AND t.id=$2",
         [organizationId,transcriptId],
@@ -391,6 +391,7 @@ export class WorkerProcessor {
     let status:"evaluated"|"assessment_unavailable"="evaluated";
     let modelName:string|null=null;
     let qualityFailureClass:"MODEL_OUTPUT_INVALID"|"EVIDENCE_INVALID"|null=null;
+    let retryFailureClass:"MODEL_OUTPUT_INVALID"|"EVIDENCE_INVALID"|"PROVIDER_TEMPORARY"|null=null;
     let confidence:number|null=deterministicFlags.length?1:null;
     const flags=new Set<string>(deterministicFlags);
     const evidenceIds=new Set<string>(deterministic.evidenceSegmentIds);
@@ -421,7 +422,9 @@ export class WorkerProcessor {
       for(const id of deterministic.evidenceSegmentIds)evidenceIds.add(id);
       const classified=classifyFailure(error,isRetryable(error));
       qualityFailureClass=classified==="MODEL_OUTPUT_INVALID"||classified==="EVIDENCE_INVALID"?classified:null;
+      retryFailureClass=qualityFailureClass??(isRetryable(error)?"PROVIDER_TEMPORARY":null);
     }
+    let persistedStatus=status;
     await this.repository.withContext(ctx,async tx=>{
       const assessmentId=randomUUID();
       const saved=await tx.query<{id:string}>(
@@ -432,18 +435,40 @@ export class WorkerProcessor {
            continuation_decision=NULL,acknowledged_by_membership_id=NULL,acknowledged_at=NULL,
            lock_version=transcript_quality_assessments.lock_version+1,updated_at=now()
          WHERE transcript_quality_assessments.model_name IS NULL
+           AND transcript_quality_assessments.continuation_decision IS NULL
          RETURNING id`,
         [assessmentId,organizationId,transcriptId,status,modelName,qualityFailureClass,[...flags],confidence,metrics],
       );
       const persistedId=saved.rows[0]?.id;
-      if(!persistedId)return;
+      if(!persistedId){
+        const current=await tx.query<{status:"evaluated"|"assessment_unavailable";model_name:string|null;continuation_decision:string|null}>(
+          "SELECT status,model_name,continuation_decision FROM transcript_quality_assessments WHERE organization_id=$1 AND transcript_id=$2",
+          [organizationId,transcriptId],
+        );
+        if(current.rows[0]?.model_name||current.rows[0]?.continuation_decision){persistedStatus="evaluated";retryFailureClass=null;}
+        return;
+      }
       await tx.query("DELETE FROM transcript_quality_evidence WHERE organization_id=$1 AND assessment_id=$2",[organizationId,persistedId]);
       for(const segmentId of evidenceIds)await tx.query(
         "INSERT INTO transcript_quality_evidence(organization_id,assessment_id,transcript_id,transcript_segment_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
         [organizationId,persistedId,transcriptId,segmentId],
       );
       await tx.audit("transcript.quality_assessed","transcript",transcriptId,status==="evaluated"?"allowed":"failed",{flags:[...flags],model:modelName??"unavailable"});
+      if(status==="evaluated")await tx.query(
+        `UPDATE operational_alerts SET status='resolved',resolved_at=now(),last_seen_at=now()
+          WHERE organization_id=$1 AND status='active' AND failure_class IN ('MODEL_OUTPUT_INVALID','EVIDENCE_INVALID')
+            AND job_id=(SELECT job_id FROM transcripts WHERE organization_id=$1 AND id=$2)`,
+        [organizationId,transcriptId],
+      );
     });
+    if(persistedStatus==="assessment_unavailable"&&retryFailureClass){
+      const reason=retryFailureClass==="MODEL_OUTPUT_INVALID"
+        ?"invalid transcript quality model output"
+        :retryFailureClass==="EVIDENCE_INVALID"
+          ?"quality evidence references an unknown segment"
+          :"transcript quality provider temporarily unavailable";
+      throw new Error(`PROVIDER_TEMPORARY: ${reason}; durable retry scheduled`);
+    }
   }
 
   async process(

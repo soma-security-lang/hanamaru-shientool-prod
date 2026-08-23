@@ -53,3 +53,12 @@ manifestへ保存するのはprofile、GCS URI、object generation、SHA-256、d
 - Stage Webと本番Webのimage digestが完全一致しなければ停止する。
 - 最終`result.json`のcommit、Build ID、migration、各digest、RevisionとCloud Run実値を機械照合する。
 - 本番E2E、readiness、Cloud Run ERROR 0、Monitoring policy有効、Terraform drift 0を確認して完了とする。
+
+## 5. 文字起こし後の音声品質判定リカバリ
+
+- Chirp 3の文字起こし成功後に品質判定のmodel出力または根拠契約が不正だった場合、文字起こしJobを成功終了させず`retry_wait`へ戻す。
+- 再試行では保存済みTranscriptとsegmentだけを読み、音声の再送信、Chirp 3 LROの再作成、Transcriptの再生成を行わない。
+- retryは既存Job、lease、attempt、outboxのdurable契約で継続し、WorkerやCloud Run revisionが途中で停止しても次のdispatchが同じ品質判定を再開する。
+- 品質判定が成功した時点で`MODEL_OUTPUT_INVALID`／`EVIDENCE_INVALID`のactive alertを即時resolveし、5分間隔のoperations scanでも候補外であることを再確認する。
+- 利用者が`continue`または`replace`を選択済みの場合、その判断をretryで上書きせず、自動復旧対象から除外する。
+- migration `0051_retry_unavailable_transcript_quality.sql`は、Review未生成、削除処理外、人の継続判断なしの既存失敗だけを再試行へ戻す。既存Transcriptは保持する。

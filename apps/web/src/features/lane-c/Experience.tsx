@@ -87,7 +87,7 @@ function DangerConfirmation({
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      requestAnimationFrame(() => returnFocusRef.current?.focus());
+      returnFocusRef.current?.focus();
     };
   }, [open, onCancel]);
 

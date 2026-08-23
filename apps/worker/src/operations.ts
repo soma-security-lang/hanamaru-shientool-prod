@@ -47,13 +47,15 @@ WITH candidates AS (
          GREATEST(0,extract(epoch FROM now()-COALESCE(j.finished_at,j.updated_at))::int)
     FROM jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='MODEL_OUTPUT_INVALID')
       OR EXISTS(SELECT 1 FROM transcripts t JOIN transcript_quality_assessments qa ON qa.transcript_id=t.id AND qa.organization_id=t.organization_id
-                 WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='MODEL_OUTPUT_INVALID')
+                 WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='MODEL_OUTPUT_INVALID'
+                   AND qa.continuation_decision IS NULL)
   UNION ALL
   SELECT j.organization_id,j.requested_by_membership_id,j.id,j.job_type,'EVIDENCE_INVALID','critical',j.attempt_count,j.max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(j.finished_at,j.updated_at))::int)
     FROM jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='EVIDENCE_INVALID')
       OR EXISTS(SELECT 1 FROM transcripts t JOIN transcript_quality_assessments qa ON qa.transcript_id=t.id AND qa.organization_id=t.organization_id
-                 WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='EVIDENCE_INVALID')
+                 WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='EVIDENCE_INVALID'
+                   AND qa.continuation_decision IS NULL)
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'RETRY_LIMIT_EXCEEDED','critical',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(finished_at,updated_at))::int)
