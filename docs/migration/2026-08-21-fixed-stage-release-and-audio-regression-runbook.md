@@ -62,3 +62,5 @@ manifestへ保存するのはprofile、GCS URI、object generation、SHA-256、d
 - 品質判定が成功した時点で`MODEL_OUTPUT_INVALID`／`EVIDENCE_INVALID`のactive alertを即時resolveし、5分間隔のoperations scanでも候補外であることを再確認する。
 - 利用者が`continue`または`replace`を選択済みの場合、その判断をretryで上書きせず、自動復旧対象から除外する。
 - migration `0051_retry_unavailable_transcript_quality.sql`は、Review未生成、削除処理外、人の継続判断なしの既存失敗だけを再試行へ戻す。既存Transcriptは保持する。
+- rolling release中に旧Workerが0051のeventを先に消費しても、migration `0052_resume_unresolved_transcript_quality.sql`が未解決の安全な対象だけを新しいdeduplication keyで再投入する。Speech-to-Textは再送せず、保存済みTranscriptから品質判定だけを再開する。
+- 画面はSTT実行中と品質判定再試行中を区別し、保存済みTranscriptと発話区間を品質判定の復旧待ちでも表示する。

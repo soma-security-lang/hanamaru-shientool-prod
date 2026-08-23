@@ -140,6 +140,16 @@ describe("operations capability boundaries",()=>{
 });
 
 describe("speaker label and transcript quality safeguards",()=>{
+  it("shows completed transcript segments while only the quality check is retrying",async()=>{
+    const retrying=workspace(quality({status:"assessment_unavailable",flags:["assessment_unavailable"],failureClass:null}));
+    retrying.jobs=[{id:"job-quality",jobType:"transcribe",status:"retry_wait",entityType:"recording",entityId:"recording-1",attemptCount:4,maxAttempts:200,errorCode:"PROVIDER_TEMPORARY",createdAt:"2026-08-23T00:00:00Z",finishedAt:null}];
+    vi.spyOn(resources,"workspace").mockResolvedValue(retrying);
+    render(<WebExperience kind="transcription"/>);
+    expect(await screen.findByText(/文字起こしは完了しています。音声品質の自動判定を再試行中です/)).toBeInTheDocument();
+    expect(screen.getByLabelText("発話 1")).toHaveValue("ご説明します");
+    expect(screen.queryByText("音声を文字起こししています")).not.toBeInTheDocument();
+  });
+
   it("keeps speaker assignment on individual utterances without a bulk chunk control",async()=>{
     const user=userEvent.setup();
     vi.spyOn(resources,"workspace").mockResolvedValue(workspace());

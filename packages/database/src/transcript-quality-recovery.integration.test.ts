@@ -71,8 +71,8 @@ describe.skipIf(!databaseUrl)("transcript quality recovery migration",()=>{
 
       const recoverable=await insertFailedQuality(false);
       const acknowledged=await insertFailedQuality(true);
-      const result=await migrate(pool);
-      expect(result.applied).toContain("0051_retry_unavailable_transcript_quality.sql");
+      const firstRecovery=await migrate(pool,{through:"0051_retry_unavailable_transcript_quality.sql"});
+      expect(firstRecovery.applied).toContain("0051_retry_unavailable_transcript_quality.sql");
 
       const recoveredJob=await pool.query<{status:string;attempt_count:number;max_attempts:number;finished_at:Date|null;error_code:string|null}>(
         "SELECT status,attempt_count,max_attempts,finished_at,error_code FROM jobs WHERE id=$1",
@@ -83,6 +83,24 @@ describe.skipIf(!databaseUrl)("transcript quality recovery migration",()=>{
         "SELECT deduplication_key FROM outbox_events WHERE aggregate_id=$1",
         [recoverable.jobId],
       )).rows[0]?.deduplication_key).toBe(`quality-recovery:0051:${recoverable.jobId}`);
+
+      // Simulate the rolling-release race that originally occurred in the
+      // public environment: the previous Worker consumes 0051, completes the
+      // job, but leaves the quality assessment unavailable.
+      await pool.query(
+        "UPDATE jobs SET status='succeeded',finished_at=now(),available_at=now(),error_code=NULL WHERE id=$1",
+        [recoverable.jobId],
+      );
+      const resumed=await migrate(pool);
+      expect(resumed.applied).toContain("0052_resume_unresolved_transcript_quality.sql");
+      expect((await pool.query<{status:string;max_attempts:number;finished_at:Date|null;error_code:string|null}>(
+        "SELECT status,max_attempts,finished_at,error_code FROM jobs WHERE id=$1",
+        [recoverable.jobId],
+      )).rows[0]).toEqual({status:"retry_wait",max_attempts:202,finished_at:null,error_code:"MODEL_OUTPUT_INVALID"});
+      expect((await pool.query<{deduplication_key:string}>(
+        "SELECT deduplication_key FROM outbox_events WHERE aggregate_id=$1 ORDER BY created_at DESC LIMIT 1",
+        [recoverable.jobId],
+      )).rows[0]?.deduplication_key).toBe(`quality-recovery:0052:${recoverable.jobId}`);
 
       const protectedJob=await pool.query<{status:string;finished_at:Date|null}>(
         "SELECT status,finished_at FROM jobs WHERE id=$1",
