@@ -5,10 +5,11 @@ import {
   GoogleAuthProvider,
   browserPopupRedirectResolver,
   browserLocalPersistence,
+  getRedirectResult,
   indexedDBLocalPersistence,
   initializeAuth,
   reauthenticateWithPopup,
-  signInWithPopup,
+  signInWithRedirect,
   signOut,
   type Auth,
   type UserCredential,
@@ -63,11 +64,20 @@ async function readyAuth(){
   return auth;
 }
 
-export async function loginWithGooglePopup(){
+export async function beginGoogleLoginRedirect(){
   const auth=await readyAuth();
   if(!auth)throw new Error("Googleログインの設定が完了していません");
-  const result=await signInWithPopup(auth,loginProvider());
-  await result.user.getIdToken(true);
+  await signInWithRedirect(auth,loginProvider());
+}
+
+export async function completeGoogleLoginRedirect(){
+  const auth=identityAuth();
+  if(!auth)return false;
+  await getRedirectResult(auth);
+  await auth.authStateReady();
+  if(!auth.currentUser)return false;
+  await auth.currentUser.getIdToken(true);
+  return true;
 }
 
 export async function getIdentityToken(forceRefresh=false){

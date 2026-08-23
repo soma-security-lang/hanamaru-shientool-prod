@@ -10,6 +10,8 @@ const mocks=vi.hoisted(()=>{
     user,auth,provider,browserLocalPersistence,indexedDBLocalPersistence,
     initializeApp:vi.fn().mockReturnValue({name:"[DEFAULT]"}),
     initializeAuth:vi.fn(()=>auth),
+    getRedirectResult:vi.fn().mockResolvedValue({user}),
+    signInWithRedirect:vi.fn().mockResolvedValue(undefined),
     signInWithPopup:vi.fn().mockResolvedValue({user}),
     signOut:vi.fn().mockResolvedValue(undefined),
   };
@@ -27,14 +29,15 @@ vi.mock("firebase/auth",()=>{
     browserPopupRedirectResolver:{type:"POPUP"},
     browserLocalPersistence:mocks.browserLocalPersistence,
     indexedDBLocalPersistence:mocks.indexedDBLocalPersistence,
+    getRedirectResult:mocks.getRedirectResult,
     initializeAuth:mocks.initializeAuth,
     reauthenticateWithPopup:mocks.signInWithPopup,
-    signInWithPopup:mocks.signInWithPopup,
+    signInWithRedirect:mocks.signInWithRedirect,
     signOut:mocks.signOut,
   };
 });
 
-import {driveScope,getDriveAccessToken,getIdentityToken,loginWithGooglePopup,logout} from "./google";
+import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,logout} from "./google";
 
 const originalEnv={
   apiKey:process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY,
@@ -59,7 +62,8 @@ afterEach(async()=>{
 describe("Identity Platform browser authentication",()=>{
   it("shares authentication across tabs and defers drive.file until Drive is used",async()=>{
 
-    await loginWithGooglePopup();
+    await beginGoogleLoginRedirect();
+    await expect(completeGoogleLoginRedirect()).resolves.toBe(true);
 
     expect(mocks.initializeAuth).toHaveBeenCalledWith({name:"[DEFAULT]"},{persistence:[mocks.indexedDBLocalPersistence,mocks.browserLocalPersistence],popupRedirectResolver:{type:"POPUP"}});
     expect(mocks.provider.addScope).not.toHaveBeenCalled();
@@ -68,6 +72,8 @@ describe("Identity Platform browser authentication",()=>{
     await expect(getDriveAccessToken()).resolves.toBe("memory-only-drive-token");
     expect(mocks.provider.addScope).toHaveBeenCalledTimes(1);
     expect(mocks.provider.addScope).toHaveBeenCalledWith(driveScope);
-    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2);
+    expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1);
+    expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1);
+    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(1);
   });
 });
