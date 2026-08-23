@@ -52,6 +52,12 @@ describe("production resource contracts",()=>{
     expect(request).toHaveBeenCalledWith("/transcripts/transcript-1/quality-assessment/acknowledgements",expect.objectContaining({method:"POST",headers:{"idempotency-key":expect.any(String)},body:JSON.stringify({decision:"continue",lockVersion:4})}));
   });
 
+  it("sends the selected review dimensions instead of a fixed objective",async()=>{
+    const request=vi.spyOn(apiClient,"request").mockResolvedValue({jobId:"job-1"});
+    await resources.requestReview("transcript-1",["strength","compliance"]);
+    expect(request).toHaveBeenCalledWith("/transcripts/transcript-1/reviews",expect.objectContaining({method:"POST",headers:{"idempotency-key":expect.any(String)},body:JSON.stringify({dimensions:["strength","compliance"]})}));
+  });
+
   it("loads authorized retention bindings and aggregate operations health",async()=>{
     const request=vi.spyOn(apiClient,"request").mockResolvedValue({items:[]});
     await resources.retentionBindings("visit-1");

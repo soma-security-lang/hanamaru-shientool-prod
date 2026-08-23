@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable,Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { AiProvider, DriveProvider, PlatformProviders, SpeechProvider, StorageProvider, TaskProvider, UploadDeclaration } from "./types.js";
+import {reviewDimensions,type AiProvider,type DriveProvider,type PlatformProviders,type ReviewDimension,type SpeechProvider,type StorageProvider,type TaskProvider,type UploadDeclaration } from "./types.js";
 import { probeAudioStream,probeVideoStream } from "./media.js";
 
 const storageRoot=()=>process.env.LOCAL_STORAGE_DIR??join(tmpdir(),"hanamaru-local-storage");
@@ -161,14 +161,14 @@ class LocalAi implements AiProvider {
     const media=input.segments.find(segment=>/番組|ポッドキャスト|動画|CM|ニュース/u.test(segment.text));
     return{model:"test-deterministic-v1",flags:media?[{type:"possible_media" as const,confidence:.95,evidenceSegmentIds:[media.id]}]:[]};
   }
-  async review(input:Parameters<AiProvider["review"]>[0]){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: AI振り返りにはPROVIDER_MODE=gcpが必要です");const evidence=input.segments[0]?.id?[input.segments[0].id]:[];return {model:"test-deterministic-v1",summary:"根拠を示しながら丁寧に説明できています。次回は選択肢を早めに確認します。",findings:[
+  async review(input:Parameters<AiProvider["review"]>[0]){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: AI振り返りにはPROVIDER_MODE=gcpが必要です");const evidence=input.segments[0]?.id?[input.segments[0].id]:[];const dimensions=input.dimensions?.length?input.dimensions:reviewDimensions;return {model:"test-deterministic-v1",summary:"根拠を示しながら丁寧に説明できています。次回は選択肢を早めに確認します。",findings:[
     {category:"strength",title:"説明の導入",description:"相手へ配慮した導入ができています。",recommendedAction:null,evidenceSegmentIds:evidence},
     {category:"improvement",title:"選択肢の確認",description:"次の行動を複数提示すると判断しやすくなります。",recommendedAction:"比較・保留・売却の選択肢を確認する",evidenceSegmentIds:evidence},
     {category:"talk",title:"利用できたトーク",description:"査定根拠を説明するトークが使えています。",recommendedAction:null,evidenceSegmentIds:evidence},
     {category:"compliance",title:"法令観点",description:"断定的な誤認表現は検出されませんでした。",recommendedAction:null,evidenceSegmentIds:evidence},
     {category:"next_action",title:"次回の一歩",description:"顧客の比較軸を先に確認します。",recommendedAction:"価格以外の不安も質問する",evidenceSegmentIds:evidence},
     {category:"revisit",title:"再訪可能性",description:"説明継続の余地があります。",recommendedAction:"希望時期を確認する",evidenceSegmentIds:evidence}
-  ]};}
+  ].filter(finding=>dimensions.includes(finding.category as ReviewDimension)) as Awaited<ReturnType<AiProvider["review"]>>["findings"]};}
   async roleplay(input:Parameters<AiProvider["roleplay"]>[0]){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: AIロールプレイにはPROVIDER_MODE=gcpが必要です");const last=input.messages.at(-1)?.text??"";return{model:"test-deterministic-v1",customerReply:last.includes("査定")?"ありがとうございます。査定額の根拠も説明してもらえますか。":"今日は査定だけにしたいのですが、大丈夫でしょうか。",feedback:[{category:"intent",message:"お客様の意向を先に確認できています。"},{category:"next_action",message:"価格根拠を短く説明し、判断を急がせない選択肢を伝えましょう。"}]};}
 }
 

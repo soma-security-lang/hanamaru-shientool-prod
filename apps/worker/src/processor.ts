@@ -10,7 +10,7 @@ import type {
   StorageProvider,
   TokenCipher,
 } from "@hanamaru/platform";
-import { createTokenCipher } from "@hanamaru/platform";
+import { createTokenCipher,type ReviewDimension } from "@hanamaru/platform";
 
 interface ClaimedJob {
   id: string;
@@ -65,6 +65,7 @@ type ReviewResult=Awaited<ReturnType<PlatformProviders["ai"]["review"]>>;
 type QualitySegment={id:string;start_ms:number;end_ms:number;speaker_label:string|null;text:string};
 type QualityMetrics={segmentCount:number;chunkCount:number;maxLabelsPerChunk:number;speechOccupancyRatio:number};
 type DeterministicQualityFlag="many_speakers"|"possible_media"|"long_non_dialogue";
+const reviewDimensions=["strength","improvement","talk","compliance","next_action","revisit"] as const satisfies readonly ReviewDimension[];
 
 export const QUALITY_ASSESSMENT_MAX_SEGMENTS_PER_REQUEST=160;
 export const QUALITY_ASSESSMENT_MAX_TEXT_CHARACTERS_PER_SEGMENT=1000;
@@ -87,14 +88,18 @@ export function transcriptQualityInputChunks(segments:QualitySegment[]):QualityS
 }
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-const reviewCategories=["strength","improvement","talk","compliance","next_action","revisit"] as const;
 export function reviewChunks(segments:Array<{id:string;text:string;sequence_no:number}>,targetCharacters=16000){
   const chunks:Array<typeof segments>=[];let current:typeof segments=[];let size=0;
   for(const segment of segments){const next=segment.text.length+1;if(current.length&&size+next>targetCharacters){chunks.push(current);current=[];size=0;}current.push(segment);size+=next;}
   if(current.length)chunks.push(current);return chunks;
 }
-export function aggregateReviewChunks(results:ReviewResult[]):ReviewResult{
-  const findings=reviewCategories.map(category=>{const matches=results.flatMap(result=>result.findings.filter(finding=>finding.category===category));if(!matches.length)throw new Error(`PROVIDER_PERMANENT: review category missing: ${category}`);let title=matches[0]!.title;let description=[...new Set(matches.map(item=>item.description))].join("\n").slice(0,8000);
+function jobReviewDimensions(value:unknown):ReviewDimension[]{
+  if(value===undefined)return[...reviewDimensions];
+  if(!Array.isArray(value)||!value.length||new Set(value).size!==value.length||value.some(dimension=>!reviewDimensions.includes(dimension as ReviewDimension)))throw new Error("PROVIDER_PERMANENT: review dimensions are invalid");
+  return reviewDimensions.filter(dimension=>value.includes(dimension));
+}
+export function aggregateReviewChunks(results:ReviewResult[],dimensions:readonly ReviewDimension[]=reviewDimensions):ReviewResult{
+  const findings=dimensions.map(category=>{const matches=results.flatMap(result=>result.findings.filter(finding=>finding.category===category));if(!matches.length)throw new Error(`PROVIDER_PERMANENT: review category missing: ${category}`);let title=matches[0]!.title;let description=[...new Set(matches.map(item=>item.description))].join("\n").slice(0,8000);
     if(category==="talk")description=[...new Set(matches.flatMap(item=>item.description.split("\n")).filter(Boolean))].slice(0,3).join("\n");
     if(category==="compliance"){
       const labels=["告知","クーリングオフ","書面交付","押し買い"] as const;const priority={"✅":3,"⚠️":2,"❌":1} as const;const status=(line:string):keyof typeof priority|undefined=>line.includes("✅")?"✅":line.includes("⚠️")?"⚠️":line.includes("❌")?"❌":undefined;
@@ -1342,17 +1347,18 @@ export class WorkerProcessor {
       typeof job.input_redacted.objective === "string"
         ? job.input_redacted.objective
         : undefined;
+    const dimensions=jobReviewDimensions(job.input_redacted.dimensions);
     const chunks=reviewChunks(prepared.segments);const chunkResults:ReviewResult[]=[];
     for(const [chunkIndex,segments] of chunks.entries()){
-      const chunkHash=sha(JSON.stringify({transcriptId:prepared.id,transcriptVersion:prepared.lock_version,promptId:prepared.prompt_id,promptVersion:prepared.prompt_version,criteriaId:prepared.criteria_id,criteriaVersion:prepared.criteria_version,model:prepared.model_name,objective:objective??"接客育成",segments:segments.map(segment=>[segment.id,segment.sequence_no,segment.text])}));
+      const chunkHash=sha(JSON.stringify({transcriptId:prepared.id,transcriptVersion:prepared.lock_version,promptId:prepared.prompt_id,promptVersion:prepared.prompt_version,criteriaId:prepared.criteria_id,criteriaVersion:prepared.criteria_version,model:prepared.model_name,dimensions,objective:objective??"接客育成",segments:segments.map(segment=>[segment.id,segment.sequence_no,segment.text])}));
       const checkpoint=await this.repository.withContext(ctx,async tx=>tx.query<{input_hash:string;result_redacted:ReviewResult}>("SELECT input_hash,result_redacted FROM review_chunk_checkpoints WHERE organization_id=$1 AND job_id=$2 AND chunk_index=$3",[job.organization_id,job.id,chunkIndex]));
       if(checkpoint.rows[0]){if(checkpoint.rows[0].input_hash!==chunkHash)throw new Error("PROVIDER_PERMANENT: review chunk input changed");chunkResults.push(checkpoint.rows[0].result_redacted);continue;}
       await this.assertNotCancelled(job);
-      const result=await this.providers.ai.review({transcript:segments.map(segment=>segment.text).join("\n"),segments,systemInstruction:prepared.system_instruction,criteria:prepared.criteria_json,promptVersion:prepared.prompt_version,criteriaVersion:prepared.criteria_version,modelName:prepared.model_name,...(objective?{objective}:{})});
+      const result=await this.providers.ai.review({transcript:segments.map(segment=>segment.text).join("\n"),segments,dimensions,systemInstruction:prepared.system_instruction,criteria:prepared.criteria_json,promptVersion:prepared.prompt_version,criteriaVersion:prepared.criteria_version,modelName:prepared.model_name,...(objective?{objective}:{})});
       const chunkIds=new Set(segments.map(segment=>segment.id));if(result.findings.some(finding=>!finding.evidenceSegmentIds.length||finding.evidenceSegmentIds.some(id=>!chunkIds.has(id))))throw new Error("PROVIDER_PERMANENT: review chunk evidence must reference its transcript segments");
       await this.repository.withContext(ctx,async tx=>{await tx.query(`INSERT INTO review_chunk_checkpoints(organization_id,job_id,transcript_id,chunk_index,first_sequence_no,last_sequence_no,input_hash,result_redacted) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(job_id,chunk_index) DO NOTHING`,[job.organization_id,job.id,prepared.id,chunkIndex,segments[0]!.sequence_no,segments.at(-1)!.sequence_no,chunkHash,result]);});chunkResults.push(result);
     }
-    const reviewed=aggregateReviewChunks(chunkResults);
+    const reviewed=aggregateReviewChunks(chunkResults,dimensions);
     const validSegmentIds=new Set(prepared.segments.map(segment=>segment.id));
     if(reviewed.findings.some(finding=>!finding.evidenceSegmentIds.length||finding.evidenceSegmentIds.some(id=>!validSegmentIds.has(id))))throw new Error("PROVIDER_PERMANENT: review evidence must reference confirmed transcript segments");
     await this.assertNotCancelled(job);
@@ -1372,7 +1378,7 @@ export class WorkerProcessor {
       );
       if (existing.rows[0]) return;
       const reviewId = randomUUID();
-      const inputHash = sha(JSON.stringify({transcriptId:prepared.id,transcriptVersion:prepared.lock_version,promptId:prepared.prompt_id,promptVersion:prepared.prompt_version,criteriaId:prepared.criteria_id,criteriaVersion:prepared.criteria_version,model:prepared.model_name,objective:objective??"接客育成"}));
+      const inputHash = sha(JSON.stringify({transcriptId:prepared.id,transcriptVersion:prepared.lock_version,promptId:prepared.prompt_id,promptVersion:prepared.prompt_version,criteriaId:prepared.criteria_id,criteriaVersion:prepared.criteria_version,model:prepared.model_name,dimensions,objective:objective??"接客育成"}));
       const version = await tx.query<{ version: number }>(
         "SELECT COALESCE(max(version),0)+1 version FROM reviews WHERE transcript_id=$1",
         [prepared.id],
@@ -1396,7 +1402,7 @@ export class WorkerProcessor {
           reviewed.model,
           inputHash,
           reviewed.summary,
-          { findings: reviewed.findings },
+          { findings: reviewed.findings,analysisDimensions:dimensions },
           policy.retention_days,
           policy.id,
         ],

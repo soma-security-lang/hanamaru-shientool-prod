@@ -14,6 +14,7 @@ import type {
   UploadDeclaration,
 } from "./types.js";
 import { normalizeReviewOutput, normalizeRoleplayOutput, parseModelJson } from "./model-output.js";
+import {reviewDimensions,type ReviewDimension} from "./types.js";
 import { createGoogleSpeechProvider } from "./google-speech.js";
 import { createLocalProviders } from "./local.js";
 import { probeAudioSource,probeVideoSource } from "./media.js";
@@ -94,24 +95,26 @@ export async function deleteAllGcsObjectGenerations(bucket:Bucket,objectName:str
   throw new Error("PROVIDER_TEMPORARY: GCS object generations could not be fully deleted");
 }
 
-export function vertexReviewOutputSchema():Record<string,unknown>{
+export function vertexReviewOutputSchema(dimensions:readonly ReviewDimension[]=reviewDimensions):Record<string,unknown>{
   return{
     type:"OBJECT",required:["summary","findings"],
     properties:{
       summary:{type:"STRING"},
-      findings:{type:"ARRAY",minItems:6,maxItems:6,items:{type:"OBJECT",required:["category","title","description","evidenceSegmentIds"],properties:{category:{type:"STRING",enum:["strength","improvement","talk","compliance","next_action","revisit"]},title:{type:"STRING"},description:{type:"STRING"},recommendedAction:{type:"STRING",nullable:true},evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:3,items:{type:"STRING"}}}}},
+      findings:{type:"ARRAY",minItems:dimensions.length,maxItems:dimensions.length,items:{type:"OBJECT",required:["category","title","description","evidenceSegmentIds"],properties:{category:{type:"STRING",enum:[...dimensions]},title:{type:"STRING"},description:{type:"STRING"},recommendedAction:{type:"STRING",nullable:true},evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:3,items:{type:"STRING"}}}}},
     },
   };
 }
 
-export function vertexReviewPrompt(input:Parameters<AiProvider["review"]>[0]):string{return`${input.systemInstruction??"確定済み発話だけを根拠に評価してください。"}
+export function vertexReviewPrompt(input:Parameters<AiProvider["review"]>[0]):string{const dimensions=input.dimensions?.length?input.dimensions:reviewDimensions;const selectedRules=[
+  dimensions.includes("talk")?"talkは最大3件をdescriptionへまとめてください。":"",
+  dimensions.includes("revisit")?"revisitはお客様の実際の発言に基づき、高・中・低で判定してください。高シグナルは次回合意あり・決裁者不在・追加品の自己言及、中シグナルは愛着保留・比較検討中・葛藤保留です。社交辞令は高シグナルに含めません。":"",
+  dimensions.includes("compliance")?"complianceのdescriptionには告知・クーリングオフ・書面交付・押し買いの4項目を必ず含め、各項目を✅・❌・⚠️のいずれかで始めてください。✅は実施済み、❌は未実施、⚠️は不十分です。":"",
+].filter(Boolean).join("\n");return`${input.systemInstruction??"確定済み発話だけを根拠に評価してください。"}
 
 以下は出張買取の接客の文字起こしです。PoCと同じ評価観点でJSONのみ返してください。
-findingsにはstrength・improvement・talk・compliance・next_action・revisitをこの順で各1件、合計6件だけ返してください。
+findingsには${dimensions.join("・")}をこの順で各1件、合計${dimensions.length}件だけ返してください。選択されていない観点は返さないでください。
 summaryは1,000文字以内、各titleは80文字以内、各descriptionは800文字以内、根拠IDは各領域3件以内にしてください。
-talkは最大3件をdescriptionへまとめてください。
-revisitはお客様の実際の発言に基づき、高・中・低で判定してください。高シグナルは次回合意あり・決裁者不在・追加品の自己言及、中シグナルは愛着保留・比較検討中・葛藤保留です。社交辞令は高シグナルに含めません。
-complianceのdescriptionには告知・クーリングオフ・書面交付・押し買いの4項目を必ず含め、各項目を✅・❌・⚠️のいずれかで始めてください。✅は実施済み、❌は未実施、⚠️は不十分です。
+${selectedRules}
 監査のため、各findingのevidenceSegmentIdsには入力に実在するEから始まる発話IDを1件以上付けてください。存在しない発話IDは作らないでください。
 目的:${input.objective??"接客育成"}
 評価基準:${JSON.stringify(input.criteria??{})}
@@ -283,12 +286,13 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
     },
     async review(input){
       if(input.modelName&&input.modelName!==config.model)throw new Error("PROVIDER_PERMANENT: approved prompt model does not match configured model");
+      const dimensions=input.dimensions?.length?input.dimensions:[...reviewDimensions];
       const aliasToOriginal=new Map(input.segments.map((segment,index)=>[`E${String(index+1).padStart(4,"0")}`,segment.id]));
       const aliasedInput={...input,segments:input.segments.map((segment,index)=>({...segment,id:`E${String(index+1).padStart(4,"0")}`}))};
       const run=async(repair:boolean)=>{
         const repairInstruction=repair?"\n前回の応答は契約検証に失敗しました。文字数を抑え、必須項目をすべて埋め、evidenceSegmentIdsには上記発話のidを一字一句そのまま使用してください。":"";
-        const parsed=await generate([{text:`${vertexReviewPrompt(aliasedInput)}${repairInstruction}`}],vertexReviewOutputSchema(),vertexReviewGenerationConfig(repair));
-        const normalized=normalizeReviewOutput(parsed,config.model);
+        const parsed=await generate([{text:`${vertexReviewPrompt(aliasedInput)}${repairInstruction}`}],vertexReviewOutputSchema(dimensions),vertexReviewGenerationConfig(repair));
+        const normalized=normalizeReviewOutput(parsed,config.model,dimensions);
         const findings=normalized.findings.map(finding=>({...finding,evidenceSegmentIds:finding.evidenceSegmentIds.map(id=>{const original=aliasToOriginal.get(id);if(!original)throw new Error("PROVIDER_PERMANENT: review evidence references an unknown segment");return original;})}));
         return{...normalized,findings};
       };

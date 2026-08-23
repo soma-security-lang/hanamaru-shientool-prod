@@ -174,6 +174,26 @@ describe("speaker label and transcript quality safeguards",()=>{
     expect(screen.getByRole("button",{name:/AI振り返りを作成/})).toBeDisabled();
     expect(request).not.toHaveBeenCalled();
   });
+
+  it("lets the user choose review dimensions and sends only those selections",async()=>{
+    const user=userEvent.setup();
+    vi.spyOn(resources,"workspace").mockResolvedValue(workspace());
+    const request=vi.spyOn(resources,"requestReview").mockResolvedValue({jobId:"job-1"});
+    render(<WebExperience kind="reviewInput"/>);
+    for(const label of ["改善できる点","利用できたトーク","法令・コンプライアンス","次回の助言","再訪可能性"]){await user.click(await screen.findByRole("checkbox",{name:label}));}
+    expect(screen.getByRole("checkbox",{name:"接客の良かった点"})).toBeChecked();
+    await user.click(screen.getByRole("button",{name:/AI振り返りを作成/}));
+    expect(request).toHaveBeenCalledWith("transcript-1",["strength"]);
+  });
+
+  it("requires at least one review dimension",async()=>{
+    const user=userEvent.setup();
+    vi.spyOn(resources,"workspace").mockResolvedValue(workspace());
+    render(<WebExperience kind="reviewInput"/>);
+    for(const checkbox of await screen.findAllByRole("checkbox"))await user.click(checkbox);
+    expect(screen.getByRole("alert")).toHaveTextContent("1項目以上");
+    expect(screen.getByRole("button",{name:/AI振り返りを作成/})).toBeDisabled();
+  });
 });
 
 describe("operations visibility",()=>{

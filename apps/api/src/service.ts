@@ -13,6 +13,7 @@ import type {
   PlatformProviders,
   TokenCipher,
   UploadDeclaration,
+  ReviewDimension,
 } from "@hanamaru/platform";
 import { acceptLocalUploadStream, createTokenCipher } from "@hanamaru/platform";
 import { ApiProblem, denied, invalid, notFound } from "./errors.js";
@@ -27,6 +28,20 @@ type WriteResult = {
 };
 const sha = (value: string | Buffer) =>
   createHash("sha256").update(value).digest("hex");
+const reviewDimensions=["strength","improvement","talk","compliance","next_action","revisit"] as const satisfies readonly ReviewDimension[];
+function requestedReviewDimensions(value:unknown):ReviewDimension[]{
+  if(value===undefined)return[...reviewDimensions];
+  if(!Array.isArray(value)||!value.length||new Set(value).size!==value.length||value.some(dimension=>!reviewDimensions.includes(dimension as ReviewDimension)))throw invalid("分析する観点を1項目以上選択してください",[{field:"dimensions",message:"対応している分析観点を重複なく選択してください"}]);
+  return reviewDimensions.filter(dimension=>value.includes(dimension));
+}
+function reviewAnalysisDimensions(row:Record<string,unknown>):ReviewDimension[]{
+  const structured=row.structured_result;
+  if(structured&&typeof structured==="object"&&!Array.isArray(structured)){
+    const dimensions=(structured as Json).analysisDimensions;
+    if(Array.isArray(dimensions)&&dimensions.length&&dimensions.every(dimension=>reviewDimensions.includes(dimension as ReviewDimension)))return reviewDimensions.filter(dimension=>dimensions.includes(dimension));
+  }
+  return[...reviewDimensions];
+}
 const pilotContentNotice =
   "限定運用の未承認コンテンツを使用しています。正式な承認済み情報ではないため、原文と照合して判断してください。";
 const contentPolicy = (pilotEnabled: boolean, usesPilot: boolean,sources:Array<{id:string;versionId:string}>=[]) => ({
@@ -1037,7 +1052,7 @@ export class BackendService {
         [ctx.organizationId, id],
       );
       const jobs = await tx.query(
-        "SELECT id,job_type,status,entity_type,entity_id,attempt_count,max_attempts,error_code,created_at,finished_at FROM jobs WHERE organization_id=$1 AND requested_by_membership_id=$2 AND (entity_id=$3 OR entity_id IN (SELECT id FROM visit_documents WHERE visit_id=$3 UNION SELECT id FROM recordings WHERE visit_id=$3 UNION SELECT id FROM transcripts WHERE recording_id IN (SELECT id FROM recordings WHERE visit_id=$3))) ORDER BY created_at DESC LIMIT 20",
+        "SELECT id,job_type,status,entity_type,entity_id,attempt_count,max_attempts,error_code,created_at,finished_at,CASE WHEN job_type='review' THEN input_redacted->'dimensions' ELSE NULL END analysis_dimensions FROM jobs WHERE organization_id=$1 AND requested_by_membership_id=$2 AND (entity_id=$3 OR entity_id IN (SELECT id FROM visit_documents WHERE visit_id=$3 UNION SELECT id FROM recordings WHERE visit_id=$3 UNION SELECT id FROM transcripts WHERE recording_id IN (SELECT id FROM recordings WHERE visit_id=$3))) ORDER BY created_at DESC LIMIT 20",
         [ctx.organizationId, ctx.membershipId, id],
       );
       return {
@@ -1049,7 +1064,7 @@ export class BackendService {
         transcript: transcript ? camel(transcript.rows[0] ?? null) : null,
         segments: camel(segments?.rows ?? []),
         qualityAssessment: qualityAssessment ? camel(qualityAssessment.rows[0] ?? null) : null,
-        review: review ? camel(review.rows[0] ?? null) : null,
+        review: review?.rows[0] ? {...camel<Json>(review.rows[0]),analysisDimensions:reviewAnalysisDimensions(review.rows[0])} : null,
         findings: camel(findings?.rows ?? []),
         consent: camel(consent.rows[0] ?? null),
         jobs: camel(jobs.rows),
@@ -2120,11 +2135,17 @@ export class BackendService {
     key: string | undefined,
     input: Json,
   ) {
+    let jobInput=input;
+    if(jobType==="review"){
+      const dimensions=requestedReviewDimensions(input.dimensions);
+      const objective=input.objective===undefined?undefined:text(input.objective,500,"objective");
+      jobInput={...input,dimensions,...(objective?{objective}:{})};
+    }
     return this.write(
       ctx,
       `${jobType}.create`,
       key,
-      input,
+      jobInput,
       `${jobType}.request`,
       entityType,
       async (tx) => {
@@ -2158,7 +2179,7 @@ export class BackendService {
           );
         }
         const id = randomUUID();
-        const inputHash = sha(JSON.stringify(input));
+        const inputHash = sha(JSON.stringify(jobInput));
         await tx.query(
           `INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
           [
@@ -2169,7 +2190,7 @@ export class BackendService {
             entityId,
             key,
             inputHash,
-            input,
+            jobInput,
             jobType === "transcribe" ? 200 : 5,
             ctx.membershipId,
           ],
@@ -2754,7 +2775,7 @@ export class BackendService {
         `SELECT f.*,COALESCE(json_agg(json_build_object('segmentId',e.transcript_segment_id,'excerpt',e.excerpt,'startMs',e.start_ms,'endMs',e.end_ms)) FILTER(WHERE e.id IS NOT NULL),'[]') evidence FROM review_findings f LEFT JOIN review_evidence e ON e.review_finding_id=f.id WHERE f.organization_id=$1 AND f.review_id=$2 GROUP BY f.id ORDER BY f.sequence_no`,
         [ctx.organizationId, id],
       );
-      return { ...camel<Json>(r.rows[0]), findings: camel(findings.rows) };
+      return { ...camel<Json>(r.rows[0]),analysisDimensions:reviewAnalysisDimensions(r.rows[0]), findings: camel(findings.rows) };
     });
   }
   async acknowledgeReview(

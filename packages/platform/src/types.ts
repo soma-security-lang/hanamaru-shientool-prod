@@ -95,9 +95,11 @@ export interface AiProvider {
       evidenceSegmentIds:string[];
     }>;
   }>;
-  review(input: { transcript: string; segments: Array<{ id:string; text:string }>; objective?: string; systemInstruction?:string; criteria?:unknown; promptVersion?:number; criteriaVersion?:number; modelName?:string }): Promise<{ model:string; summary:string; findings:Array<{ category:string; title:string; description:string; recommendedAction:string|null; evidenceSegmentIds:string[] }> }>;
+  review(input: { transcript: string; segments: Array<{ id:string; text:string }>; dimensions?:ReviewDimension[]; objective?: string; systemInstruction?:string; criteria?:unknown; promptVersion?:number; criteriaVersion?:number; modelName?:string }): Promise<{ model:string; summary:string; findings:Array<{ category:string; title:string; description:string; recommendedAction:string|null; evidenceSegmentIds:string[] }> }>;
   roleplay(input:{scenarioTitle:string;customerProfile:string;messages:Array<{role:"staff"|"customer";text:string}>}):Promise<{model:string;customerReply:string;feedback:Array<{category:string;message:string}>}>;
 }
+export const reviewDimensions=["strength","improvement","talk","compliance","next_action","revisit"] as const;
+export type ReviewDimension=typeof reviewDimensions[number];
 export interface DriveProvider {
   exchangeAuthorizationCode(code:string):Promise<{providerAccountId:string;refreshToken:string;accessToken:string;expiresAt:string;scopes:string[]}>;
   refreshAccessToken(refreshToken:string):Promise<string>;
