@@ -165,7 +165,7 @@ class LocalAi implements AiProvider {
     {category:"strength",title:"説明の導入",description:"相手へ配慮した導入ができています。",recommendedAction:null,evidenceSegmentIds:evidence},
     {category:"improvement",title:"選択肢の確認",description:"次の行動を複数提示すると判断しやすくなります。",recommendedAction:"比較・保留・売却の選択肢を確認する",evidenceSegmentIds:evidence},
     {category:"talk",title:"利用できたトーク",description:"査定根拠を説明するトークが使えています。",recommendedAction:null,evidenceSegmentIds:evidence},
-    {category:"compliance",title:"法令観点",description:"断定的な誤認表現は検出されませんでした。",recommendedAction:null,evidenceSegmentIds:evidence},
+    {category:"compliance",title:"法令観点",description:"告知: ✅ 訪問目的を説明しています\nクーリングオフ: ⚠️ 説明の十分性は要確認です\n書面交付: ⚠️ 書面交付の実施は要確認です\n押し買い: ✅ 判断を急がせる表現は検出されませんでした",recommendedAction:null,evidenceSegmentIds:evidence},
     {category:"next_action",title:"次回の一歩",description:"顧客の比較軸を先に確認します。",recommendedAction:"価格以外の不安も質問する",evidenceSegmentIds:evidence},
     {category:"revisit",title:"再訪可能性",description:"説明継続の余地があります。",recommendedAction:"希望時期を確認する",evidenceSegmentIds:evidence}
   ].filter(finding=>dimensions.includes(finding.category as ReviewDimension)) as Awaited<ReturnType<AiProvider["review"]>>["findings"]};}

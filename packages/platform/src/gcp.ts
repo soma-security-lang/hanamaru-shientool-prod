@@ -96,11 +96,13 @@ export async function deleteAllGcsObjectGenerations(bucket:Bucket,objectName:str
 }
 
 export function vertexReviewOutputSchema(dimensions:readonly ReviewDimension[]=reviewDimensions):Record<string,unknown>{
+  const required=["summary","findings",...(dimensions.includes("compliance")?["complianceChecks"]:[])];
   return{
-    type:"OBJECT",required:["summary","findings"],
+    type:"OBJECT",required,
     properties:{
       summary:{type:"STRING"},
       findings:{type:"ARRAY",minItems:dimensions.length,maxItems:dimensions.length,items:{type:"OBJECT",required:["category","title","description","evidenceSegmentIds"],properties:{category:{type:"STRING",enum:[...dimensions]},title:{type:"STRING"},description:{type:"STRING"},recommendedAction:{type:"STRING",nullable:true},evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:3,items:{type:"STRING"}}}}},
+      ...(dimensions.includes("compliance")?{complianceChecks:{type:"OBJECT",required:["notification","coolingOff","documentDelivery","pressureSelling"],properties:Object.fromEntries(["notification","coolingOff","documentDelivery","pressureSelling"].map(key=>[key,{type:"OBJECT",required:["status","detail","evidenceSegmentIds"],properties:{status:{type:"STRING",enum:["compliant","noncompliant","unclear"]},detail:{type:"STRING"},evidenceSegmentIds:{type:"ARRAY",minItems:1,maxItems:3,items:{type:"STRING"}}}}]))}}:{}),
     },
   };
 }
@@ -108,7 +110,7 @@ export function vertexReviewOutputSchema(dimensions:readonly ReviewDimension[]=r
 export function vertexReviewPrompt(input:Parameters<AiProvider["review"]>[0]):string{const dimensions=input.dimensions?.length?input.dimensions:reviewDimensions;const selectedRules=[
   dimensions.includes("talk")?"talkは最大3件をdescriptionへまとめてください。":"",
   dimensions.includes("revisit")?"revisitはお客様の実際の発言に基づき、高・中・低で判定してください。高シグナルは次回合意あり・決裁者不在・追加品の自己言及、中シグナルは愛着保留・比較検討中・葛藤保留です。社交辞令は高シグナルに含めません。":"",
-  dimensions.includes("compliance")?"complianceのdescriptionには告知・クーリングオフ・書面交付・押し買いの4項目を必ず含め、各項目を✅・❌・⚠️のいずれかで始めてください。✅は実施済み、❌は未実施、⚠️は不十分です。":"",
+  dimensions.includes("compliance")?"complianceChecksを必ず返してください。notification=告知、coolingOff=クーリングオフ、documentDelivery=書面交付、pressureSelling=押し買いです。各項目のstatusはcompliant・noncompliant・unclearのいずれか、detailは判定理由、evidenceSegmentIdsはその項目を裏付ける実在発話IDを返してください。":"",
 ].filter(Boolean).join("\n");return`${input.systemInstruction??"確定済み発話だけを根拠に評価してください。"}
 
 以下は出張買取の接客の文字起こしです。PoCと同じ評価観点でJSONのみ返してください。

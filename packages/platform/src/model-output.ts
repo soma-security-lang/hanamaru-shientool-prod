@@ -2,10 +2,35 @@ import {reviewDimensions,type AiProvider,type ReviewDimension} from "./types.js"
 
 type Json=Record<string,unknown>;
 const complianceLabels=["告知","クーリングオフ","書面交付","押し買い"] as const;
+const structuredComplianceChecks=[
+  {key:"notification",label:"告知"},
+  {key:"coolingOff",label:"クーリングオフ"},
+  {key:"documentDelivery",label:"書面交付"},
+  {key:"pressureSelling",label:"押し買い"},
+] as const;
+const complianceStatusIcons={compliant:"✅",noncompliant:"❌",unclear:"⚠️"} as const;
 const revisitPatterns=["次回合意あり","決裁者不在","追加品の自己言及","愛着保留","比較検討中","葛藤保留"] as const;
 const object=(value:unknown):Json=>{if(!value||typeof value!=="object"||Array.isArray(value))throw new Error("PROVIDER_PERMANENT: model output is not an object");return value as Json;};
 const requiredText=(value:unknown,name:string,max:number)=>{if(typeof value!=="string"||!value.trim()||value.length>max)throw new Error(`PROVIDER_PERMANENT: invalid ${name}`);return value.trim();};
 const evidenceIds=(value:unknown,name:string)=>{const ids=Array.isArray(value)?[...new Set(value.filter((id):id is string=>typeof id==="string"&&Boolean(id.trim())).map(id=>id.trim()))].slice(0,20):[];if(!ids.length)throw new Error(`PROVIDER_PERMANENT: missing review evidence ${name}`);return ids;};
+
+function normalizeStructuredCompliance(value:unknown){
+  if(value==null)throw new Error("PROVIDER_PERMANENT: missing review compliance checks");
+  const checks=object(value);
+  const normalized=structuredComplianceChecks.map(({key,label})=>{
+    if(checks[key]==null)throw new Error(`PROVIDER_PERMANENT: missing review compliance check ${key}`);
+    const check=object(checks[key]);
+    const status=requiredText(check.status,`complianceChecks.${key}.status`,30) as keyof typeof complianceStatusIcons;
+    const icon=complianceStatusIcons[status];
+    if(!icon)throw new Error(`PROVIDER_PERMANENT: invalid compliance status ${key}`);
+    const detail=requiredText(check.detail,`complianceChecks.${key}.detail`,1000);
+    return{label,line:`${label}: ${icon} ${detail}`,evidenceSegmentIds:evidenceIds(check.evidenceSegmentIds,`complianceChecks.${key}`)};
+  });
+  return{
+    description:normalized.map(check=>check.line).join("\n"),
+    evidenceSegmentIds:[...new Set(normalized.flatMap(check=>check.evidenceSegmentIds))],
+  };
+}
 
 export function parseModelJson(text:string):Json{const clean=text.trim().replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/i,"");try{return object(JSON.parse(clean));}catch(error){if(error instanceof Error&&error.message.startsWith("PROVIDER_"))throw error;throw new Error("PROVIDER_PERMANENT: model returned invalid JSON");}}
 
@@ -32,7 +57,8 @@ export function normalizeReviewOutput(value:unknown,model:string,dimensions:read
     return{model,summary:requiredText(root.summary??`${good}\n${bad}`,"summary",5000),findings:findings.filter(finding=>dimensions.includes(finding.category as ReviewDimension))};
   }
   const raw=Array.isArray(root.findings)?root.findings:[];const byCategory=new Map(raw.map(item=>{const row=object(item);return[String(row.category),row] as const;}));
-  const findings=dimensions.map(category=>{const row=byCategory.get(category);if(!row)throw new Error(`PROVIDER_PERMANENT: missing review category ${category}`);return{category,title:requiredText(row.title,`${category}.title`,300),description:requiredText(row.description,`${category}.description`,5000),recommendedAction:row.recommendedAction==null?null:requiredText(row.recommendedAction,`${category}.recommendedAction`,2000),evidenceSegmentIds:evidenceIds(row.evidenceSegmentIds,category)};});
+  const structuredCompliance=dimensions.includes("compliance")?normalizeStructuredCompliance(root.complianceChecks):null;
+  const findings=dimensions.map(category=>{const row=byCategory.get(category);if(!row)throw new Error(`PROVIDER_PERMANENT: missing review category ${category}`);return{category,title:requiredText(row.title,`${category}.title`,300),description:category==="compliance"?structuredCompliance!.description:requiredText(row.description,`${category}.description`,5000),recommendedAction:row.recommendedAction==null?null:requiredText(row.recommendedAction,`${category}.recommendedAction`,2000),evidenceSegmentIds:category==="compliance"?structuredCompliance!.evidenceSegmentIds:evidenceIds(row.evidenceSegmentIds,category)};});
   return{model,summary:requiredText(root.summary,"summary",5000),findings};
 }
 
