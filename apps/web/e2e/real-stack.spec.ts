@@ -48,7 +48,7 @@ test("audio upload, STT, speaker confirmation and AI review complete through liv
   await page.getByRole("checkbox",{name:/録音同意/}).check();
   await page.locator('input[type="file"]').setInputFiles(audioPath!);
   await expect.poll(()=>page.locator("textarea[aria-label^='発話']").count(),{timeout:180_000}).toBeGreaterThan(0);
-  await expect(page.getByText(/人物を識別する番号ではなく/)).toBeVisible();
+  await expect(page.getByText("話者をチャンク単位で割り当て")).toHaveCount(0);
   const continueWithRisk=page.getByRole("button",{name:"内容を確認して利用継続"});
   const qualityClear=page.getByText("音声品質の自動確認で注意事項は見つかりませんでした。");
   const qualityContinued=page.getByText("確認して利用継続する判断を記録済みです。");

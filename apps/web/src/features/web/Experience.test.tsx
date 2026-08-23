@@ -140,15 +140,17 @@ describe("operations capability boundaries",()=>{
 });
 
 describe("speaker label and transcript quality safeguards",()=>{
-  it("explains chunk-local labels and bulk-assigns only the exact label",async()=>{
+  it("keeps speaker assignment on individual utterances without a bulk chunk control",async()=>{
     const user=userEvent.setup();
     vi.spyOn(resources,"workspace").mockResolvedValue(workspace());
     render(<WebExperience kind="transcription"/>);
-    expect(await screen.findByText(/人物を識別する番号ではなく/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("chunk-0:1を一括割当"),"staff");
-    expect(screen.getAllByLabelText("chunk-0:1の役割")).toHaveLength(2);
-    for(const select of screen.getAllByLabelText("chunk-0:1の役割"))expect(select).toHaveValue("staff");
-    expect(screen.getByLabelText("chunk-1:1の役割")).toHaveValue("unknown");
+    expect(await screen.findByLabelText("発話 1 の役割")).toHaveValue("unknown");
+    expect(screen.queryByText("話者をチャンク単位で割り当て")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/一括割当/)).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("発話 1 の役割"),"staff");
+    expect(screen.getByLabelText("発話 1 の役割")).toHaveValue("staff");
+    expect(screen.getByLabelText("発話 2 の役割")).toHaveValue("unknown");
+    expect(screen.getByLabelText("発話 3 の役割")).toHaveValue("unknown");
   });
 
   it("records an explicit continue decision for risky audio",async()=>{
