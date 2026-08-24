@@ -70,7 +70,7 @@
 | COR-024 | P1 | 公開 | Cloud Run Web | 初回修正を固定digestでGreenへ配備し、公開トラフィックを切り替える | Green確認後、全20 Route、API health、Error logを公開URLで再検証する | 完了 |
 | COR-025 | P1 | 再比較 | Global nav、SCR-011、SCR-019 | 具体語をPCで常設表示し、「困ったときのフロー集」へ統一する。API由来`batch`は表示時に「承認対象セット」へ正規化する | Vercel主要語が1クリックで見え、通常DOMに`承認batch`が表示されない | 完了 |
 | COR-026 | P1 | 再公開 | Cloud Run Web | COR-025の検証済みWeb imageをGreenへ配備し、公開版を更新する | no-traffic確認、20 Route、認証、Error log確認後に100%切替する | 完了 |
-| COR-027 | P0 | 振り返りAI | Worker／Vertex AI／DB | 文字起こし後の評価基準をPoCへ揃え、Talk最大3件、Compliance 4項目、再訪の高・中・低判定を承認済みversion 2として実装する | 実在segment IDを維持したままPoC全評価項目を返し、長文統合後もTalk上限・Compliance・再訪強度が保持される | ローカル完了・公開待ち |
+| COR-027 | P0 | 振り返りAI | Worker／Vertex AI／DB | 文字起こし後の評価基準をPoCへ揃え、Talk最大3件、Compliance 4項目、再訪の高・中・低判定を承認済みversion 2として実装する | 実在segment IDを維持したままPoC全評価項目を返し、長文統合後もTalk上限・Compliance・再訪強度が保持される | 完了 |
 
 ## 4. 意図的差分の維持台帳
 
