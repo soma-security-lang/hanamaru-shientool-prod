@@ -6,9 +6,7 @@ const canonicalFirebaseHost="monocle-503402.firebaseapp.com";
 export function proxy(request:NextRequest){
   const host=(request.headers.get("x-forwarded-host")??request.headers.get("host")??"").split(":")[0]?.toLowerCase();
   if(host!==legacyCloudRunHost)return NextResponse.next();
-  const destination=request.nextUrl.clone();
-  destination.protocol="https";
-  destination.host=canonicalFirebaseHost;
+  const destination=new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`,`https://${canonicalFirebaseHost}`);
   return NextResponse.redirect(destination,308);
 }
 
