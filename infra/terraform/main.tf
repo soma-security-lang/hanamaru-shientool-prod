@@ -974,6 +974,10 @@ resource "google_cloud_run_v2_service" "web" {
         name  = "NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER"
         value = var.google_cloud_project_number
       }
+      env {
+        name  = "NEXT_PUBLIC_GOOGLE_CLIENT_ID"
+        value = var.google_client_id
+      }
     }
   }
   depends_on = [google_project_service.required]
@@ -1030,6 +1034,10 @@ resource "google_cloud_run_v2_service" "stage_web" {
       env {
         name  = "NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER"
         value = var.google_cloud_project_number
+      }
+      env {
+        name  = "NEXT_PUBLIC_GOOGLE_CLIENT_ID"
+        value = var.google_client_id
       }
     }
   }

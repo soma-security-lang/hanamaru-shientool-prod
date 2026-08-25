@@ -11,6 +11,7 @@ const mocks=vi.hoisted(()=>{
     initializeApp:vi.fn().mockReturnValue({name:"[DEFAULT]"}),
     initializeAuth:vi.fn(()=>auth),
     getRedirectResult:vi.fn().mockResolvedValue({user}),
+    signInWithCredential:vi.fn().mockResolvedValue({user}),
     signInWithRedirect:vi.fn().mockResolvedValue(undefined),
     signInWithPopup:vi.fn().mockResolvedValue({user}),
     signOut:vi.fn().mockResolvedValue(undefined),
@@ -20,6 +21,7 @@ const mocks=vi.hoisted(()=>{
 vi.mock("firebase/app",()=>({getApp:()=>({name:"[DEFAULT]"}),getApps:()=>[],initializeApp:mocks.initializeApp}));
 vi.mock("firebase/auth",()=>{
   class GoogleAuthProvider{
+    static credential(value:string){return{googleIdToken:value};}
     static credentialFromResult(){return{accessToken:"memory-only-drive-token"};}
     addScope=mocks.provider.addScope;
     setCustomParameters=mocks.provider.setCustomParameters;
@@ -32,13 +34,14 @@ vi.mock("firebase/auth",()=>{
     getRedirectResult:mocks.getRedirectResult,
     initializeAuth:mocks.initializeAuth,
     reauthenticateWithPopup:mocks.signInWithPopup,
+    signInWithCredential:mocks.signInWithCredential,
     signInWithPopup:mocks.signInWithPopup,
     signInWithRedirect:mocks.signInWithRedirect,
     signOut:mocks.signOut,
   };
 });
 
-import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,loginWithGooglePopup,logout} from "./google";
+import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,loginWithGoogleCredential,loginWithGooglePopup,logout} from "./google";
 
 const originalEnv={
   apiKey:process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY,
@@ -66,6 +69,7 @@ describe("Identity Platform browser authentication",()=>{
     await beginGoogleLoginRedirect();
     await expect(completeGoogleLoginRedirect()).resolves.toBe(true);
     await loginWithGooglePopup();
+    await loginWithGoogleCredential("google-id-token");
 
     expect(mocks.initializeAuth).toHaveBeenCalledWith({name:"[DEFAULT]"},{persistence:[mocks.indexedDBLocalPersistence,mocks.browserLocalPersistence],popupRedirectResolver:{type:"POPUP"}});
     expect(mocks.provider.addScope).not.toHaveBeenCalled();
@@ -77,5 +81,6 @@ describe("Identity Platform browser authentication",()=>{
     expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1);
     expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1);
     expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2);
+    expect(mocks.signInWithCredential).toHaveBeenCalledWith(mocks.auth,{googleIdToken:"google-id-token"});
   });
 });

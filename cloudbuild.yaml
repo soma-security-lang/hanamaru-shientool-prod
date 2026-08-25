@@ -9,6 +9,7 @@ substitutions:
   _API_BASE_URL: https://invalid.example/api/v1
   _IDENTITY_AUTH_DOMAIN: invalid.example
   _PROJECT_NUMBER: "0"
+  _GOOGLE_CLIENT_ID: 000000000000-placeholder.apps.googleusercontent.com
 steps:
   - name: ubuntu:24.04
     entrypoint: bash
@@ -30,6 +31,7 @@ steps:
           --build-arg="NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID=$PROJECT_ID" \
           --build-arg="NEXT_PUBLIC_GOOGLE_PICKER_API_KEY=$$GOOGLE_PICKER_API_KEY" \
           --build-arg="NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER=${_PROJECT_NUMBER}" \
+          --build-arg="NEXT_PUBLIC_GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID}" \
           -t "asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/web:${_GIT_SHA}" .
   - name: anchore/syft:v1.29.0
     args: ["asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/api:${_GIT_SHA}", -o, "spdx-json=/workspace/output/sbom-api.spdx.json"]

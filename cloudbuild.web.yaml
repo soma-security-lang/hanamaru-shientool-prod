@@ -21,6 +21,7 @@ steps:
           --build-arg "NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID=${PROJECT_ID}" \
           --build-arg "NEXT_PUBLIC_GOOGLE_PICKER_API_KEY=$${GOOGLE_PICKER_API_KEY}" \
           --build-arg "NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER=${PROJECT_NUMBER}" \
+          --build-arg "NEXT_PUBLIC_GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID}" \
           .
   - name: anchore/syft:v1.29.0
     args: ["${_IMAGE}:${_TAG}", -o, "spdx-json=/workspace/output/sbom-web.spdx.json"]
@@ -51,3 +52,4 @@ substitutions:
   _TAG: manual
   _API_BASE_URL: https://hanamaru-pilot-api-tpqjzqidwa-an.a.run.app/api/v1
   _AUTH_DOMAIN: monocle-503402.firebaseapp.com
+  _GOOGLE_CLIENT_ID: 823274085145-pl1banjhkb1cegm01msnqtt8qb1pq9a4.apps.googleusercontent.com

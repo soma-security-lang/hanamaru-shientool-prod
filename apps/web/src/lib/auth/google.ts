@@ -9,6 +9,7 @@ import {
   indexedDBLocalPersistence,
   initializeAuth,
   reauthenticateWithPopup,
+  signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -78,6 +79,14 @@ export async function loginWithGooglePopup(){
   await result.user.getIdToken(true);
 }
 
+export async function loginWithGoogleCredential(idToken:string){
+  const auth=await readyAuth();
+  if(!auth)throw new Error("Googleログインの設定が完了していません");
+  const credential=GoogleAuthProvider.credential(idToken);
+  const result=await signInWithCredential(auth,credential);
+  await result.user.getIdToken(true);
+}
+
 export async function completeGoogleLoginRedirect(){
   const auth=identityAuth();
   if(!auth)return false;
@@ -113,6 +122,10 @@ export async function logout(){
 declare global{
   interface Window{
     google?:{
+      accounts?:{id:{
+        initialize(config:{client_id:string;callback:(response:{credential?:string})=>void;auto_select:false;cancel_on_tap_outside:true;use_fedcm_for_button:true}):void;
+        renderButton(parent:HTMLElement,config:{type:"standard";theme:"outline";size:"large";text:"signin_with";shape:"rectangular";logo_alignment:"left";width:number}):void;
+      }};
       picker?:{
         PickerBuilder:new()=>{addView(view:unknown):unknown;setOAuthToken(token:string):unknown;setDeveloperKey(key:string):unknown;setAppId(id:string):unknown;setCallback(callback:(data:Record<string,unknown>)=>void):unknown;build():{setVisible(visible:boolean):void}};
         DocsView:new(viewId:unknown)=>{setMimeTypes(value:string):unknown;setSelectFolderEnabled(value:boolean):unknown};

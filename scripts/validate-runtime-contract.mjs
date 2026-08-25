@@ -18,9 +18,9 @@ const expectCount=(name,count)=>{const actual=countEnv(name);if(actual!==count)f
 for(const name of ["VERTEX_AI_MODEL","VERTEX_LOCATION","SPEECH_LOCATION","SPEECH_MODEL","GOOGLE_DRIVE_CLIENT_ID","GOOGLE_DRIVE_CLIENT_SECRET","GOOGLE_DRIVE_REDIRECT_URI","DATABASE_SYSTEM_ROLE","TOKEN_ENCRYPTION_KEY_VERSION"])expectCount(name,2);
 expectCount("STT_INPUT_BUCKET",2);
 expectCount("IDENTITY_PLATFORM_PROJECT_ID",1);
-for(const name of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER"])expectCount(name,2);
+for(const name of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER","NEXT_PUBLIC_GOOGLE_CLIENT_ID"])expectCount(name,2);
 
-for(const forbidden of ["VERTEX_MODEL","GOOGLE_OAUTH_CLIENT_ID","GOOGLE_OAUTH_CLIENT_SECRET","GOOGLE_OAUTH_REDIRECT_URI","SESSION_COOKIE","NEXT_PUBLIC_GOOGLE_CLIENT_ID","NEXT_PUBLIC_DATA_MODE","oauth_client_id"]){
+for(const forbidden of ["VERTEX_MODEL","GOOGLE_OAUTH_CLIENT_ID","GOOGLE_OAUTH_CLIENT_SECRET","GOOGLE_OAUTH_REDIRECT_URI","SESSION_COOKIE","NEXT_PUBLIC_DATA_MODE","oauth_client_id"]){
   if(main.includes(forbidden))failures.push(`obsolete Terraform contract remains: ${forbidden}`);
 }
 if(/name\s*=\s*"GOOGLE_CLIENT_ID"/.test(main))failures.push("obsolete Terraform contract remains: GOOGLE_CLIENT_ID");
@@ -79,7 +79,7 @@ for(const replicaContract of [
   'cloudsql.googleapis.com/database/replication/replica_lag',
 ])if(!main.includes(replicaContract))failures.push(`read replica contract missing: ${replicaContract}`);
 
-for(const buildArg of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER"]){
+for(const buildArg of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER","NEXT_PUBLIC_GOOGLE_CLIENT_ID"]){
   if(!webDockerfile.includes(`ARG ${buildArg}`))failures.push(`Web build ARG missing: ${buildArg}`);
 }
 
@@ -97,4 +97,4 @@ if(failures.length){
   process.exit(1);
 }
 
-console.log(JSON.stringify({status:"PASS",terraformRuntimeEnv:28,webBuildArgs:6,fixedStageOrigin:true,operationsMonitoring:true,bucketCors:true,noncurrentVersionLifecycle:true,incompleteUploadLifecycle:true,obsoleteContracts:0}));
+console.log(JSON.stringify({status:"PASS",terraformRuntimeEnv:30,webBuildArgs:7,fixedStageOrigin:true,operationsMonitoring:true,bucketCors:true,noncurrentVersionLifecycle:true,incompleteUploadLifecycle:true,obsoleteContracts:0}));

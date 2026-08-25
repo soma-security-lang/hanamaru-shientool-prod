@@ -37,7 +37,7 @@ hanamaru_require_env \
   GOOGLE_DRIVE_CLIENT_ID GOOGLE_DRIVE_CLIENT_SECRET GOOGLE_DRIVE_REDIRECT_URI \
   IDENTITY_PLATFORM_PROJECT_ID NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY \
   NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID \
-  NEXT_PUBLIC_GOOGLE_PICKER_API_KEY NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER \
+  NEXT_PUBLIC_GOOGLE_PICKER_API_KEY NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER NEXT_PUBLIC_GOOGLE_CLIENT_ID \
   LOCAL_ALLOWED_GOOGLE_EMAIL LOCAL_ALLOWED_ASSESSOR_GOOGLE_EMAIL \
   TOKEN_ENCRYPTION_KEY_B64 TOKEN_ENCRYPTION_KEY_VERSION
 
@@ -66,6 +66,7 @@ fi
 [[ "$NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY" =~ ^AIza[0-9A-Za-z_-]{35}$ ]] || hanamaru_fail "Identity Platform用のBrowser API key形式を確認してください。"
 [[ "$NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN" =~ ^[a-z0-9.-]+$ ]] || hanamaru_fail "Identity Platform auth domainを設定してください。"
 [[ "$GOOGLE_DRIVE_CLIENT_ID" == *.apps.googleusercontent.com ]] || hanamaru_fail "Google Drive code flowへWeb client IDを設定してください。"
+[[ "$NEXT_PUBLIC_GOOGLE_CLIENT_ID" == "$GOOGLE_DRIVE_CLIENT_ID" ]] || hanamaru_fail "GoogleログインとDriveのWeb client IDを一致させてください。"
 [[ "$NEXT_PUBLIC_GOOGLE_PICKER_API_KEY" =~ ^AIza[0-9A-Za-z_-]{35}$ ]] || hanamaru_fail "Google Picker用のBrowser API key形式を確認してください。"
 [[ "$NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER" =~ ^[0-9]{6,20}$ ]] || hanamaru_fail "Google Picker用のnumeric project numberを設定してください。"
 [[ "$LOCAL_ALLOWED_GOOGLE_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || hanamaru_fail "LOCAL_ALLOWED_GOOGLE_EMAILへローカル受入確認に使うGoogleアカウントを設定してください。"
