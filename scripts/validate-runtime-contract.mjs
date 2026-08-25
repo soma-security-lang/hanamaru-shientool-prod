@@ -29,7 +29,7 @@ for(const service of ["aiplatform.googleapis.com","drive.googleapis.com","picker
   if(!main.includes(`"${service}"`))failures.push(`required service missing: ${service}`);
 }
 
-for(const corsContract of ['origin          = distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri]))','method          = ["GET", "HEAD", "PUT"]','"x-goog-meta-sha256"']){
+for(const corsContract of ['origin          = distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri, var.firebase_hosting_origin]))','method          = ["GET", "HEAD", "PUT"]','"x-goog-meta-sha256"']){
   if(!main.includes(corsContract))failures.push(`private bucket CORS contract missing: ${corsContract}`);
 }
 for(const versioningContract of ["versioning {","enabled = true","days_since_noncurrent_time = 1"]){
@@ -44,7 +44,7 @@ for(const incompleteUploadContract of ['pendingUploadObjectName','`quarantine/up
 if(!gcpPlatform.includes('dispatchDeadline:{seconds:600}'))failures.push("Cloud Tasks must use a bounded 600 second dispatch deadline");
 if(!main.includes('timeout                          = "900s"'))failures.push("Worker Cloud Run timeout must exceed the task dispatch deadline");
 
-for(const variable of ["web_api_base_url","google_client_id","google_cloud_project_number","google_picker_api_key","identity_platform_api_key","identity_platform_auth_domain","google_drive_redirect_uri","speech_location","speech_model","token_encryption_key_version","content_import_owner_membership_id","pilot_content_ai_enabled","allow_public_stage_web"]){
+for(const variable of ["web_api_base_url","firebase_hosting_origin","google_client_id","google_cloud_project_number","google_picker_api_key","identity_platform_api_key","identity_platform_auth_domain","google_drive_redirect_uri","speech_location","speech_model","token_encryption_key_version","content_import_owner_membership_id","pilot_content_ai_enabled","allow_public_stage_web"]){
   if(!variables.includes(`variable "${variable}"`))failures.push(`Terraform variable missing: ${variable}`);
   if(!tfvars.includes(`${variable} =`))failures.push(`tfvars example missing: ${variable}`);
 }
@@ -53,7 +53,7 @@ for(const stageContract of [
   'resource "google_cloud_run_v2_service" "stage_web"',
   'name                 = local.stage_web_service_name',
   'invoker_iam_disabled = var.allow_public_stage_web',
-  '[google_cloud_run_v2_service.stage_web.uri]',
+  '[google_cloud_run_v2_service.stage_web.uri, var.firebase_hosting_origin]',
 ])if(!main.includes(stageContract))failures.push(`fixed Stage Web contract missing: ${stageContract}`);
 
 for(const operationsContract of [

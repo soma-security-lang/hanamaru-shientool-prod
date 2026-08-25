@@ -236,7 +236,7 @@ resource "google_storage_bucket" "private" {
     enabled = true
   }
   cors {
-    origin          = distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri]))
+    origin          = distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri, var.firebase_hosting_origin]))
     method          = ["GET", "HEAD", "PUT"]
     response_header = ["Content-Type", "ETag", "x-goog-generation", "x-goog-if-generation-match", "x-goog-meta-sha256"]
     max_age_seconds = 3600
@@ -433,7 +433,7 @@ resource "google_cloud_run_v2_service" "api" {
       }
       env {
         name  = "CORS_ORIGINS"
-        value = join(",", distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri])))
+        value = join(",", distinct(concat(split(",", var.cors_origins), [google_cloud_run_v2_service.stage_web.uri, var.firebase_hosting_origin])))
       }
       env {
         name  = "GOOGLE_DRIVE_CLIENT_ID"

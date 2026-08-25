@@ -15,6 +15,7 @@ initial_branch_name = "限定運用"
 initial_manager_display_name = "初期管理者"
 pilot_content_ai_enabled = false
 cors_origins = "https://REPLACE-WEB-ORIGIN"
+firebase_hosting_origin = "https://monocle-503402.firebaseapp.com"
 web_api_base_url = "https://REPLACE-API-ORIGIN/api/v1"
 google_client_id = "000000000000-REPLACE.apps.googleusercontent.com"
 google_cloud_project_number = "000000000000"

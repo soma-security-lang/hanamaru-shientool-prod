@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "site": "monocle-503402",
+    "rewrites": [
+      {
+        "source": "**",
+        "run": {
+          "serviceId": "hanamaru-pilot-web",
+          "region": "asia-northeast1"
+        }
+      }
+    ]
+  }
+}

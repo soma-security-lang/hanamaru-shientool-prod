@@ -158,6 +158,15 @@ variable "schedulers_paused" {
 variable "cors_origins" {
   type = string
 }
+variable "firebase_hosting_origin" {
+  type        = string
+  default     = "https://monocle-503402.firebaseapp.com"
+  description = "First-party Firebase Hosting origin used for production Google sign-in."
+  validation {
+    condition     = can(regex("^https://[a-z0-9-]+\\.firebaseapp\\.com$", var.firebase_hosting_origin))
+    error_message = "firebase_hosting_origin must be an HTTPS firebaseapp.com origin without a path"
+  }
+}
 variable "web_api_base_url" {
   type        = string
   description = "Browser-visible API base URL embedded into the Web image at build time."
