@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import {expect,test,type BrowserContext,request,type APIRequestContext} from "@playwright/test";
+import {expect,test,type BrowserContext,request,type APIRequestContext,type Page} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import {PDFDocument,StandardFonts} from "pdf-lib";
@@ -33,6 +33,25 @@ function canonicalRoutes(){return [
   ["SCR-020","/admin/analytics"],
 ] as const;}
 
+async function waitForResolvedScreen(page:Page,path:string){
+  await expect(page.locator("main")).toBeVisible();
+  if(path!=="/login"){
+    await expect(page.getByRole("heading",{name:"利用者情報を確認しています"})).toHaveCount(0);
+    await expect(page.getByRole("heading",{name:"ログインが必要です"})).toHaveCount(0);
+    await expect(page.getByRole("heading",{name:"利用者情報を確認できません"})).toHaveCount(0);
+  }
+  await expect(page.locator("main h1")).toBeVisible();
+}
+
+async function expectCurrentMobileNavigation(page:Page){
+  const mobileNavigation=page.getByRole("navigation",{name:"モバイルナビゲーション"});
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(5);
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText([
+    "ホーム","訪問","振り返り","知識","その他",
+  ]);
+}
+
 async function anonymousVisitPdf(){
   const document=await PDFDocument.create();const font=await document.embedFont(StandardFonts.Helvetica);const page=document.addPage([595,842]);
   page.drawText("Visit information",{x:56,y:780,size:18,font});
@@ -63,13 +82,8 @@ test("all 20 API-backed screens render and remain free of serious accessibility 
   await page.goto(`${webBase}/`);
   expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith("firebase:authUser:")))).toEqual([]);
   for(const [screenId,path] of canonicalRoutes()){
-    await page.goto(`${webBase}${path}`);await expect(page.locator("main"),screenId).toBeVisible();
-    if(path!=="/login"){
-      await expect(page.getByRole("heading",{name:"利用者情報を確認しています"}),screenId).toHaveCount(0);
-      await expect(page.getByRole("heading",{name:"ログインが必要です"}),screenId).toHaveCount(0);
-      await expect(page.getByRole("heading",{name:"利用者情報を確認できません"}),screenId).toHaveCount(0);
-    }
-    await expect(page.locator("h1"),screenId).toBeVisible();
+    await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);
+    await expect(page.locator("main h1"),screenId).toBeVisible();
     const results=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa","wcag22aa"]).analyze();
     expect(results.violations.filter(item=>item.impact==="serious"||item.impact==="critical"),screenId).toEqual([]);
   }
@@ -113,8 +127,7 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await page.setViewportSize({width:390,height:844});
   await page.goto(`${webBase}/`);
   const mobileNav=page.getByRole("navigation",{name:"モバイルナビゲーション"});
-  await expect(mobileNav).toBeVisible();
-  await expect(mobileNav.locator(":scope > a, :scope > button")).toHaveCount(5);
+  await expectCurrentMobileNavigation(page);
   await mobileNav.getByRole("button",{name:"その他"}).click();
   await expect(page.getByRole("dialog").getByRole("heading",{name:"その他"})).toBeVisible();
   await expect(page.getByRole("navigation",{name:"その他の機能"}).getByRole("link",{name:/研修/})).toBeVisible();
@@ -141,6 +154,7 @@ test("all 20 screens remain horizontally bounded at all seven responsive widths"
     await page.setViewportSize({width,height});
     for(const [screenId,path] of canonicalRoutes()){
       await page.goto(`${webBase}${path}`);
+      await waitForResolvedScreen(page,path);
       await expect(page.locator("main h1"),`${screenId}-${width}`).toBeVisible();
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId} at ${width}px`).toBe(true);
@@ -156,9 +170,10 @@ test("assessor cannot reach administration and Chromium captures the 60 HITL ima
   test.skip(browserName!=="chromium","formal 60-image evidence is captured once in Chromium");
   for(const [viewport,width,height] of [["mobile",390,844],["tablet",834,1112],["desktop",1440,900]] as const){
     await page.setViewportSize({width,height});for(const [screenId,path] of canonicalRoutes()){
-      await page.goto(`${webBase}${path}`);await expect(page.locator("main h1"),`${screenId}-${viewport}`).toBeVisible();
+      await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await expect(page.locator("main h1"),`${screenId}-${viewport}`).toBeVisible();
       await page.waitForLoadState("networkidle");
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId}-${viewport}`).toBe(true);
+      if(viewport==="mobile"&&path!=="/login")await expectCurrentMobileNavigation(page);
       await page.screenshot({path:resolve(screenshots,`${screenId}-${viewport}.png`),fullPage:viewport!=="mobile",animations:"disabled",caret:"initial"});
     }
   }

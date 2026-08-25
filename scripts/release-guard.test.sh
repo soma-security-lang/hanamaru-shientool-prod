@@ -104,6 +104,15 @@ grep -q 'git ls-remote origin refs/heads/main' "$release_script"
 [[ "$(grep -c '^  run_live_e2e$' "$release_script")" -eq 2 ]]
 echo "release validates the fixed authenticated Stage origin, exact image digest and complete rollback"
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+web_dockerfile="$repo_root/apps/web/Dockerfile"
+grep -q '^ARG NEXT_DEPLOYMENT_ID$' "$web_dockerfile"
+grep -q 'RUN test -n "$NEXT_DEPLOYMENT_ID"' "$web_dockerfile"
+grep -q 'NEXT_DEPLOYMENT_ID=${_GIT_SHA}' "$repo_root/cloudbuild.yaml"
+grep -q 'NEXT_DEPLOYMENT_ID=${_TAG}' "$repo_root/cloudbuild.web.yaml"
+grep -q 'private, no-cache, no-store, max-age=0, must-revalidate' "$repo_root/apps/web/next.config.ts"
+echo "web releases version mutable assets and prevent stale application HTML"
+
 stage_origin_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/configure-fixed-stage-origin.sh"
 grep -q 'APPLY_FIXED_STAGE_ORIGIN:-false' "$stage_origin_script"
 grep -q 'identity-authorized-domains.before.json' "$stage_origin_script"

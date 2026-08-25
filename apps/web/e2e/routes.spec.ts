@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import {expect,test} from "@playwright/test";
+import {expect,test,type Page} from "@playwright/test";
 import {mkdir} from "node:fs/promises";
 import {resolve} from "node:path";
 import {createLiveSession,installLiveSession,type LiveSession} from "./auth";
@@ -25,6 +25,25 @@ function routes(){return [
   ["SCR-020","/admin/analytics"],
 ] as const;}
 
+async function waitForResolvedScreen(page:Page,route:string){
+  await expect(page.locator("main")).toBeVisible();
+  if(route!=="/login"){
+    await expect(page.getByRole("heading",{name:"利用者情報を確認しています"})).toHaveCount(0);
+    await expect(page.getByRole("heading",{name:"ログインが必要です"})).toHaveCount(0);
+    await expect(page.getByRole("heading",{name:"利用者情報を確認できません"})).toHaveCount(0);
+  }
+  await expect(page.locator("main h1")).toBeVisible();
+}
+
+async function expectCurrentMobileNavigation(page:Page){
+  const mobileNavigation=page.getByRole("navigation",{name:"モバイルナビゲーション"});
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(5);
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText([
+    "ホーム","訪問","振り返り","知識","その他",
+  ]);
+}
+
 test.beforeAll(async()=>{
   managerSession=await createLiveSession(managerToken!);
   expect(managerSession.me.roles).toContain("manager");
@@ -46,9 +65,21 @@ test("all 20 canonical routes render semantic content from the live local stack"
   test.setTimeout(remoteAcceptance?300_000:120_000);
   for(const [id,route] of routes()){
     await page.goto(route);
-    await expect(page.locator("main"),id).toBeVisible();
-    await expect(page.locator("h1"),id).toBeVisible();
+    await waitForResolvedScreen(page,route);
+    await expect(page.locator("main h1"),id).toBeVisible();
   }
+});
+
+test("release HTML uses a unique deployment id for mutable assets",async({request})=>{
+  const response=await request.get("/");
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  const html=await response.text();
+  const assetUrls=[...html.matchAll(/(?:src|href)="([^"]*\/_next\/static\/[^"]+\.(?:js|css)(?:\?[^"]*)?)"/g)].map(match=>match[1]);
+  expect(assetUrls.length).toBeGreaterThan(0);
+  const deploymentIds=assetUrls.map(asset=>new URL(asset,response.url()).searchParams.get("dpl"));
+  expect(deploymentIds.every(Boolean)).toBe(true);
+  expect(new Set(deploymentIds).size).toBe(1);
 });
 
 test("category approval opens from the live API without a recovery error",async({page})=>{
@@ -131,9 +162,10 @@ test("desktop provides the Web workspace and mobile remains horizontally bounded
     await page.setViewportSize({width,height});
     for(const route of ["/","/visits","/knowledge/talks","/training/roleplay"]){
       await page.goto(route);
-      await expect(page.locator("main h1")).toBeVisible();
+      await waitForResolvedScreen(page,route);
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${route} at ${width}px`).toBe(true);
       if(width===1440){await expect(page.getByRole("complementary",{name:"メインナビゲーション"})).toBeVisible();await expect(page.getByRole("navigation",{name:"モバイルナビゲーション"})).toBeHidden();}
+      if(width===390)await expectCurrentMobileNavigation(page);
     }
   }
 });
@@ -170,5 +202,5 @@ test("assessor is denied every administration route without query role overrides
 
 test("captures the 60 current local-product images",async({page})=>{
   test.setTimeout(remoteAcceptance?900_000:300_000);const output=resolve(process.env.HITL_SCREENSHOT_DIR??".artifacts/hitl-screenshots-web");await mkdir(output,{recursive:true});
-  for(const [viewport,width,height] of viewports){await page.setViewportSize({width,height});for(const [id,route] of routes()){await page.goto(route);await expect(page.locator("main h1")).toBeVisible();await page.screenshot({path:resolve(output,`${id}-${viewport}.png`),fullPage:true,caret:"initial",animations:"disabled"});}}
+  for(const [viewport,width,height] of viewports){await page.setViewportSize({width,height});for(const [id,route] of routes()){await page.goto(route);await waitForResolvedScreen(page,route);if(viewport==="mobile"&&route!=="/login")await expectCurrentMobileNavigation(page);await page.screenshot({path:resolve(output,`${id}-${viewport}.png`),fullPage:true,caret:"initial",animations:"disabled"});}}
 });

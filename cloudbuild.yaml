@@ -25,6 +25,7 @@ steps:
       - -ceu
       - |
         docker build -f apps/web/Dockerfile \
+          --build-arg="NEXT_DEPLOYMENT_ID=${_GIT_SHA}" \
           --build-arg="NEXT_PUBLIC_API_BASE_URL=${_API_BASE_URL}" \
           --build-arg="NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY=$$IDENTITY_PLATFORM_API_KEY" \
           --build-arg="NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN=${_IDENTITY_AUTH_DOMAIN}" \

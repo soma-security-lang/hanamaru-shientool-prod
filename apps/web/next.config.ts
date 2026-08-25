@@ -1,15 +1,31 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
+const noStoreHeaders = [
+  { key: "Cache-Control", value: "private, no-cache, no-store, max-age=0, must-revalidate" },
+];
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
   async headers() {
-    return [{
-      source: "/login",
-      headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" }],
-    }];
+    return [
+      { source: "/", headers: noStoreHeaders },
+      {
+        source: "/login",
+        headers: [
+          ...noStoreHeaders,
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+        ],
+      },
+      { source: "/visits/:path*", headers: noStoreHeaders },
+      { source: "/reviews/:path*", headers: noStoreHeaders },
+      { source: "/knowledge/:path*", headers: noStoreHeaders },
+      { source: "/training/:path*", headers: noStoreHeaders },
+      { source: "/admin/:path*", headers: noStoreHeaders },
+      { source: "/__prototype/:path*", headers: noStoreHeaders },
+    ];
   },
   async redirects() {
     return [
