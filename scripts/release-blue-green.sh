@@ -311,11 +311,27 @@ wait_http "$stage_web_url/login" 90 5 3
 
 manager_token="$(refresh_identity "$manager_refresh_token" "$stage_web_url/")"
 assessor_token="$(refresh_identity "$assessor_refresh_token" "$stage_web_url/")"
-role_status="$(curl --silent --show-error -o "$state_dir/assessor-role.json" -w '%{http_code}' -X PUT \
-  -H "Authorization: Bearer $manager_token" -H 'content-type: application/json' \
-  -H "Idempotency-Key: ${release_id}-assessor-role" --data '{"roles":["assessor"]}' \
-  "$main_api_url/api/v1/admin/users/$assessor_membership_id/roles")"
-[[ "$role_status" == 200 ]] || { echo "assessor role preparation failed" >&2; exit 5; }
+# Release validation must never rewrite a production user's roles. The supplied
+# membership must be a dedicated, active assessor account; otherwise fail closed
+# and require the release operator to configure a different test identity.
+if ! assessor_users="$(curl --fail --silent --show-error \
+  -H "Authorization: Bearer $manager_token" \
+  "$main_api_url/api/v1/admin/users")"; then
+  echo "dedicated assessor membership verification failed" >&2
+  exit 5
+fi
+if ! assessor_role="$(jq -cer --arg id "$assessor_membership_id" \
+  '.items[] | select(.id == $id) | {id,status,roles:(.roles | sort)}' \
+  <<<"$assessor_users")"; then
+  echo "LIVE_E2E_ASSESSOR_MEMBERSHIP_ID was not found; configure a dedicated assessor membership" >&2
+  exit 5
+fi
+if ! jq -e '.status == "active" and .roles == ["assessor"]' \
+  <<<"$assessor_role" >/dev/null; then
+  echo "LIVE_E2E_ASSESSOR_MEMBERSHIP_ID must identify an active dedicated assessor; release will not mutate production roles" >&2
+  exit 5
+fi
+printf '%s\n' "$assessor_role" > "$state_dir/assessor-role.json"
 run_live_e2e(){
   # Remote acceptance is intentionally serial: the workstation/network path is
   # part of the gate and must not be saturated by parallel browser contexts.

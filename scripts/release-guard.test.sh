@@ -90,6 +90,10 @@ echo "release can resume the exact tagged Green after a post-deploy gate failure
 grep -q 'E2E_WEB_BASE_URL="$stage_web_url"' "$release_script"
 grep -q 'assert_revision_image "$green_stage_web" "$web_image"' "$release_script"
 ! grep -q 'enable_green_origin\|restore_green_origin\|origin_gate_active' "$release_script"
+grep -q 'LIVE_E2E_ASSESSOR_MEMBERSHIP_ID must identify an active dedicated assessor' "$release_script"
+grep -q 'curl --fail --silent --show-error' "$release_script"
+! grep -q -E 'admin/users/\$assessor_membership_id/roles|assessor-role.*-X PUT' "$release_script"
+echo "release verifies a dedicated assessor without mutating production roles"
 grep -q 'rollback(){' "$release_script"
 grep -A8 'rollback(){' "$release_script" | grep -q 'Stage Web Blue traffic'
 grep -q 'ROLLBACK_INCOMPLETE.json' "$release_script"

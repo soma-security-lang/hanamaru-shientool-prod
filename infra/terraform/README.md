@@ -36,6 +36,8 @@
 - Secrets: `GCP_WORKLOAD_IDENTITY_PROVIDER`、`GCP_DEPLOY_SERVICE_ACCOUNT`、`E2E_SIGNING_SERVICE_ACCOUNT`、`LIVE_E2E_MANAGER_EMAIL`、`LIVE_E2E_ASSESSOR_EMAIL`
 - Variables: `API_BASE_URL`、`IDENTITY_PLATFORM_AUTH_DOMAIN`、`GOOGLE_CLOUD_PROJECT_NUMBER`、`ALERT_EMAIL`、`LIVE_E2E_AUDIO_GCS_URI`、`LIVE_E2E_ASSESSOR_MEMBERSHIP_ID`
 
+`LIVE_E2E_ASSESSOR_EMAIL`と`LIVE_E2E_ASSESSOR_MEMBERSHIP_ID`には、通常利用者と兼用しない有効な査定員専用テストアカウントを指定する。release runnerは現在のroleが`assessor`だけであることを読み取り検証し、条件不一致時はfail-closedとする。本番利用者のroleをrelease処理から変更してはならない。
+
 release runnerはWIFの短命access tokenでIdentity Platformの既存verified accountを検索し、`E2E_SIGNING_SERVICE_ACCOUNT`の`signBlob`でcustom tokenを作る。Identity Platform tokenは権限`0600`のrunner一時fileだけへ保存する。匿名音声は`LIVE_E2E_AUDIO_GCS_URI`で指すprivate GCS objectを1件だけ取得し、PDF→準備、音声→Chirp 3、AI振り返り、RBAC、20画面を検証する。準備に失敗した場合はTerraform applyへ進まず、終了時は成功・失敗を問わず一時fileを削除する。
 
 Terraformのbinary planと完全な`show -json`はsensitive入力を含み得るためArtifactへ保存しない。build-plan jobはresource address／mode／type／actionだけのsummaryを承認用Artifactへ保存する。アプリrelease workflowで許す差分はCloud Run Web/API/Workerと4管理Jobのimage更新だけで、すべてupdate、delete 0を必須とする。人間承認後に同じdigestで再planし、sanitized summaryが承認版と完全一致した場合だけBlue/Greenへ進む。Terraform applyで先にrevisionを作らず、traffic 0%受入と段階昇格は`release-blue-green.sh`だけが行う。昇格後に再planしてdrift 0を必須化する。binary planとraw JSONは同一job内だけで使用し削除する。network、IAM、DB、Storage等のインフラ変更は、このアプリrelease workflowでは適用せず別の明示承認Gateとする。
