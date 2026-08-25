@@ -84,7 +84,7 @@ export function GoogleSignInButton({onSuccess,onError}:{onSuccess:()=>void;onErr
 
   return configured
     ? <div aria-busy={working}>
-        {clientId&&!gisUnavailable?<div ref={buttonHost} aria-label="Googleでログイン"/>:null}
+        {clientId&&!gisUnavailable?<div ref={buttonHost} role="group" aria-label="Googleでログイン"/>:null}
         {!clientId||gisUnavailable?<button type="button" aria-label="Googleでログイン" aria-busy={working} disabled={working} onClick={()=>void login()}>{working?"Googleアカウントを確認しています…":"Googleでログイン"}</button>:null}
         {clientId&&!gisReady&&!gisUnavailable?<span aria-live="polite">Googleログインを準備しています…</span>:null}
       </div>
