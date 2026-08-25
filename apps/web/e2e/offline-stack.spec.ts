@@ -148,9 +148,57 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await expect(page.getByRole("button",{name:"検索結果へ戻る"})).toBeVisible();
 });
 
-test("all 20 screens remain horizontally bounded at all seven responsive widths",async({page})=>{
+test("smartphone business content uses the readable typography scale without changing shell density",async({page})=>{
+  test.setTimeout(240_000);
+  await page.setViewportSize({width:390,height:844});
+  const allUndersized:Array<{screenId:string;tag:string;text:string;fontSize:string}>=[];
+  for(const [screenId,path] of canonicalRoutes()){
+    await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await page.waitForLoadState("networkidle");
+    const undersized=await page.locator("main").evaluate(main=>{
+      const ignoredTags=new Set(["SCRIPT","STYLE","SVG","PATH"]);
+      return [...main.querySelectorAll<HTMLElement>("*")].filter(element=>{
+        if(ignoredTags.has(element.tagName)||element.closest('[aria-hidden="true"]'))return false;
+        const style=getComputedStyle(element);const rect=element.getBoundingClientRect();
+        if(style.display==="none"||style.visibility==="hidden"||rect.width===0||rect.height===0)return false;
+        const hasOwnText=[...element.childNodes].some(node=>node.nodeType===Node.TEXT_NODE&&node.textContent?.trim());
+        const isTextControl=element instanceof HTMLInputElement||element instanceof HTMLTextAreaElement||element instanceof HTMLSelectElement;
+        if(!hasOwnText&&!isTextControl)return false;
+        return Number.parseFloat(style.fontSize)<13;
+      }).map(element=>({tag:element.tagName,text:(element.textContent??element.getAttribute("aria-label")??"").trim().slice(0,60),fontSize:getComputedStyle(element).fontSize}));
+    });
+    allUndersized.push(...undersized.map(item=>({screenId,...item})));
+  }
+  expect(allUndersized,"visible smartphone main content below 13px").toEqual([]);
+
+  await page.goto(`${webBase}/`);await waitForResolvedScreen(page,"/");
+  await expect(page.locator("main h1")).toHaveCSS("font-size","26px");
+  await expect(page.locator("main textarea")).toHaveCSS("font-size","16px");
+  await expect(page.getByRole("navigation",{name:"モバイルナビゲーション"}).getByRole("link",{name:"ホーム"})).toHaveCSS("font-size","10.88px");
+
+  await page.setViewportSize({width:768,height:1024});
+  await expect(page.locator("main h1")).toHaveCSS("font-size","26.4px");
+});
+
+test("200 percent reflow and a reduced keyboard viewport keep focused input above navigation",async({page})=>{
+  await page.setViewportSize({width:640,height:720});
+  await page.goto(`${webBase}/knowledge/manuals`);await waitForResolvedScreen(page,"/knowledge/manuals");
+  expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),"1280px desktop at 200% effective width").toBe(true);
+
+  await page.setViewportSize({width:390,height:568});
+  await page.goto(`${webBase}/`);await waitForResolvedScreen(page,"/");
+  const composer=page.locator("main textarea");await composer.focus();await composer.fill("訪問前に確認したい内容");await composer.scrollIntoViewIfNeeded();
+  const geometry=await page.evaluate(()=>{
+    const input=document.querySelector<HTMLElement>("main textarea")?.getBoundingClientRect();
+    const navigation=document.querySelector<HTMLElement>('[aria-label="モバイルナビゲーション"]')?.getBoundingClientRect();
+    return {inputBottom:input?.bottom??Number.POSITIVE_INFINITY,navigationTop:navigation?.top??0,scrollWidth:document.body.scrollWidth,viewport:window.innerWidth};
+  });
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport);
+  expect(geometry.inputBottom).toBeLessThanOrEqual(geometry.navigationTop);
+});
+
+test("all 20 screens remain horizontally bounded at all eight responsive widths",async({page})=>{
   test.setTimeout(480_000);
-  for(const [width,height] of [[360,800],[390,844],[430,932],[768,1024],[834,1112],[1024,768],[1440,900]] as const){
+  for(const [width,height] of [[320,720],[360,800],[390,844],[430,932],[768,1024],[834,1112],[1024,768],[1440,900]] as const){
     await page.setViewportSize({width,height});
     for(const [screenId,path] of canonicalRoutes()){
       await page.goto(`${webBase}${path}`);
@@ -162,7 +210,7 @@ test("all 20 screens remain horizontally bounded at all seven responsive widths"
   }
 });
 
-test("assessor cannot reach administration and Chromium captures the 60 HITL images",async({browser,page,browserName})=>{
+test("assessor cannot reach administration and Chromium captures formal and core-width HITL images",async({browser,page,browserName})=>{
   test.setTimeout(360_000);
   const assessor=await browser.newContext();await addRole(assessor,"assessor");const assessorPage=await assessor.newPage();
   for(const path of ["/admin/contents","/admin/users","/admin/operations","/admin/approvals","/admin/analytics"]){await assessorPage.goto(`${webBase}${path}`);await expect(assessorPage.getByRole("heading",{name:"この画面を利用する権限がありません"})).toBeVisible();}
@@ -175,6 +223,14 @@ test("assessor cannot reach administration and Chromium captures the 60 HITL ima
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId}-${viewport}`).toBe(true);
       if(viewport==="mobile"&&path!=="/login")await expectCurrentMobileNavigation(page);
       await page.screenshot({path:resolve(screenshots,`${screenId}-${viewport}.png`),fullPage:viewport!=="mobile",animations:"disabled",caret:"initial"});
+    }
+  }
+  const coreRoutes=canonicalRoutes().filter(([screenId])=>Number(screenId.slice(-3))>=3&&Number(screenId.slice(-3))<=9);
+  for(const [width,height] of [[360,800],[430,932]] as const){
+    await page.setViewportSize({width,height});
+    for(const [screenId,path] of coreRoutes){
+      await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await page.waitForLoadState("networkidle");
+      await page.screenshot({path:resolve(screenshots,`${screenId}-${width}.png`),fullPage:false,animations:"disabled",caret:"initial"});
     }
   }
 });

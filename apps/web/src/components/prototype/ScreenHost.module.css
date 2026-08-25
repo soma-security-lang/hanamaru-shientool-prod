@@ -56,4 +56,9 @@
 .notFound { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 1rem; }.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 61.99rem) { .pageHeader { display: grid; }.headerActions { justify-content: flex-start; }.splitPanel, .chartPanel { grid-template-columns: 1fr; }.sectionGrid { grid-template-columns: 1fr; }.chartPanel table { max-width: 24rem; } }
 @media (max-width: 47.99rem) { .pageHeader h1 { font-size: 1.75rem; }.headerActions { display: grid; grid-template-columns: 1fr; width: 100%; }.headerActions button { width: 100%; }.flowNav ol { grid-template-columns: repeat(3, minmax(0, 1fr)); }.flowNav a { min-height: 2.75rem; padding-inline: .35rem; }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.metric { min-height: 7rem; }.searchPanel { flex-wrap: wrap; }.searchBox { flex-basis: 100%; }.segment { grid-template-columns: 1fr; }.formPanel { grid-template-columns: 1fr; }.formPanel label:last-child { grid-column: auto; }.audioBar { top: 4.25rem; }.authCard { padding: 1.5rem; }.dialogActions { display: grid; grid-template-columns: 1fr; }.dialogActions button { width: 100%; } }
+@media (max-width: 47.99rem) {
+  .statePanel h1,.notFound h1 { font-size: var(--font-mobile-page-title) !important; line-height: 1.2; }
+  .statePanel > p:not(.eyebrow) { font-size: var(--font-mobile-body) !important; line-height: var(--line-mobile-body); }
+  .statePanel .primaryButton,.statePanel .secondaryButton,.notFound .primaryButton { font-size: var(--font-mobile-primary) !important; }
+}
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .authCard, .audioBar, .dialog::backdrop { backdrop-filter: none; } }

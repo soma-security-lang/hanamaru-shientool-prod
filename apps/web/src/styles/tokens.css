@@ -1,5 +1,13 @@
 :root {
   --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, system-ui, sans-serif;
+  --font-mobile-page-title: 1.625rem;
+  --font-mobile-section-title: 1.125rem;
+  --font-mobile-body: 1rem;
+  --font-mobile-primary: 0.9375rem;
+  --font-mobile-support: 0.875rem;
+  --font-mobile-caption: 0.8125rem;
+  --line-mobile-body: 1.65;
+  --line-mobile-reading: 1.75;
   --color-canvas: #f5f5f7;
   --color-surface: #ffffff;
   --color-surface-subtle: #fafafc;

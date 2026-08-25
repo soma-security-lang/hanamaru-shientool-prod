@@ -100,7 +100,7 @@ hanamaru_wait_url "http://127.0.0.1:$api_port/health/ready" 120 || hanamaru_fail
 hanamaru_wait_url "http://127.0.0.1:$worker_port/health/ready" 120 || hanamaru_fail "offline Worker readinessに失敗しました。"
 hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offline Web readinessに失敗しました。"
 
-hanamaru_info "全20画面、PDF→準備、音声→文字起こし→振り返り、RBAC、axe、60画像を実走します。"
+hanamaru_info "全20画面、PDF→準備、音声→文字起こし→振り返り、RBAC、axe、正式60画像＋中核14画像を実走します。"
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
   E2E_REMOTE=1 \
@@ -111,7 +111,7 @@ OFFLINE_STACK_E2E=1 \
   2>&1 | tee "$evidence_dir/playwright.log"
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
-[[ "$screenshot_count" == "60" ]] || hanamaru_fail "offline E2E screenshotは60枚必要です（actual: $screenshot_count）。"
+[[ "$screenshot_count" == "74" ]] || hanamaru_fail "offline E2E screenshotは正式60枚＋中核画面360/430pxの14枚、計74枚必要です（actual: $screenshot_count）。"
 jq -n \
   --arg gitSha "$(git rev-parse HEAD)" \
   --arg node "$(node --version)" \

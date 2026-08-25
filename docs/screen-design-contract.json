@@ -34,7 +34,7 @@
     {
       "id": "SCR-001",
       "filename": "SCR-001-login.md",
-      "sha256": "09f497059eaf0ea73d498615e21d3646a30c4978204e28951f70ef7e4e678f18",
+      "sha256": "19fb8e97b91e5450ce5939ebd1572eb6d04b5330a3391d8bcba0f78dd0f598f4",
       "routes": [
         "/login"
       ]
@@ -42,7 +42,7 @@
     {
       "id": "SCR-002",
       "filename": "SCR-002-home.md",
-      "sha256": "9619d3a9eb8fdaa65dd22383080e3b0b247c5760182f86fab22ca08c804a3bd7",
+      "sha256": "efb0aee274ae3c25bf370bf3d85ed9520979f52957106f2ccd740aaace40f051",
       "routes": [
         "/"
       ]
@@ -50,7 +50,7 @@
     {
       "id": "SCR-003",
       "filename": "SCR-003-visit-list.md",
-      "sha256": "dac9b9ad4ed2499dfcca6025a5b94117542684c44e15e4aca67dac0017c62b4c",
+      "sha256": "ab8f89fd8719a95e54bbd1dbc0ef8e4e38d372abbc18d4f683cd69b01aa45132",
       "routes": [
         "/visits"
       ]
@@ -58,7 +58,7 @@
     {
       "id": "SCR-004",
       "filename": "SCR-004-visit-edit.md",
-      "sha256": "f318c20a7d89a219db3ae1a72989ae02f45ca5016beae83a37f8e93068aa140d",
+      "sha256": "a6d1929e9de80f6d2ed4ae0b2792f0e21850d5cadf47aeb86711f88c6799433e",
       "routes": [
         "/visits/:id/import"
       ]
@@ -66,7 +66,7 @@
     {
       "id": "SCR-005",
       "filename": "SCR-005-pdf-extraction.md",
-      "sha256": "34109d5390bf5736144b784e5a0dd8ef5519343256a44377443c35c2d77c4347",
+      "sha256": "d2854d73aaa59c2f953fe2777b01b3db7efb96304e4241e8027211a38ec0b282",
       "routes": [
         "/visits/:id/preparation"
       ]
@@ -74,7 +74,7 @@
     {
       "id": "SCR-006",
       "filename": "SCR-006-recording-import.md",
-      "sha256": "0c7ea33a3488aa0b005f0423d5c7760f08688d3be68fb137d2dd5cd89ee01af2",
+      "sha256": "9b5df0544af0640f1f0c9c30d6bef9f869e110a4d42913b1bafc9caa29b138a4",
       "routes": [
         "/visits/:id/transcription"
       ]
@@ -82,7 +82,7 @@
     {
       "id": "SCR-007",
       "filename": "SCR-007-transcription-status.md",
-      "sha256": "18c55cead1ddb0f4baba631c80bfbf0d1c3e826923d412bfb66059e14ff61fe3",
+      "sha256": "fecfba98dfcc59f91e80727d6ebf80a91c908651d718b95b2f5d0634d7ca6b45",
       "routes": [
         "/visits/:id/review/input"
       ]
@@ -90,7 +90,7 @@
     {
       "id": "SCR-008",
       "filename": "SCR-008-transcript-editor.md",
-      "sha256": "63486a0b723540bf71cbc18673a2e41194862af540a3d9f9516b0eeec44e1b99",
+      "sha256": "410220eabf8ec6232e432849e258554e758c1a27e450691822b446b5a7521ffd",
       "routes": [
         "/visits/:id/review"
       ]
@@ -98,7 +98,7 @@
     {
       "id": "SCR-009",
       "filename": "SCR-009-review-result.md",
-      "sha256": "59c2c0112fec8eaa51340dbc1890da21de8a1951490ebf4daabc06bd7c5f15f6",
+      "sha256": "f7c5867946bd2ce271032d63c8e6dda6a8386ac6acd3492380ae5fa8fc80550d",
       "routes": [
         "/reviews"
       ]
@@ -106,7 +106,7 @@
     {
       "id": "SCR-010",
       "filename": "SCR-010-history.md",
-      "sha256": "dd2a0d3061008b12ea23c0b9407907718b2841624d3ed57ca15cf8e683279d82",
+      "sha256": "b3f14c175efad211247bc41d1bf8fb4e4ada9c7372d0442aa0b26a804a6a2a2f",
       "routes": [
         "/knowledge/talks"
       ]
@@ -114,7 +114,7 @@
     {
       "id": "SCR-011",
       "filename": "SCR-011-talk-search.md",
-      "sha256": "8449bd8d6e42415a352126a5d43db0c636d29a00cdb262d559d5863c7ceb1465",
+      "sha256": "9e66095952db1f9c732f7353f44c2803147c17ab754fe45926f9e1f3a4493d5a",
       "routes": [
         "/knowledge/flows"
       ]
@@ -122,7 +122,7 @@
     {
       "id": "SCR-012",
       "filename": "SCR-012-reference-search.md",
-      "sha256": "390ae92146a19b56f573e97625cd8d37fc3f27734755d060dad117e60d8e9094",
+      "sha256": "1d8450c4378a916667838c1a04a5fbe5bb0e9c0405100bacda8fcc25d0952b71",
       "routes": [
         "/knowledge/reference"
       ]
@@ -130,7 +130,7 @@
     {
       "id": "SCR-013",
       "filename": "SCR-013-training.md",
-      "sha256": "1b0dc85f841eb9d2ae0e59f84abf3c9fc30bbd5e15b9d8408aa6ec8b597f58a6",
+      "sha256": "69078efed3f1dae1bcb46c719ae1e5e4a6f72875491f1585b26ade27b01a3189",
       "routes": [
         "/knowledge/manuals"
       ]
@@ -138,7 +138,7 @@
     {
       "id": "SCR-014",
       "filename": "SCR-014-user-admin.md",
-      "sha256": "09aa06ba3fa055bbf8e98f463c138e24da099baa75894294e28f812c2a27be33",
+      "sha256": "fc3e4e0023e904933a065e0b27375e426fb4b352cf86dbcf53724bd6d35b68a1",
       "routes": [
         "/training/videos"
       ]
@@ -146,7 +146,7 @@
     {
       "id": "SCR-015",
       "filename": "SCR-015-job-admin.md",
-      "sha256": "d562e0c7cd20d218f852c4127065f992ad18ad70814f0f9214bd803514bfae4b",
+      "sha256": "6491fba9c0b94c3040123fce154c27f69707cdef1f09eb12447060d6c675f23d",
       "routes": [
         "/training/roleplay"
       ]
@@ -154,7 +154,7 @@
     {
       "id": "SCR-016",
       "filename": "SCR-016-content-admin.md",
-      "sha256": "46ab7889f170db7f062c4d3bb35085b08d7275e2f88fcf5d0cb8956fce14c9aa",
+      "sha256": "fd96d593b57566afe00b1902782ba45a0293263167b1788f0849dbf291b84b1e",
       "routes": [
         "/admin/contents"
       ]
@@ -162,7 +162,7 @@
     {
       "id": "SCR-017",
       "filename": "SCR-017-retention-delete.md",
-      "sha256": "fecca939962147ab7e583b1b2f9bb59bbab87d52a8884d082b2115464f566814",
+      "sha256": "cc5fc41654fde8359bc7b9505d24bbbcf6ef4268a4907314886ac15592e7a7b8",
       "routes": [
         "/admin/users"
       ]
@@ -170,7 +170,7 @@
     {
       "id": "SCR-018",
       "filename": "SCR-018-audit-incident.md",
-      "sha256": "18bfc5463d88d7fd082ee35ece031115c25049c7fbcb468bd363046d5674da05",
+      "sha256": "b4bc31ae7c8e59db84b7f05f061e36398b2e8cdb4a416590b070ad9cade691d9",
       "routes": [
         "/admin/operations"
       ]
@@ -178,7 +178,7 @@
     {
       "id": "SCR-019",
       "filename": "SCR-019-content-approval.md",
-      "sha256": "e8a758846577007bceeccd0f3a9cbdbe21baefb16b40581347aeda733b8a04e5",
+      "sha256": "913ed473b19c24ecb1cc0ca66f38663d02091707aa8ba80fc4a7798f93a92be0",
       "routes": [
         "/admin/approvals"
       ]
@@ -186,7 +186,7 @@
     {
       "id": "SCR-020",
       "filename": "SCR-020-team-analytics.md",
-      "sha256": "de464fee855f18078cd2d7086954651ae76db24009e02b63af1530f08fc8fedf",
+      "sha256": "8b96dd3faefd0714ffc4c36c497a5243578901b14e915015876d9418bacc8378",
       "routes": [
         "/admin/analytics"
       ]

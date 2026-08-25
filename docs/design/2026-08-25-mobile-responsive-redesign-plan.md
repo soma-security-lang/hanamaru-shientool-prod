@@ -499,17 +499,20 @@ PC推奨の表示規則:
 | 4. 知識・研修 | 完了 | SCR-002、010〜015を検索条件・結果・本文、シナリオ・対話・評価の段階画面へ変更した |
 | 5. 管理画面 | 完了 | SCR-016〜020の主要操作を維持し、一覧・編集・確認の段階表示とPC推奨境界を実装した |
 | 6. 回帰・設計同期 | 完了 | SCR-001〜020、DLV-040、DLV-041、共通UI仕様、60画面画像、画面契約Hashを同期した |
+| 7. スマホ本文可読性 | 完了 | 360〜767pxだけに6段階のsemantic typographyを適用し、main内業務情報13px以上、本文・入力16px、画面見出し26pxへ統一した。Header／Bottom Navigationと768px以上は従来密度を維持した |
 
 既存Route、API DTO、DB schema、Identity Platform認証、RBACは変更していない。ローカルBrowser-to-DB E2Eの連続画面検査だけは、テスト環境専用`API_RATE_LIMIT_MAX=5000`を使用する。本番値は300固定で、production設定から変更できない。
 
 ### 15.2 検証証跡
 
-- 証跡: `.artifacts/offline-e2e/20260825T094909Z`
-- Chromium／WebKit: 13 PASS、WebKitの重複60画像生成1件のみ意図的skip。
+- 証跡正本: `.artifacts/offline-e2e/smartphone-typography-final`
+- Chromium／WebKit: 17 PASS、WebKitの重複画像生成1件のみ意図的skip。
 - 全20画面: axe serious／critical 0。
-- 全20画面×360／390／430／768／834／1024／1440px: 横幅超過0。
+- 全20画面×320／360／390／430／768／834／1024／1440px: 横幅超過0。
+- 全20画面の390px表示: `main`内の可視業務情報13px未満0件。AI本文・入力16px、画面見出し26px、Bottom Navigation 10.88px、Tablet見出し26.4pxを算出値で確認した。
+- 1280px desktopの200%相当となる640px reflowと、390×568pxのsoftware keyboard相当viewportで、入力欄がBottom Navigationに隠れないことを確認した。
 - PDF→10項目抽出→訪問前チェック、音声→文字起こし→話者確認→6領域振り返り、保存期間、Manager／Assessor RBAC: PASS。
-- 390／834／1440px: 60枚生成・目視確認済み。正本画像を`99-reviews/screenshots`へ同期した。
+- 390／834／1440pxの正式60枚と、SCR-003〜009の360／430px追加14枚、計74枚を生成・目視確認済み。
 - HTML／Markdown drift: 20画面、20 Route、9状態×20画面、必須章、Secret patternのエラー0。
 
-最初の実行でWebKitのSCR-004・768pxに長い入力値による横幅超過を検出した。フォームGridを`minmax(0,1fr)`、入力を`min-width:0`へ修正し、全20画面×7幅を最初から再実行して解消を確認した。
+最初の実行でWebKitのSCR-004・768pxに長い入力値による横幅超過を検出した。フォームGridを`minmax(0,1fr)`、入力を`min-width:0`へ修正し、全20画面×8幅を最初から再実行して解消を確認した。
