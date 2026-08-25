@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   output: "standalone",
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
+  async headers() {
+    return [{
+      source: "/login",
+      headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" }],
+    }];
+  },
   async redirects() {
     return [
       { source: "/visits/:id/document", destination: "/visits/:id/import", permanent: false },

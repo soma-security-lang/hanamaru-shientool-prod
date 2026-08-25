@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from "react";
 import {apiClient} from "@/lib/api/client";
-import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,identityPlatformConfigured,logout} from "@/lib/auth/google";
+import {completeGoogleLoginRedirect,identityPlatformConfigured,loginWithGooglePopup,logout} from "@/lib/auth/google";
 
 export function GoogleSignInButton({onSuccess,onError}:{onSuccess:()=>void;onError:(message:string)=>void}){
   const [working,setWorking]=useState(false);
@@ -29,7 +29,9 @@ export function GoogleSignInButton({onSuccess,onError}:{onSuccess:()=>void;onErr
     if(!configured||working)return;
     setWorking(true);
     try{
-      await beginGoogleLoginRedirect();
+      await loginWithGooglePopup();
+      await apiClient.request("/me");
+      onSuccess();
     }catch{
       await logout().catch(()=>undefined);
       onError("このGoogleアカウントではログインできません。管理者へ利用登録を依頼してください。");

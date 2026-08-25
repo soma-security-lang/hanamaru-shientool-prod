@@ -9,6 +9,7 @@ import {
   indexedDBLocalPersistence,
   initializeAuth,
   reauthenticateWithPopup,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
   type Auth,
@@ -68,6 +69,13 @@ export async function beginGoogleLoginRedirect(){
   const auth=await readyAuth();
   if(!auth)throw new Error("Googleログインの設定が完了していません");
   await signInWithRedirect(auth,loginProvider());
+}
+
+export async function loginWithGooglePopup(){
+  const auth=await readyAuth();
+  if(!auth)throw new Error("Googleログインの設定が完了していません");
+  const result=await signInWithPopup(auth,loginProvider());
+  await result.user.getIdToken(true);
 }
 
 export async function completeGoogleLoginRedirect(){

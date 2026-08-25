@@ -3,16 +3,16 @@ import userEvent from "@testing-library/user-event";
 import {beforeEach,describe,expect,it,vi} from "vitest";
 
 const mocks=vi.hoisted(()=>({
-  begin:vi.fn().mockResolvedValue(undefined),
+  login:vi.fn().mockResolvedValue(undefined),
   complete:vi.fn().mockResolvedValue(false),
   logout:vi.fn().mockResolvedValue(undefined),
   request:vi.fn().mockResolvedValue({roles:["manager"]}),
 }));
 
 vi.mock("@/lib/auth/google",()=>({
-  beginGoogleLoginRedirect:mocks.begin,
   completeGoogleLoginRedirect:mocks.complete,
   identityPlatformConfigured:()=>true,
+  loginWithGooglePopup:mocks.login,
   logout:mocks.logout,
 }));
 vi.mock("@/lib/api/client",()=>({apiClient:{request:mocks.request}}));
@@ -22,13 +22,15 @@ import {GoogleSignInButton} from "./GoogleSignInButton";
 beforeEach(()=>vi.clearAllMocks());
 
 describe("GoogleSignInButton",()=>{
-  it("starts a same-tab redirect instead of relying on a popup",async()=>{
+  it("completes popup authentication and verifies membership before navigation",async()=>{
     const user=userEvent.setup();
-    render(<GoogleSignInButton onSuccess={vi.fn()} onError={vi.fn()}/>);
+    const onSuccess=vi.fn();
+    render(<GoogleSignInButton onSuccess={onSuccess} onError={vi.fn()}/>);
     await waitFor(()=>expect(mocks.complete).toHaveBeenCalledTimes(1));
     await user.click(screen.getByRole("button",{name:"Googleでログイン"}));
-    expect(mocks.begin).toHaveBeenCalledTimes(1);
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.login).toHaveBeenCalledTimes(1);
+    expect(mocks.request).toHaveBeenCalledWith("/me");
+    expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 
   it("verifies membership after returning from Identity Platform",async()=>{

@@ -32,12 +32,13 @@ vi.mock("firebase/auth",()=>{
     getRedirectResult:mocks.getRedirectResult,
     initializeAuth:mocks.initializeAuth,
     reauthenticateWithPopup:mocks.signInWithPopup,
+    signInWithPopup:mocks.signInWithPopup,
     signInWithRedirect:mocks.signInWithRedirect,
     signOut:mocks.signOut,
   };
 });
 
-import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,logout} from "./google";
+import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,loginWithGooglePopup,logout} from "./google";
 
 const originalEnv={
   apiKey:process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY,
@@ -64,6 +65,7 @@ describe("Identity Platform browser authentication",()=>{
 
     await beginGoogleLoginRedirect();
     await expect(completeGoogleLoginRedirect()).resolves.toBe(true);
+    await loginWithGooglePopup();
 
     expect(mocks.initializeAuth).toHaveBeenCalledWith({name:"[DEFAULT]"},{persistence:[mocks.indexedDBLocalPersistence,mocks.browserLocalPersistence],popupRedirectResolver:{type:"POPUP"}});
     expect(mocks.provider.addScope).not.toHaveBeenCalled();
@@ -74,6 +76,6 @@ describe("Identity Platform browser authentication",()=>{
     expect(mocks.provider.addScope).toHaveBeenCalledWith(driveScope);
     expect(mocks.signInWithRedirect).toHaveBeenCalledTimes(1);
     expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1);
-    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(1);
+    expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2);
   });
 });
