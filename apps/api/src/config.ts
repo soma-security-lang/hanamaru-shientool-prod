@@ -10,6 +10,7 @@ export interface ApiConfig {
   port: number;
   nodeEnv: string;
   corsOrigins: string[];
+  rateLimitMax: number;
   allowDevAuth: boolean;
   identityIssuer: string;
   identityAudience: string;
@@ -19,8 +20,13 @@ export interface ApiConfig {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const nodeEnv = env.NODE_ENV ?? "development";
   const allowDevAuth = env.ALLOW_DEV_AUTH === "true";
+  const rateLimitMax = Number(env.API_RATE_LIMIT_MAX ?? 300);
   if (nodeEnv === "production" && allowDevAuth)
     throw new Error("ALLOW_DEV_AUTH must be disabled in production");
+  if (!Number.isInteger(rateLimitMax) || rateLimitMax < 1)
+    throw new Error("API_RATE_LIMIT_MAX must be a positive integer");
+  if (nodeEnv === "production" && rateLimitMax !== 300)
+    throw new Error("API_RATE_LIMIT_MAX must remain 300 in production");
   if (
     env.IDENTITY_PLATFORM_PROJECT_ID &&
     env.IDENTITY_PLATFORM_PROJECT_ID !== identityPlatformProjectId
@@ -39,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
+    rateLimitMax,
     allowDevAuth,
     identityIssuer: identityPlatformIssuer,
     identityAudience: identityPlatformAudience,

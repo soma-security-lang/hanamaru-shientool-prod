@@ -109,16 +109,57 @@ test("operations exposes aggregate health and per-visit retention without body d
   await expect(page.getByRole("columnheader",{name:"削除予定日"})).toBeVisible();
 });
 
-test("assessor cannot reach administration and all screens capture at three Web breakpoints",async({browser,page})=>{
+test("mobile navigation and progressive panes preserve URL-addressable state",async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto(`${webBase}/`);
+  const mobileNav=page.getByRole("navigation",{name:"モバイルナビゲーション"});
+  await expect(mobileNav).toBeVisible();
+  await expect(mobileNav.locator(":scope > a, :scope > button")).toHaveCount(5);
+  await mobileNav.getByRole("button",{name:"その他"}).click();
+  await expect(page.getByRole("dialog").getByRole("heading",{name:"その他"})).toBeVisible();
+  await expect(page.getByRole("navigation",{name:"その他の機能"}).getByRole("link",{name:/研修/})).toBeVisible();
+  await page.getByRole("button",{name:"メニューを閉じる"}).click();
+
+  await page.goto(`${webBase}/visits`);
+  await page.locator("tbody").getByRole("button").first().click();
+  await expect(page).toHaveURL(/view=detail/);
+  await expect(page.getByRole("button",{name:"訪問一覧へ戻る"})).toBeVisible();
+  await page.getByRole("button",{name:"訪問一覧へ戻る"}).click();
+  await expect(page).toHaveURL(/view=list/);
+
+  await page.goto(`${webBase}/knowledge/talks`);
+  await page.getByRole("button",{name:/検索結果を見る/}).click();
+  await expect(page).toHaveURL(/view=list/);
+  await page.getByRole("region",{name:"検索結果一覧"}).locator("button[data-selected]").first().click();
+  await expect(page).toHaveURL(/view=detail/);
+  await expect(page.getByRole("button",{name:"検索結果へ戻る"})).toBeVisible();
+});
+
+test("all 20 screens remain horizontally bounded at all seven responsive widths",async({page})=>{
+  test.setTimeout(480_000);
+  for(const [width,height] of [[360,800],[390,844],[430,932],[768,1024],[834,1112],[1024,768],[1440,900]] as const){
+    await page.setViewportSize({width,height});
+    for(const [screenId,path] of canonicalRoutes()){
+      await page.goto(`${webBase}${path}`);
+      await expect(page.locator("main h1"),`${screenId}-${width}`).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId} at ${width}px`).toBe(true);
+    }
+  }
+});
+
+test("assessor cannot reach administration and Chromium captures the 60 HITL images",async({browser,page,browserName})=>{
   test.setTimeout(360_000);
   const assessor=await browser.newContext();await addRole(assessor,"assessor");const assessorPage=await assessor.newPage();
   for(const path of ["/admin/contents","/admin/users","/admin/operations","/admin/approvals","/admin/analytics"]){await assessorPage.goto(`${webBase}${path}`);await expect(assessorPage.getByRole("heading",{name:"この画面を利用する権限がありません"})).toBeVisible();}
   await assessor.close();
+  test.skip(browserName!=="chromium","formal 60-image evidence is captured once in Chromium");
   for(const [viewport,width,height] of [["mobile",390,844],["tablet",834,1112],["desktop",1440,900]] as const){
     await page.setViewportSize({width,height});for(const [screenId,path] of canonicalRoutes()){
       await page.goto(`${webBase}${path}`);await expect(page.locator("main h1"),`${screenId}-${viewport}`).toBeVisible();
+      await page.waitForLoadState("networkidle");
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId}-${viewport}`).toBe(true);
-      await page.screenshot({path:resolve(screenshots,`${screenId}-${viewport}.png`),fullPage:true,animations:"disabled",caret:"initial"});
+      await page.screenshot({path:resolve(screenshots,`${screenId}-${viewport}.png`),fullPage:viewport!=="mobile",animations:"disabled",caret:"initial"});
     }
   }
 });

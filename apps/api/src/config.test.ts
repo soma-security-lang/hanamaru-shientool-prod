@@ -7,6 +7,20 @@ import {
 } from "./config.js";
 
 describe("Identity Platform configuration", () => {
+  it("keeps the production rate limit fixed while allowing explicit test capacity", () => {
+    expect(
+      loadConfig({ NODE_ENV: "test", API_RATE_LIMIT_MAX: "5000" })
+        .rateLimitMax,
+    ).toBe(5000);
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        ALLOW_DEV_AUTH: "false",
+        API_RATE_LIMIT_MAX: "5000",
+      }),
+    ).toThrow(/must remain 300/);
+  });
+
   it("fails closed when development auth is enabled in production", () =>
     expect(() =>
       loadConfig({ NODE_ENV: "production", ALLOW_DEV_AUTH: "true" }),

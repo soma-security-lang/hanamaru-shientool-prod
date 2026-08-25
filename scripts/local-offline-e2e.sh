@@ -80,7 +80,7 @@ NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
   NEXT_PUBLIC_PROTOTYPE_MODE=disabled \
   pnpm --filter @hanamaru/web build >"$evidence_dir/web-build.log" 2>&1
 
-LOG_LEVEL=warn API_HOST=127.0.0.1 API_PORT="$api_port" \
+LOG_LEVEL=warn API_HOST=127.0.0.1 API_PORT="$api_port" API_RATE_LIMIT_MAX=5000 \
   CORS_ORIGINS="http://127.0.0.1:$web_port" \
   node apps/api/dist/server.js >"$evidence_dir/api.log" 2>&1 &
 api_pid=$!
@@ -102,6 +102,7 @@ hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offli
 
 hanamaru_info "全20画面、PDF→準備、音声→文字起こし→振り返り、RBAC、axe、60画像を実走します。"
 OFFLINE_STACK_E2E=1 \
+  E2E_INCLUDE_WEBKIT=1 \
   E2E_REMOTE=1 \
   E2E_WEB_BASE_URL="http://127.0.0.1:$web_port" \
   E2E_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \

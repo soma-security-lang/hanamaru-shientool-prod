@@ -1,8 +1,8 @@
-import {cleanup,render,screen} from "@testing-library/react";
+import {cleanup,fireEvent,render,screen,within} from "@testing-library/react";
 import {afterEach,describe,expect,it,vi} from "vitest";
 import {AppShell} from "./AppShell";
 
-vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn()})}));
+vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn(),back:vi.fn(),push:vi.fn()})}));
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 
@@ -18,6 +18,24 @@ describe("system-admin navigation separation",()=>{
 });
 
 describe("business feature navigation",()=>{
+  it("keeps the manager mobile navigation to four primary destinations and one more menu",()=>{
+    const {container}=render(<AppShell pathname="/visits" role="manager" roles={["manager"]} displayName="管理者"><h1>訪問支援</h1></AppShell>);
+    const navigation=container.querySelector<HTMLElement>('nav[aria-label="モバイルナビゲーション"]');
+    expect(navigation).not.toBeNull();
+    if(!navigation)return;
+    expect(within(navigation).getAllByRole("link",{hidden:true})).toHaveLength(4);
+    expect(within(navigation).getByRole("link",{name:"ホーム",hidden:true})).toHaveAttribute("href","/");
+    expect(within(navigation).getByRole("link",{name:"訪問",hidden:true})).toHaveAttribute("href","/visits");
+    expect(within(navigation).getByRole("link",{name:"振り返り",hidden:true})).toHaveAttribute("href","/reviews");
+    expect(within(navigation).getByRole("link",{name:"知識",hidden:true})).toHaveAttribute("href","/knowledge/talks");
+    fireEvent.click(within(navigation).getByRole("button",{name:"その他",hidden:true}));
+    const dialog=container.querySelector<HTMLDialogElement>('dialog[aria-labelledby="mobile-more-title"]');
+    expect(dialog).toHaveAttribute("open");
+    if(!dialog)return;
+    expect(within(dialog).getByRole("link",{name:/研修/,hidden:true})).toHaveAttribute("href","/training/roleplay");
+    expect(within(dialog).getByRole("link",{name:/管理/,hidden:true})).toHaveAttribute("href","/admin/contents");
+  });
+
   it("shows every knowledge feature by its concrete business name",()=>{
     render(<AppShell pathname="/knowledge/talks" role="assessor" roles={["assessor"]}><h1>切り返しトーク集</h1></AppShell>);
     expect(screen.getByRole("navigation",{name:"現場の知識の機能"})).toBeInTheDocument();
