@@ -38,11 +38,13 @@ async function waitForResolvedScreen(page:Page,route:string){
 
 async function expectCurrentMobileNavigation(page:Page){
   const mobileNavigation=page.getByRole("navigation",{name:"モバイルナビゲーション"});
+  const marketPriceEnabled=managerSession.me.featureFlags.market_price_search===true;
+  const expectedLabels=marketPriceEnabled
+    ? ["ホーム","訪問","買取相場","振り返り","その他"]
+    : ["ホーム","訪問","振り返り","その他"];
   await expect(mobileNavigation).toBeVisible();
-  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(5);
-  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText([
-    "ホーム","訪問","買取相場","振り返り","その他",
-  ]);
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(expectedLabels.length);
+  await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText(expectedLabels);
 }
 
 test.beforeAll(async()=>{
