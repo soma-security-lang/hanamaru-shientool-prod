@@ -115,4 +115,24 @@ describe("SCR-021 market price workflow",()=>{
     expect(screen.getByRole("columnheader",{name:"落札商品"})).toBeInTheDocument();
     expect(container.querySelectorAll("article[data-included]")).toHaveLength(1);
   });
+
+  it("prevents confirmation while an outlier policy update is still committing",async()=>{
+    state.view="candidates";state.searchId="search-lock";
+    const search={
+      id:"search-lock",identificationId:"identification-lock",jobId:"job-lock",status:"ready",coverageStatus:"complete",periodStart:"2026-06-11T00:00:00.000Z",periodEnd:"2026-09-09T00:00:00.000Z",periodDays:90,query:{keyword:"Canon EOS R6"},conditions:["good"],outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5},failureClass:null,lockVersion:2,resultId:null,confirmedAt:null,createdAt:"2026-09-09T00:00:00.000Z",completedAt:"2026-09-09T00:00:01.000Z",candidateCount:1,includedCount:1,minimumPrice:120000,medianPriceBeforeOutlierExclusion:120000,medianPrice:120000,maximumPrice:120000,exclusionCounts:{},
+      candidates:[{id:"candidate-lock",sourceItemId:"auction-lock",sourceType:"auction",canonicalUrl:"https://example.invalid/item",title:"Canon EOS R6 ボディ",closingPrice:120000,endedAt:"2026-09-08T00:00:00.000Z",normalizedCondition:"good",matchScore:1,matchReasons:["型番一致"],conditionMatched:true,exclusionReasons:[],conditionGroupCount:5,conditionMedianPrice:120000,priceDeviationRate:0,iqrLowerBound:110000,iqrUpperBound:130000,autoOutlier:false,inclusionOverride:null,included:true,decisionSource:"automatic"}],
+    };
+    let finishPolicy:(value:unknown)=>void=()=>undefined;
+    api.marketPriceSearch.mockResolvedValue(search);
+    api.updateMarketPriceOutlierPolicy.mockImplementation(()=>new Promise(resolve=>{finishPolicy=resolve;}));
+    render(<MarketPriceExperience/>);
+    const apply=await screen.findByRole("button",{name:"基準を再適用"});
+    const confirm=screen.getByRole("button",{name:"この相場を確定"});
+    await userEvent.click(apply);
+    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(api.confirmMarketPriceSearch).not.toHaveBeenCalled();
+    finishPolicy({outlierPolicy:search.outlierPolicy,statistics:{}});
+    await waitFor(()=>expect(confirm).toBeEnabled());
+  });
 });
