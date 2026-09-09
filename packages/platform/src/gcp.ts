@@ -18,6 +18,8 @@ import {reviewDimensions,type ReviewDimension} from "./types.js";
 import { createGoogleSpeechProvider } from "./google-speech.js";
 import { createLocalProviders } from "./local.js";
 import { probeAudioSource,probeVideoSource } from "./media.js";
+import { parseYahooClosedSearchUrl } from "@hanamaru/market-price";
+import type { MarketPriceSourceProvider } from "./types.js";
 
 type SpeechLocation = "asia-northeast1"|"us";
 
@@ -132,6 +134,11 @@ export function retryableTranscriptQualityContractError(error:unknown):boolean{
   return /^PROVIDER_PERMANENT: (?:model output|model returned|transcript quality (?:flags?|confidence|evidence)|duplicate transcript quality flag)/u.test(error.message);
 }
 
+export function retryableYahooParameterPlanContractError(error:unknown):boolean{
+  if(!(error instanceof Error))return false;
+  return /^PROVIDER_PERMANENT: (?:model output|model returned|market price)/u.test(error.message);
+}
+
 export function vertexReviewGenerationConfig(repair=false):Record<string,unknown>{
   return{temperature:repair?0.1:0.3,maxOutputTokens:8192};
 }
@@ -225,6 +232,47 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
     }catch(error){throw providerFailure(error);}
   };
   return {
+    async identifyMarketProduct(input){
+      const candidateSchema={type:"OBJECT",required:["productName","category","brand","modelNumber","attributes","confidence"],properties:{productName:{type:"STRING"},category:{type:"STRING",nullable:true},brand:{type:"STRING",nullable:true},modelNumber:{type:"STRING",nullable:true},attributes:{type:"OBJECT",additionalProperties:{type:"STRING"}},confidence:{type:"NUMBER",minimum:0,maximum:1}}};
+      const querySchema={type:"OBJECT",required:["keyword","breadth"],properties:{keyword:{type:"STRING"},breadth:{type:"STRING",enum:["strict","standard","broad"]}}};
+      const schema={type:"OBJECT",required:["productCandidates","searchQueries","excludeKeywords","suggestedConditions","warnings"],properties:{productCandidates:{type:"ARRAY",maxItems:3,items:candidateSchema},searchQueries:{type:"ARRAY",minItems:1,maxItems:3,items:querySchema},excludeKeywords:{type:"ARRAY",maxItems:20,items:{type:"STRING"}},suggestedConditions:{type:"ARRAY",items:{type:"STRING",enum:input.confirmedConditions}},warnings:{type:"ARRAY",maxItems:10,items:{type:"STRING"}}}};
+      const safeInput={inputMode:input.inputMode,productName:input.productName,category:input.category,brand:input.brand,modelNumber:input.modelNumber,attributes:input.attributes,excludeKeywords:input.excludeKeywords,confirmedConditions:input.confirmedConditions};
+      const instruction=`買取相場検索を補助するため、商品候補を最大3件、Yahoo落札相場で使う検索語を厳密・標準・広めで最大3件提案してください。画像と利用者入力に見える事実だけを使い、価格やYahoo ID、URLを生成しないでください。利用者の入力を確定値として上書きせず、不明はnullにしてください。商品状態はconfirmedConditionsに含まれる値だけを返し、自動適用しません。出力は指定JSONだけです。\n入力:${JSON.stringify(safeInput)}`;
+      const parts:Part[]=[{text:instruction},...input.images.map(image=>({inlineData:{data:image.content.toString("base64"),mimeType:image.mimeType}} satisfies Part))];
+      const validate=(parsed:Record<string,unknown>)=>{
+        const productCandidates=(Array.isArray(parsed.productCandidates)?parsed.productCandidates:[]).slice(0,3).map((raw,index)=>{const item=raw&&typeof raw==="object"?raw as Record<string,unknown>:{};const productName=String(item.productName??"").normalize("NFKC").trim();if(!productName||productName.length>300)throw new Error("PROVIDER_PERMANENT: market product name is invalid");const confidence=Number(item.confidence);if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: market product confidence is invalid");const attributes=item.attributes&&typeof item.attributes==="object"&&!Array.isArray(item.attributes)?Object.fromEntries(Object.entries(item.attributes as Record<string,unknown>).slice(0,20).map(([key,value])=>[key.slice(0,80),String(value).slice(0,300)])):{};return{id:`candidate-${index+1}`,productName,category:item.category==null?null:String(item.category).slice(0,300),brand:item.brand==null?null:String(item.brand).slice(0,300),modelNumber:item.modelNumber==null?null:String(item.modelNumber).slice(0,200),attributes,confidence,decision:"pending" as const};});
+        if(!productCandidates.length)throw new Error("PROVIDER_PERMANENT: market product candidates are empty");
+        const searchQueries=(Array.isArray(parsed.searchQueries)?parsed.searchQueries:[]).slice(0,3).map((raw,index)=>{const item=raw&&typeof raw==="object"?raw as Record<string,unknown>:{};const keyword=String(item.keyword??"").normalize("NFKC").replace(/\s+/gu," ").trim();const breadth=String(item.breadth??"");if(!keyword||keyword.length>200||!["strict","standard","broad"].includes(breadth))throw new Error("PROVIDER_PERMANENT: market search query is invalid");return{id:`query-${index+1}`,keyword,breadth:breadth as "strict"|"standard"|"broad",source:"ai" as const,decision:"pending" as const};});
+        if(!searchQueries.length)throw new Error("PROVIDER_PERMANENT: market search queries are empty");
+        const excludeKeywords=Array.isArray(parsed.excludeKeywords)?[...new Set(parsed.excludeKeywords.map(value=>String(value).normalize("NFKC").trim()).filter(Boolean))].slice(0,20):[];
+        const suggestedConditions=Array.isArray(parsed.suggestedConditions)?[...new Set(parsed.suggestedConditions.map(String))]:[];if(suggestedConditions.some(condition=>!input.confirmedConditions.includes(condition as never)))throw new Error("PROVIDER_PERMANENT: unconfirmed market condition suggested");
+        const warnings=Array.isArray(parsed.warnings)?parsed.warnings.map(String).map(value=>value.trim()).filter(Boolean).slice(0,10):[];
+        return{model:config.model,productCandidates,searchQueries,excludeKeywords,suggestedConditions:suggestedConditions as typeof input.confirmedConditions,warnings};
+      };
+      try{return validate(await generate(parts,schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);}catch(first){if(first instanceof Error&&!first.message.includes("market "))throw first;return validate(await generate([{text:`${instruction}\n前回は出力契約違反でした。許可された値だけでJSONを再生成してください。`},...parts.slice(1)],schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);}
+    },
+    async planYahooSearch(input){
+      const categoryKeys=input.categoryCandidates.map(candidate=>candidate.key);
+      const brandKeys=input.brandCandidates.map(candidate=>candidate.key);
+      const schema={type:"OBJECT",required:["selectedKeyword","categoryRegistryKey","brandRegistryKey","suggestedConditions","confidence","warnings"],properties:{selectedKeyword:{type:"STRING"},categoryRegistryKey:{type:"STRING",nullable:true},brandRegistryKey:{type:"STRING",nullable:true},suggestedConditions:{type:"ARRAY",items:{type:"STRING",enum:input.confirmedConditions}},confidence:{type:"NUMBER",minimum:0,maximum:1},warnings:{type:"ARRAY",items:{type:"STRING"}}}};
+      const prompt=`Yahoo!オークションへのアクセスやURL生成は行わず、確定済み商品情報と許可済み候補から検索条件だけを選んでください。検索語と商品状態は利用者の確定値を変更しないでください。候補にないキーやID、価格、URL、追加状態を作らないでください。\n入力:${JSON.stringify(input)}`;
+      const validate=(parsed:Record<string,unknown>)=>{
+        const selectedKeyword=String(parsed.selectedKeyword??"").normalize("NFKC").replace(/\s+/gu," ").trim();
+        if(selectedKeyword!==input.selectedKeyword.normalize("NFKC").replace(/\s+/gu," ").trim())throw new Error("PROVIDER_PERMANENT: market price keyword changed by model");
+        const categoryRegistryKey=parsed.categoryRegistryKey==null?null:String(parsed.categoryRegistryKey);
+        const brandRegistryKey=parsed.brandRegistryKey==null?null:String(parsed.brandRegistryKey);
+        if(categoryRegistryKey&&!categoryKeys.includes(categoryRegistryKey))throw new Error("PROVIDER_PERMANENT: market price category key is not registered");
+        if(brandRegistryKey&&!brandKeys.includes(brandRegistryKey))throw new Error("PROVIDER_PERMANENT: market price brand key is not registered");
+        const suggestedConditions=Array.isArray(parsed.suggestedConditions)?[...new Set(parsed.suggestedConditions.map(String))]:[];
+        if(suggestedConditions.some(value=>!input.confirmedConditions.includes(value as never)))throw new Error("PROVIDER_PERMANENT: market price condition was not confirmed");
+        const confidence=Number(parsed.confidence);
+        if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: market price confidence is invalid");
+        const warnings=Array.isArray(parsed.warnings)?parsed.warnings.map(String).map(value=>value.trim()).filter(Boolean).slice(0,10):[];
+        return{model:config.model,suggestion:{selectedKeyword,categoryRegistryKey,brandRegistryKey,suggestedConditions:suggestedConditions as typeof input.confirmedConditions,confidence,warnings}};
+      };
+      const run=async(repair:boolean)=>validate(await generate([{text:`${prompt}${repair?"\n前回は契約違反でした。入力値と候補キーだけをJSONで返してください。":""}`}],schema,{temperature:0,maxOutputTokens:1024}) as Record<string,unknown>);
+      try{return await run(false);}catch(error){if(!retryableYahooParameterPlanContractError(error))throw error;return run(true);}
+    },
     async extract(input){
       const parts:Part[]=[{text:`訪問情報を抽出し、fields配列で返してください。帳票項目定義:${JSON.stringify(input.schema)}。推測できない値は作らず、valueは文字列、pageは1始まりのページ番号、excerptは原文の短い抜粋、confidenceは0から1です。`}];
       let temporaryObject:string|undefined;
@@ -323,6 +371,35 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
       try{return await run(false);}catch(error){if(!(error instanceof Error)||!error.message.startsWith("PROVIDER_PERMANENT: missing roleplay feedback"))throw error;return run(true);}
     },
   };
+}
+
+export function createYahooMarketPriceSourceProvider(fetcher:typeof fetch=fetch):MarketPriceSourceProvider{
+  return{async fetchPage(value){
+    const requested=parseYahooClosedSearchUrl(value);
+    let current=value;let rateLimitRetried=false;
+    for(let redirectCount=0;redirectCount<=2;redirectCount+=1){
+      const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),30_000);
+      let response:Response;
+      try{response=await fetcher(current,{method:"GET",redirect:"manual",signal:controller.signal,headers:{accept:"text/html,application/xhtml+xml", "user-agent":process.env.MARKET_PRICE_USER_AGENT??"HanamaruMarketPrice/1.0 (+https://monocle-503402.firebaseapp.com/)"}});}catch(error){throw new Error(`PROVIDER_TEMPORARY: Yahoo落札相場の取得に失敗しました (${error instanceof Error?error.name:"network"})`);}finally{clearTimeout(timer);}
+      if([301,302,303,307,308].includes(response.status)){
+        const location=response.headers.get("location");if(!location)throw new Error("PROVIDER_PERMANENT: Yahoo redirect location is missing");
+        const redirected=new URL(location,current);const parsed=parseYahooClosedSearchUrl(redirected.toString());
+        if(JSON.stringify(parsed)!==JSON.stringify(requested))throw new Error("PROVIDER_PERMANENT: Yahoo redirected to a different search specification");
+        current=redirected.toString();continue;
+      }
+      const retryAfter=response.headers.get("retry-after");
+      const retryAfterSeconds=retryAfter&&/^\d+$/u.test(retryAfter)?Number(retryAfter):null;
+      if(response.status===403)throw new Error("PROVIDER_PERMANENT: YAHOO_ACCESS_BLOCKED");
+      if(response.status===429&&!rateLimitRetried){rateLimitRetried=true;const waitMs=Math.min(60,Math.max(1,retryAfterSeconds??1))*1000;await new Promise(resolve=>setTimeout(resolve,waitMs));redirectCount-=1;continue;}
+      if(response.status===429)throw new Error(`PROVIDER_TEMPORARY: YAHOO_RATE_LIMITED${retryAfterSeconds!=null?` retry_after=${retryAfterSeconds}`:""}`);
+      if(response.status>=500)throw new Error(`PROVIDER_TEMPORARY: Yahoo upstream ${response.status}`);
+      if(!response.ok)throw new Error(`PROVIDER_PERMANENT: Yahoo upstream ${response.status}`);
+      const contentLength=Number(response.headers.get("content-length")??0);if(contentLength>5*1024*1024)throw new Error("PROVIDER_PERMANENT: Yahoo response exceeds the limit");
+      const body=await response.text();if(Buffer.byteLength(body)>5*1024*1024)throw new Error("PROVIDER_PERMANENT: Yahoo response exceeds the limit");
+      return{status:response.status,body,retryAfterSeconds,fetchedAt:new Date().toISOString()};
+    }
+    throw new Error("PROVIDER_PERMANENT: Yahoo redirect limit exceeded");
+  }};
 }
 
 export function vertexExtractionOutputSchema():Record<string,unknown>{
@@ -424,6 +501,7 @@ export function createLocalConnectedProviders():PlatformProviders {
     speech:createGoogleSpeechProvider({projectId:project,location:speechLocation(),inputBucket:required("STT_INPUT_BUCKET"),model:"chirp_3"}),
     ai:createGoogleAiProvider(googleAiConfig(required("STT_INPUT_BUCKET"))),
     drive:createGoogleDriveProvider(googleDriveConfig()),
+    marketPriceSource:createYahooMarketPriceSourceProvider(),
   };
 }
 
@@ -438,5 +516,6 @@ export function createGcpProviders():PlatformProviders {
     speech:createGoogleSpeechProvider({projectId:project,location:speechLocation(),inputBucket:bucket,model:"chirp_3"}),
     ai:createGoogleAiProvider(googleAiConfig(bucket)),
     drive:createGoogleDriveProvider(googleDriveConfig()),
+    marketPriceSource:createYahooMarketPriceSourceProvider(),
   };
 }

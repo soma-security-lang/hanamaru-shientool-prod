@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
-import type { Capability, RequestContext } from "@hanamaru/contracts";
-import { contentTypes,recordingConsentLegacyNotice,recordingConsentLegacyNoticeVersion,recordingConsentNotice,recordingConsentNoticeVersion,roles } from "@hanamaru/contracts";
+import type { Capability,MarketPriceOutlierPolicy,ProductCondition, RequestContext } from "@hanamaru/contracts";
+import { contentTypes,productConditions,recordingConsentLegacyNotice,recordingConsentLegacyNoticeVersion,recordingConsentNotice,recordingConsentNoticeVersion,roles } from "@hanamaru/contracts";
+import { evaluateMarketPriceCandidates,normalizeSearchKeyword,searchPeriod,YAHOO_RESULT_PARSER_VERSION,YAHOO_URL_GENERATOR_VERSION } from "@hanamaru/market-price";
 import type {
   HanamaruRepository,
   RepositoryTransaction,
@@ -168,6 +169,7 @@ const jobBranchExpression = (alias: string) => `COALESCE(
     WHEN ${alias}.entity_type='transcript' THEN (SELECT r.visit_id FROM transcripts t JOIN recordings r ON r.id=t.recording_id WHERE t.organization_id=${alias}.organization_id AND t.id=${alias}.entity_id)
     WHEN ${alias}.entity_type='review' THEN (SELECT r.visit_id FROM reviews rv JOIN transcripts t ON t.id=rv.transcript_id JOIN recordings r ON r.id=t.recording_id WHERE rv.organization_id=${alias}.organization_id AND rv.id=${alias}.entity_id)
     WHEN ${alias}.entity_type='deletion_request' THEN (SELECT dr.visit_id FROM deletion_requests dr WHERE dr.organization_id=${alias}.organization_id AND dr.id=${alias}.entity_id)
+    WHEN ${alias}.entity_type='market_price_search' THEN NULL
     ELSE NULL END),
   (SELECT m.branch_id FROM memberships m WHERE m.organization_id=${alias}.organization_id AND m.id=${alias}.requested_by_membership_id)
 )`;
@@ -202,6 +204,99 @@ async function hasPdfSignature(stream: Readable): Promise<boolean> {
   } finally {
     stream.destroy();
   }
+}
+
+async function hasImageSignature(stream: Readable,mimeType:string):Promise<boolean>{
+  const chunks:Buffer[]=[];let size=0;
+  try{
+    for await(const chunk of stream){const body=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);chunks.push(body);size+=body.length;if(size>=16)break;}
+    const head=Buffer.concat(chunks).subarray(0,16);
+    if(mimeType==="image/jpeg")return head.length>=3&&head[0]===0xff&&head[1]===0xd8&&head[2]===0xff;
+    if(mimeType==="image/png")return head.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+    return mimeType==="image/webp"&&head.subarray(0,4).toString("ascii")==="RIFF"&&head.subarray(8,12).toString("ascii")==="WEBP";
+  }finally{stream.destroy();}
+}
+
+function optionalMarketText(value:unknown,max:number,field:string):string|null{
+  if(value==null||value==="")return null;
+  if(typeof value!=="string"||value.trim().length>max)throw invalid("商品情報を確認してください",[{field,message:`${max}文字以内で入力してください`}]);
+  return value.normalize("NFKC").replace(/\s+/gu," ").trim()||null;
+}
+
+function marketConditions(value:unknown):ProductCondition[]{
+  const values=Array.isArray(value)?[...new Set(value.map(String))]:[];
+  if(values.some(condition=>!(productConditions as readonly string[]).includes(condition)))throw invalid("商品の状態を確認してください");
+  return productConditions.filter(condition=>values.includes(condition));
+}
+
+function marketPriceNumber(value:unknown):number|null{
+  if(value===null||value===undefined)return null;
+  const parsed=Number(value);
+  return Number.isFinite(parsed)?parsed:null;
+}
+
+function marketPriceCandidateDto(row:unknown):Json{
+  const value=camel<Json>(row);
+  for(const key of ["closingPrice","matchScore","conditionGroupCount","conditionMedianPrice","priceDeviationRate","iqrLowerBound","iqrUpperBound"] as const){
+    value[key]=marketPriceNumber(value[key]);
+  }
+  return value;
+}
+
+function marketPriceSearchDto(row:unknown,{includeEmptyCandidates=false}:{includeEmptyCandidates?:boolean}={}):Json{
+  const value=camel<Json>(row);
+  value.query=value.queryJson;
+  value.conditions=value.conditionFiltersJson;
+  value.outlierPolicy=value.outlierPolicyJson;
+  value.exclusionCounts=value.exclusionCountsJson;
+  for(const key of ["periodDays","pageSize","maxPages","candidateCount","includedCount","minimumPrice","medianPriceBeforeOutlierExclusion","medianPrice","maximumPrice","lockVersion"] as const){
+    value[key]=marketPriceNumber(value[key]);
+  }
+  if(includeEmptyCandidates)value.candidates=[];
+  delete value.queryJson;
+  delete value.conditionFiltersJson;
+  delete value.outlierPolicyJson;
+  delete value.exclusionCountsJson;
+  return value;
+}
+
+function marketIdentificationSuggestions(value:unknown):Json{
+  const source=value&&typeof value==="object"&&!Array.isArray(value)?camel<Json>(value):{};
+  return{
+    productCandidates:Array.isArray(source.productCandidates)?source.productCandidates:[],
+    searchQueries:Array.isArray(source.searchQueries)?source.searchQueries:[],
+    excludeKeywords:Array.isArray(source.excludeKeywords)?source.excludeKeywords:[],
+    suggestedConditions:Array.isArray(source.suggestedConditions)?source.suggestedConditions:[],
+    warnings:Array.isArray(source.warnings)?source.warnings:[],
+  };
+}
+
+function marketIdentificationFields(value:unknown){
+  const source=value&&typeof value==="object"&&!Array.isArray(value)?value as Json:{};
+  const productName=optionalMarketText(source.productName,300,"productName")??"";
+  const category=optionalMarketText(source.category,300,"category");
+  const brand=optionalMarketText(source.brand,300,"brand");
+  const modelNumber=optionalMarketText(source.modelNumber,200,"modelNumber");
+  const rawAttributes=source.attributes&&typeof source.attributes==="object"&&!Array.isArray(source.attributes)?source.attributes as Json:{};
+  const attributes=Object.fromEntries(Object.entries(rawAttributes).slice(0,20).map(([key,raw])=>{
+    const normalizedKey=optionalMarketText(key,80,"attributes.key");const normalizedValue=optionalMarketText(raw,300,`attributes.${key}`);
+    if(!normalizedKey||!normalizedValue)throw invalid("商品属性を確認してください");return[normalizedKey,normalizedValue];
+  }));
+  const rawQueries=Array.isArray(source.searchQueries)?source.searchQueries:[];
+  if(rawQueries.length>12)throw invalid("検索語候補は12件以内で指定してください");
+  const searchQueries=rawQueries.map((raw,index)=>{
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))throw invalid("検索語候補を確認してください");
+    const item=raw as Json;const id=String(item.id??randomUUID());
+    if(!/^[0-9a-zA-Z_-]{1,100}$/u.test(id)&&!/^[0-9a-f-]{36}$/iu.test(id))throw invalid("検索語候補IDを確認してください");
+    const breadth=String(item.breadth??"standard");const sourceType=String(item.source??"user");const decision=String(item.decision??"pending");
+    if(!["strict","standard","broad"].includes(breadth)||!["user","ai","edited"].includes(sourceType)||!["pending","accepted","rejected"].includes(decision))throw invalid("検索語候補の状態を確認してください");
+    return{id,keyword:normalizeSearchKeyword(text(item.keyword,200,`searchQueries.${index}.keyword`)),breadth,source:sourceType,decision};
+  });
+  if(new Set(searchQueries.map(item=>item.id)).size!==searchQueries.length)throw invalid("検索語候補IDが重複しています");
+  const rawExclude=Array.isArray(source.excludeKeywords)?source.excludeKeywords:[];
+  if(rawExclude.length>20)throw invalid("除外キーワードは20件以内で指定してください");
+  const excludeKeywords=[...new Set(rawExclude.map((raw,index)=>normalizeSearchKeyword(text(raw,200,`excludeKeywords.${index}`))))];
+  return{productName,category,brand,modelNumber,attributes,searchQueries,excludeKeywords,conditions:marketConditions(source.conditions)};
 }
 
 export async function deleteUploadObjectIfProvenUnreferenced(
@@ -436,6 +531,27 @@ export class BackendService {
   private jobAccess(ctx: RequestContext) {
     return this.capabilityAccess(ctx, "job:manage");
   }
+  private marketPriceAccess(ctx:RequestContext,capability:"market_price:search"|"market_price:read"|"market_price:manage"){
+    return this.capabilityAccess(ctx,capability);
+  }
+  private async assertMarketPriceSearchAccess(tx:RepositoryTransaction,ctx:RequestContext,id:string,capability:"market_price:search"|"market_price:read"="market_price:read"){
+    const access=this.marketPriceAccess(ctx,capability);
+    const result=await tx.query(`SELECT 1 FROM market_price_searches WHERE organization_id=$1 AND id=$2 AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6))`,[ctx.organizationId,id,access.organization,access.branchIds,access.self,ctx.membershipId]);
+    if(!result.rowCount)throw notFound();
+  }
+  private async marketPriceStatistics(tx:RepositoryTransaction,organizationId:string,searchId:string){
+    const stats=await tx.query<{candidate_count:number;included_count:number;minimum_price:string|null;median_price:string|null;maximum_price:string|null}>(`SELECT count(*)::int candidate_count,count(*) FILTER(WHERE included)::int included_count,
+      min(closing_price) FILTER(WHERE included)::text minimum_price,
+      percentile_cont(0.5) WITHIN GROUP(ORDER BY closing_price) FILTER(WHERE included)::text median_price,
+      max(closing_price) FILTER(WHERE included)::text maximum_price
+      FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2`,[organizationId,searchId]);
+    const exclusions=await tx.query<{reason:string;count:number}>(`SELECT reason,count(*)::int count FROM market_price_candidates c CROSS JOIN LATERAL jsonb_array_elements_text(c.exclusion_reasons) reason WHERE c.organization_id=$1 AND c.search_id=$2 GROUP BY reason ORDER BY reason`,[organizationId,searchId]);
+    const before=await tx.query<{median_price_before_outlier_exclusion:string|null}>("SELECT median_price_before_outlier_exclusion::text FROM market_price_searches WHERE organization_id=$1 AND id=$2",[organizationId,searchId]);
+    const row=stats.rows[0]!;const exclusionCounts=Object.fromEntries(exclusions.rows.map(item=>[item.reason,Number(item.count)]));
+    const result={candidateCount:Number(row.candidate_count),includedCount:Number(row.included_count),minimumPrice:row.minimum_price==null?null:Number(row.minimum_price),medianPriceBeforeOutlierExclusion:before.rows[0]?.median_price_before_outlier_exclusion==null?null:Number(before.rows[0].median_price_before_outlier_exclusion),medianPrice:row.median_price==null?null:Number(row.median_price),maximumPrice:row.maximum_price==null?null:Number(row.maximum_price),exclusionCounts};
+    await tx.query("UPDATE market_price_searches SET candidate_count=$3,included_count=$4,minimum_price=$5,median_price=$6,maximum_price=$7,exclusion_counts_json=$8,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[organizationId,searchId,result.candidateCount,result.includedCount,result.minimumPrice,result.medianPrice,result.maximumPrice,result.exclusionCounts]);
+    return result;
+  }
 
   private async auditFailure(
     ctx: RequestContext,
@@ -561,9 +677,13 @@ export class BackendService {
     body: unknown,
   ): Promise<unknown> {
     const replay = body && typeof body === "object" ? (body as Json) : null;
-    if (!['upload','videoUpload'].includes(String(replay?.replayKind)) || typeof replay?.uploadId !== "string")
+    if (!['upload','videoUpload','marketPriceImageUpload'].includes(String(replay?.replayKind)) || typeof replay?.uploadId !== "string")
       return body;
     const upload = await this.repository.withContext(ctx, async (tx) => {
+      if(replay.replayKind==='marketPriceImageUpload'){
+        const r=await tx.query<any>("SELECT id,organization_id,NULL::uuid visit_id,object_name,mime_type,size_bytes,sha256,expires_at,completed_at,image_id FROM market_price_image_upload_sessions WHERE organization_id=$1 AND id=$2 AND requested_by_membership_id=$3",[ctx.organizationId,replay.uploadId,ctx.membershipId]);
+        return r.rows[0];
+      }
       if(replay.replayKind==='videoUpload'){
         const r=await tx.query<any>("SELECT id,organization_id,NULL::uuid visit_id,object_name,mime_type,size_bytes,sha256,expires_at,completed_at FROM video_upload_sessions WHERE organization_id=$1 AND id=$2 AND requested_by_membership_id=$3",[ctx.organizationId,replay.uploadId,ctx.membershipId]);
         return r.rows[0];
@@ -575,7 +695,7 @@ export class BackendService {
       return r.rows[0];
     });
     if (!upload) throw notFound();
-    const replayContext = {
+    const replayContext = replay.replayKind==='marketPriceImageUpload'?{}:{
       visitId: String(replay.visitId ?? upload.visit_id),
       caseNumber:
         typeof replay.caseNumber === "string" ? replay.caseNumber : undefined,
@@ -598,6 +718,7 @@ export class BackendService {
     };
     return {
       uploadId: upload.id,
+      ...(upload.image_id?{imageId:upload.image_id}:{}),
       ...replayContext,
       ...(await this.providers.storage.createUpload(declaration)),
     };
@@ -1434,6 +1555,16 @@ export class BackendService {
       throw notFound();
     try {
       const declaration = await this.repository.withContext(ctx, async (tx) => {
+        if(ctx.capabilities.includes("market_price:search")){
+          const access=this.marketPriceAccess(ctx,"market_price:search");
+          const market=await tx.query<any>(`SELECT u.organization_id,u.object_name,u.mime_type,u.size_bytes,u.sha256,u.expires_at
+            FROM market_price_image_upload_sessions u
+            JOIN market_price_identifications i ON i.id=u.identification_id AND i.organization_id=u.organization_id
+           WHERE u.organization_id=$1 AND u.object_name=$2 AND u.requested_by_membership_id=$3
+             AND u.expires_at>now() AND u.completed_at IS NULL
+             AND ($4::boolean OR i.branch_id=ANY($5::uuid[]) OR ($6::boolean AND i.created_by_membership_id=$3))`,[ctx.organizationId,objectName,ctx.membershipId,access.organization,access.branchIds,access.self]);
+          if(market.rows[0])return{organizationId:market.rows[0].organization_id,objectName:market.rows[0].object_name,mimeType:market.rows[0].mime_type,sizeBytes:Number(market.rows[0].size_bytes),sha256:market.rows[0].sha256,expiresAt:new Date(market.rows[0].expires_at)} satisfies UploadDeclaration;
+        }
         if(this.hasOrganizationCapability(ctx,"content:write")){
           const video=await tx.query<any>("SELECT organization_id,object_name,mime_type,size_bytes,sha256,expires_at FROM video_upload_sessions WHERE organization_id=$1 AND object_name=$2 AND requested_by_membership_id=$3 AND expires_at>now() AND completed_at IS NULL",[ctx.organizationId,objectName,ctx.membershipId]);
           if(video.rows[0])return{organizationId:video.rows[0].organization_id,objectName:video.rows[0].object_name,mimeType:video.rows[0].mime_type,sizeBytes:Number(video.rows[0].size_bytes),sha256:video.rows[0].sha256,expiresAt:new Date(video.rows[0].expires_at)} satisfies UploadDeclaration;
@@ -2217,6 +2348,246 @@ export class BackendService {
       },
     );
   }
+  async createMarketPriceIdentification(ctx:RequestContext,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");
+    const inputMode=String(b.inputMode??"manual_direct");
+    if(!["image_assisted","manual_assisted","manual_direct"].includes(inputMode))throw invalid("入力方法を確認してください");
+    const input=marketIdentificationFields(b);
+    if(inputMode!=="image_assisted"&&!input.productName)throw invalid("商品名を入力してください",[{field:"productName",message:"商品名は必須です"}]);
+    if(inputMode==="manual_direct"&&!input.searchQueries.length&&input.productName)input.searchQueries.push({id:randomUUID(),keyword:input.productName,breadth:"standard",source:"user",decision:"accepted"});
+    if(!input.conditions.length)input.conditions.push("unspecified");
+    return this.write(ctx,"market_price.identification.create",key,b,"market_price.identification.created","market_price_identification",async tx=>{
+      const flags=await this.flags(tx,ctx.organizationId);if(!flags.market_price_search)throw new ApiProblem("FEATURE_DISABLED",404,"買取相場（仮）は現在利用できません");
+      if(!access.organization&&!access.branchIds.includes(ctx.branchId)&&!access.self)throw denied();
+      const id=randomUUID();
+      await tx.query("INSERT INTO market_price_identifications(id,organization_id,branch_id,created_by_membership_id,status,input_mode,input_redacted,expires_at) VALUES($1,$2,$3,$4,'draft',$5,$6,now()+interval '24 hours')",[id,ctx.organizationId,ctx.branchId,ctx.membershipId,inputMode,input]);
+      return{status:201,body:{id,inputMode,status:"draft",input,suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]},confirmedFields:null,imageCount:0,jobId:null,failureClass:null,lockVersion:1,expiresAt:new Date(Date.now()+24*60*60*1000).toISOString(),confirmedAt:null},resourceId:id};
+    });
+  }
+
+  async getMarketPriceIdentification(ctx:RequestContext,id:string){
+    const access=this.marketPriceAccess(ctx,"market_price:read");
+    return this.read(ctx,"market_price.identification.read","market_price_identification",async tx=>{
+      const result=await tx.query<any>(`SELECT i.id,i.input_mode,i.status,i.input_redacted,i.suggestion_json,i.confirmed_fields_json,i.job_id,i.failure_class,i.lock_version,i.expires_at,i.confirmed_at,i.created_at,i.updated_at,
+        (SELECT count(*)::int FROM market_price_images image WHERE image.organization_id=i.organization_id AND image.identification_id=i.id AND image.deleted_at IS NULL) image_count
+        FROM market_price_identifications i WHERE i.organization_id=$1 AND i.id=$2 AND ($3::boolean OR i.branch_id=ANY($4::uuid[]) OR ($5::boolean AND i.created_by_membership_id=$6))`,[ctx.organizationId,id,access.organization,access.branchIds,access.self,ctx.membershipId]);
+      const row=result.rows[0];if(!row)throw notFound();
+      return{id:row.id,inputMode:row.input_mode,status:row.status,input:camel(row.input_redacted),suggestions:marketIdentificationSuggestions(row.suggestion_json),confirmedFields:Object.keys(row.confirmed_fields_json??{}).length?camel(row.confirmed_fields_json):null,imageCount:Number(row.image_count),jobId:row.job_id,failureClass:row.failure_class,lockVersion:Number(row.lock_version),expiresAt:row.expires_at,confirmedAt:row.confirmed_at,createdAt:row.created_at,updatedAt:row.updated_at};
+    });
+  }
+
+  async startMarketPriceImageUpload(ctx:RequestContext,identificationId:string,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");
+    const mime=text(b.mimeType,100,"mimeType");if(!["image/jpeg","image/png","image/webp"].includes(mime))throw new ApiProblem("FILE_TYPE_INVALID",422,"JPEG、PNG、WebP画像を選択してください");
+    const size=integer(b.sizeBytes,1,10_485_760,"sizeBytes");const digest=String(b.sha256??"");if(!/^[a-f0-9]{64}$/.test(digest))throw invalid("SHA-256を確認してください");
+    return this.write(ctx,"market_price.image_upload.start",key,b,"market_price.image_upload.started","market_price_identification",async tx=>{
+      const identification=await tx.query("SELECT 1 FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status IN ('draft','failed','suggestion_ready','confirmation_required') AND expires_at>now() AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6))",[ctx.organizationId,identificationId,access.organization,access.branchIds,access.self,ctx.membershipId]);if(!identification.rowCount)throw notFound();
+      const totals=await tx.query<{image_count:number;total_bytes:string}>(`SELECT count(*)::int image_count,COALESCE(sum(size_bytes),0)::text total_bytes FROM market_price_image_upload_sessions WHERE organization_id=$1 AND identification_id=$2 AND expires_at>now()`,[ctx.organizationId,identificationId]);
+      if(Number(totals.rows[0]?.image_count??0)>=5)throw invalid("画像は最大5枚です");if(Number(totals.rows[0]?.total_bytes??0)+size>52_428_800)throw invalid("画像の合計は50MB以内にしてください");
+      const uploadId=randomUUID(),imageId=randomUUID(),expiresAt=new Date(Date.now()+15*60_000);const objectName=`organizations/${ctx.organizationId}/market-price/${identificationId}/${imageId}/source`;
+      await tx.query("INSERT INTO market_price_image_upload_sessions(id,organization_id,identification_id,image_id,object_name,mime_type,size_bytes,sha256,requested_by_membership_id,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",[uploadId,ctx.organizationId,identificationId,imageId,objectName,mime,size,digest,ctx.membershipId,expiresAt]);
+      const replayBody={replayKind:"marketPriceImageUpload",uploadId,imageId};return{status:201,body:replayBody,replayBody,resourceId:imageId};
+    });
+  }
+
+  async completeMarketPriceImageUpload(ctx:RequestContext,uploadId:string,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");
+    const upload=await this.repository.withContext(ctx,async tx=>{const result=await tx.query<any>(`SELECT u.* FROM market_price_image_upload_sessions u JOIN market_price_identifications i ON i.id=u.identification_id AND i.organization_id=u.organization_id WHERE u.organization_id=$1 AND u.id=$2 AND u.requested_by_membership_id=$3 AND u.completed_at IS NULL AND u.expires_at>now() AND ($4::boolean OR i.branch_id=ANY($5::uuid[]) OR ($6::boolean AND i.created_by_membership_id=$3))`,[ctx.organizationId,uploadId,ctx.membershipId,access.organization,access.branchIds,access.self]);if(!result.rows[0])throw notFound();return result.rows[0];});
+    const declaration:UploadDeclaration={organizationId:ctx.organizationId,objectName:upload.object_name,mimeType:upload.mime_type,sizeBytes:Number(upload.size_bytes),sha256:upload.sha256,expiresAt:new Date(upload.expires_at)};
+    const stored=await this.providers.storage.verify(declaration);if(!await hasImageSignature(await this.providers.storage.openRead(stored.objectName,stored.generation),stored.mimeType)){await this.providers.storage.delete(stored.objectName,stored.generation).catch(()=>undefined);throw new ApiProblem("FILE_TYPE_INVALID",422,"画像ファイルの内容を確認してください");}
+    try{return await this.write(ctx,"market_price.image_upload.complete",key,b,"market_price.image_upload.completed","market_price_image",async tx=>{
+      const current=await tx.query<any>("SELECT * FROM market_price_image_upload_sessions WHERE organization_id=$1 AND id=$2 AND requested_by_membership_id=$3 AND completed_at IS NULL AND expires_at>now() FOR UPDATE",[ctx.organizationId,uploadId,ctx.membershipId]);if(!current.rows[0])throw notFound();
+      const duplicate=await tx.query("SELECT 1 FROM market_price_images WHERE organization_id=$1 AND identification_id=$2 AND content_sha256=$3 AND deleted_at IS NULL",[ctx.organizationId,current.rows[0].identification_id,stored.sha256]);if(duplicate.rowCount)throw new ApiProblem("DUPLICATE_IMAGE",409,"同じ画像は追加できません");
+      const storageId=randomUUID();await tx.query("INSERT INTO storage_objects(id,organization_id,bucket_name,object_name,object_generation,purpose,status,mime_type,size_bytes,sha256,retention_until) VALUES($1,$2,$3,$4,$5,'market_price_image','available',$6,$7,$8,now()+interval '24 hours')",[storageId,ctx.organizationId,stored.bucket,stored.objectName,Number(stored.generation),stored.mimeType,stored.sizeBytes,stored.sha256]);
+      const result=await tx.query("INSERT INTO market_price_images(id,organization_id,identification_id,storage_object_id,status,content_sha256,expires_at) VALUES($1,$2,$3,$4,'uploaded',$5,now()+interval '24 hours') RETURNING id,status,expires_at",[current.rows[0].image_id,ctx.organizationId,current.rows[0].identification_id,storageId,stored.sha256]);await tx.query("UPDATE market_price_image_upload_sessions SET completed_at=now() WHERE id=$1",[uploadId]);return{status:201,body:camel(result.rows[0]),resourceId:current.rows[0].image_id};
+    });}catch(error){await deleteUploadObjectIfProvenUnreferenced(()=>this.repository.withContext(ctx,tx=>tx.query("SELECT 1 FROM storage_objects WHERE organization_id=$1 AND object_name=$2 AND object_generation=$3",[ctx.organizationId,stored.objectName,Number(stored.generation)])),()=>this.providers.storage.delete(stored.objectName,stored.generation));throw error;}
+  }
+
+  async analyzeMarketPriceIdentification(ctx:RequestContext,id:string,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");
+    return this.write(ctx,"market_price.identification.analyze",key,b,"market_price.identification.analysis_requested","market_price_identification",async tx=>{
+      const found=await tx.query<any>(`SELECT input_mode,input_redacted FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status IN ('draft','failed','suggestion_ready','confirmation_required') AND expires_at>now() AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6)) FOR UPDATE`,[ctx.organizationId,id,access.organization,access.branchIds,access.self,ctx.membershipId]);if(!found.rows[0])throw notFound();
+      if(found.rows[0].input_mode==="image_assisted"){const images=await tx.query("SELECT 1 FROM market_price_images WHERE organization_id=$1 AND identification_id=$2 AND deleted_at IS NULL LIMIT 1",[ctx.organizationId,id]);if(!images.rowCount)throw invalid("商品画像を1枚以上追加してください");}
+      const jobId=randomUUID();await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_identification','market_price_identification',$3,$4,$5,$6,2,$7)",[jobId,ctx.organizationId,id,key,sha(JSON.stringify({identificationId:id})),{identificationId:id},ctx.membershipId]);await tx.query("UPDATE market_price_identifications SET status='analyzing',job_id=$3,failure_class=NULL WHERE organization_id=$1 AND id=$2",[ctx.organizationId,id,jobId]);await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_identification"},`job:${jobId}`]);return{status:202,body:{id,jobId,status:"analyzing",statusUrl:`/api/v1/market-price/identifications/${id}`},resourceId:id};
+    });
+  }
+
+  async updateMarketPriceIdentification(ctx:RequestContext,id:string,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");const fields=marketIdentificationFields(b.fields);
+    return this.write(ctx,"market_price.identification.update",key,b,"market_price.identification.updated","market_price_identification",async tx=>{
+      const current=await tx.query<{suggestion_json:Json}>("SELECT suggestion_json FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND lock_version=$3 AND expires_at>now() AND ($4::boolean OR branch_id=ANY($5::uuid[]) OR ($6::boolean AND created_by_membership_id=$7)) FOR UPDATE",[ctx.organizationId,id,expected,access.organization,access.branchIds,access.self,ctx.membershipId]);
+      if(!current.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"他の操作で更新されました。再読み込みしてください");
+      const suggestion={...(current.rows[0].suggestion_json??{})};
+      const productCandidates=Array.isArray(suggestion.productCandidates)?suggestion.productCandidates:[];
+      const decisions=b.suggestionDecisions&&typeof b.suggestionDecisions==="object"&&!Array.isArray(b.suggestionDecisions)?(b.suggestionDecisions as Json).productCandidates:undefined;
+      if(decisions!==undefined){
+        if(!Array.isArray(decisions))throw invalid("AI提案の確認状態を確認してください");
+        const decisionMap=new Map<string,string>();
+        for(const raw of decisions){
+          if(!raw||typeof raw!=="object"||Array.isArray(raw))throw invalid("AI提案の確認状態を確認してください");
+          const candidateId=String((raw as Json).id??"");const decision=String((raw as Json).decision??"");
+          if(!candidateId||!["pending","accepted","rejected"].includes(decision)||decisionMap.has(candidateId))throw invalid("AI提案の確認状態を確認してください");
+          decisionMap.set(candidateId,decision);
+        }
+        const known=new Set(productCandidates.map(raw=>String((raw as Json).id??"")));
+        if([...decisionMap.keys()].some(candidateId=>!known.has(candidateId)))throw invalid("存在しないAI提案は更新できません");
+        suggestion.productCandidates=productCandidates.map(raw=>{const candidate=raw as Json;return{...candidate,decision:decisionMap.get(String(candidate.id??""))??candidate.decision};});
+      }
+      const result=await tx.query("UPDATE market_price_identifications SET input_redacted=$4,suggestion_json=$5,lock_version=lock_version+1,status=CASE WHEN status='confirmed' THEN 'confirmation_required' ELSE status END WHERE organization_id=$1 AND id=$2 AND lock_version=$3 RETURNING id,status,lock_version",[ctx.organizationId,id,expected,fields,suggestion]);
+      return{status:200,body:camel(result.rows[0]),resourceId:id};
+    });
+  }
+
+  async confirmMarketPriceIdentification(ctx:RequestContext,id:string,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    return this.write(ctx,"market_price.identification.confirm",key,b,"market_price.identification.confirmed","market_price_identification",async tx=>{const found=await tx.query<any>(`SELECT input_redacted FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND lock_version=$3 AND status IN ('draft','suggestion_ready','confirmation_required','failed') AND expires_at>now() AND ($4::boolean OR branch_id=ANY($5::uuid[]) OR ($6::boolean AND created_by_membership_id=$7)) FOR UPDATE`,[ctx.organizationId,id,expected,access.organization,access.branchIds,access.self,ctx.membershipId]);if(!found.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"商品情報を再読み込みしてください");const fields=marketIdentificationFields(found.rows[0].input_redacted);if(!fields.productName)throw invalid("商品名を確認してください");const accepted=fields.searchQueries.filter(query=>query.decision==="accepted");if(accepted.length!==1)throw invalid("検索語を1件だけ採用してください");if(!fields.conditions.length)throw invalid("商品の状態を1件以上選択してください");const result=await tx.query("UPDATE market_price_identifications SET status='confirmed',confirmed_fields_json=$3,confirmed_by_membership_id=$4,confirmed_at=now(),lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2 RETURNING id,status,lock_version,confirmed_at",[ctx.organizationId,id,fields,ctx.membershipId]);return{status:200,body:camel(result.rows[0]),resourceId:id};});
+  }
+
+  async createMarketPriceSearch(ctx:RequestContext,key:string|undefined,b:Json){
+    const access=this.marketPriceAccess(ctx,"market_price:search");
+    const identificationId=b.identificationId==null?null:String(b.identificationId);
+    if(identificationId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(identificationId))throw invalid("商品特定結果を確認してください",[{field:"identificationId",message:"商品特定IDが不正です"}]);
+    const selectedSearchQueryId=text(b.selectedSearchQueryId,100,"selectedSearchQueryId");
+    if(!Array.isArray(b.conditions)||!b.conditions.length)throw invalid("商品の状態を1件以上選択してください");
+    const requestedConditions=new Set(b.conditions.map(String));if([...requestedConditions].some(condition=>!(productConditions as readonly string[]).includes(condition)))throw invalid("商品の状態を確認してください");
+    const conditions=productConditions.filter(condition=>requestedConditions.has(condition)) as ProductCondition[];
+    const rawPolicy=b.outlierPolicy&&typeof b.outlierPolicy==="object"&&!Array.isArray(b.outlierPolicy)?b.outlierPolicy as Json:{};
+    const outlierPolicy:MarketPriceOutlierPolicy={enabled:rawPolicy.enabled!==false,deviationThreshold:Number(rawPolicy.deviationThreshold??.2),minimumGroupSize:Number(rawPolicy.minimumGroupSize??5)};
+    if(!Number.isFinite(outlierPolicy.deviationThreshold)||outlierPolicy.deviationThreshold<.01||outlierPolicy.deviationThreshold>1)throw invalid("外れ値の基準は1〜100%で指定してください");
+    if(!Number.isInteger(outlierPolicy.minimumGroupSize)||outlierPolicy.minimumGroupSize<5||outlierPolicy.minimumGroupSize>100)throw invalid("外れ値判定の最低件数は5〜100件で指定してください");
+    return this.write(ctx,"market_price.search.create",key,b,"market_price.search.requested","market_price_search",async tx=>{
+      const flags=await this.flags(tx,ctx.organizationId);if(!flags.market_price_search)throw new ApiProblem("FEATURE_DISABLED",404,"買取相場（仮）は現在利用できません");
+      if(!access.organization&&!access.branchIds.includes(ctx.branchId)&&!access.self)throw denied();
+      const identified=identificationId
+        ?await tx.query<{id:string;confirmed_fields_json:Json}>("SELECT id,confirmed_fields_json FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status='confirmed' AND expires_at>now() AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6))",[ctx.organizationId,identificationId,access.organization,access.branchIds,access.self,ctx.membershipId])
+        :await tx.query<{id:string;confirmed_fields_json:Json}>(`SELECT id,confirmed_fields_json FROM market_price_identifications
+            WHERE organization_id=$1 AND status='confirmed' AND expires_at>now()
+              AND ($2::boolean OR branch_id=ANY($3::uuid[]) OR ($4::boolean AND created_by_membership_id=$5))
+              AND EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(confirmed_fields_json->'searchQueries','[]'::jsonb)) query WHERE query->>'id'=$6)
+            ORDER BY updated_at DESC,id DESC LIMIT 2`,[ctx.organizationId,access.organization,access.branchIds,access.self,ctx.membershipId,selectedSearchQueryId]);
+      if(identified.rows.length!==1)throw new ApiProblem("JOB_STATE_CONFLICT",409,identified.rows.length?"検索語候補を一意に特定できません。商品を再確認してください":"商品特定結果を再確認してください");
+      const resolvedIdentificationId=identified.rows[0]!.id;const confirmed=identified.rows[0]!.confirmed_fields_json;
+      const queries=Array.isArray(confirmed.searchQueries)?confirmed.searchQueries:[];const selected=queries.find(raw=>raw&&typeof raw==="object"&&String((raw as Json).id)===selectedSearchQueryId) as Json|undefined;
+      if(!selected)throw invalid("選択した検索語を確認してください");const keyword=normalizeSearchKeyword(String(selected.keyword??""));if(!keyword)throw invalid("検索語を確認してください");
+      const excludeKeywords=Array.isArray(confirmed.excludeKeywords)?confirmed.excludeKeywords.map(String).map(normalizeSearchKeyword).filter(Boolean).slice(0,20):[];
+      const queryJson={selectedSearchQueryId,keyword,category:typeof confirmed.category==="string"?confirmed.category:null,brand:typeof confirmed.brand==="string"?confirmed.brand:null,excludeKeywords};
+      const mappingSnapshot=await tx.query("SELECT dimension,registry_key,source_id,status,registry_version,verified_at,expires_at FROM market_price_source_mappings WHERE organization_id=$1 AND status IN ('CONFIRMED','COMPATIBLE') AND (expires_at IS NULL OR expires_at>now()) ORDER BY dimension,registry_key",[ctx.organizationId]);
+      const registryFingerprint=sha(JSON.stringify(mappingSnapshot.rows));
+      const normalizedQueryHash=sha(JSON.stringify({queryJson,conditions,outlierPolicy,periodDays:90,sort:"ENDED_AT_NEWEST",pageSize:100,parserVersion:YAHOO_RESULT_PARSER_VERSION,generatorVersion:YAHOO_URL_GENERATOR_VERSION,registryFingerprint}));
+      const cached=await tx.query<{id:string;job_id:string|null;completed_at:Date}>("SELECT id,job_id,completed_at FROM market_price_searches WHERE organization_id=$1 AND normalized_query_hash=$2 AND completed_at>now()-interval '24 hours' AND status='ready' AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6)) ORDER BY completed_at DESC LIMIT 1",[ctx.organizationId,normalizedQueryHash,access.organization,access.branchIds,access.self,ctx.membershipId]);
+      if(cached.rows[0])return{status:200,body:{searchId:cached.rows[0].id,jobId:cached.rows[0].job_id,status:"ready",cacheHit:true,statusUrl:`/api/v1/market-price/searches/${cached.rows[0].id}`},resourceId:cached.rows[0].id};
+      const searchId=randomUUID(),jobId=randomUUID();const startedAt=new Date();const period=searchPeriod(startedAt);
+      await tx.query("INSERT INTO market_price_searches(id,organization_id,branch_id,identification_id,created_by_membership_id,status,query_json,condition_filters_json,outlier_policy_json,normalized_query_hash,period_start,period_end,started_at) VALUES($1,$2,$3,$4,$5,'queued',$6,$7::jsonb,$8,$9,$10,$11,$11)",[searchId,ctx.organizationId,ctx.branchId,resolvedIdentificationId,ctx.membershipId,queryJson,JSON.stringify(conditions),outlierPolicy,normalizedQueryHash,period.periodStart,period.periodEnd]);
+      await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_search','market_price_search',$3,$4,$5,$6,5,$7)",[jobId,ctx.organizationId,searchId,key,normalizedQueryHash,{searchId},ctx.membershipId]);
+      await tx.query("UPDATE market_price_searches SET job_id=$3 WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId,jobId]);
+      await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_search"},`job:${jobId}`]);
+      return{status:202,body:{searchId,jobId,status:"queued",cacheHit:false,statusUrl:`/api/v1/market-price/searches/${searchId}`,jobStatusUrl:`/api/v1/jobs/${jobId}`},resourceId:searchId};
+    });
+  }
+
+  async listMarketPriceSearches(ctx:RequestContext){
+    const access=this.marketPriceAccess(ctx,"market_price:read");return this.read(ctx,"market_price.search.list","market_price_search",async tx=>{
+      const result=await tx.query("SELECT id,identification_id,job_id,status,coverage_status,period_start,period_end,period_days,query_json,condition_filters_json,outlier_policy_json,candidate_count,included_count,minimum_price,median_price_before_outlier_exclusion,median_price,maximum_price,exclusion_counts_json,failure_class,result_id,confirmed_at,completed_at,created_at,lock_version FROM market_price_searches WHERE organization_id=$1 AND ($2::boolean OR branch_id=ANY($3::uuid[]) OR ($4::boolean AND created_by_membership_id=$5)) ORDER BY created_at DESC LIMIT 100",[ctx.organizationId,access.organization,access.branchIds,access.self,ctx.membershipId]);return{items:result.rows.map(row=>marketPriceSearchDto(row,{includeEmptyCandidates:true})),nextCursor:null,hasMore:false};
+    });
+  }
+
+  async getMarketPriceSearch(ctx:RequestContext,id:string){
+    const access=this.marketPriceAccess(ctx,"market_price:read");return this.read(ctx,"market_price.search.read","market_price_search",async tx=>{
+      const found=await tx.query("SELECT id,identification_id,job_id,status,coverage_status,period_start,period_end,period_days,sort_key,page_size,max_pages,query_json,condition_filters_json,outlier_policy_json,ai_parameter_plan_json,parameter_registry_version,generator_version,planner_model,planner_prompt_version,planner_status,candidate_count,included_count,minimum_price,median_price_before_outlier_exclusion,median_price,maximum_price,exclusion_counts_json,parser_version,failure_class,result_id,confirmed_at,lock_version,started_at,completed_at,created_at,updated_at FROM market_price_searches WHERE organization_id=$1 AND id=$2 AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6))",[ctx.organizationId,id,access.organization,access.branchIds,access.self,ctx.membershipId]);
+      if(!found.rows[0])throw notFound();const candidates=await tx.query("SELECT id,source_item_id,source_type,canonical_url,title,closing_price,ended_at,normalized_condition,match_score,match_reasons,condition_matched,tax_display,exclusion_reasons,condition_group_count,condition_median_price,price_deviation_rate,iqr_lower_bound,iqr_upper_bound,auto_outlier,inclusion_override,included,decision_source FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2 ORDER BY ended_at DESC,source_item_id LIMIT 2000",[ctx.organizationId,id]);return{...marketPriceSearchDto(found.rows[0]),candidates:candidates.rows.map(marketPriceCandidateDto)};
+    });
+  }
+
+  async overrideMarketPriceCandidate(ctx:RequestContext,searchId:string,candidateId:string,key:string|undefined,b:Json){
+    const decision=String(b.decision??"");if(!["include","exclude","automatic"].includes(decision))throw invalid("集計対象の指定を確認してください");
+    return this.write(ctx,"market_price.candidate.override",key,b,"market_price.candidate.overridden","market_price_candidate",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");const result=await tx.query("UPDATE market_price_candidates SET inclusion_override=$5::varchar,included=CASE WHEN $4::text='include' THEN true WHEN $4::text='exclude' THEN false ELSE NOT auto_outlier AND jsonb_array_length(exclusion_reasons)=0 END,decision_source=CASE WHEN $4::text='automatic' THEN 'automatic' ELSE 'manual' END WHERE organization_id=$1 AND search_id=$2 AND id=$3 RETURNING id,included,inclusion_override,decision_source",[ctx.organizationId,searchId,candidateId,decision,decision==="automatic"?null:decision]);if(!result.rows[0])throw notFound();
+      const statistics=await this.marketPriceStatistics(tx,ctx.organizationId,searchId);return{status:200,body:{candidate:camel(result.rows[0]),statistics},resourceId:candidateId};
+    });
+  }
+
+  async marketPriceOptions(ctx:RequestContext){
+    const access=this.marketPriceAccess(ctx,"market_price:read");void access;
+    return this.read(ctx,"market_price.options.read","market_price_options",async tx=>{
+      const flags=await this.flags(tx,ctx.organizationId);if(!flags.market_price_search)throw new ApiProblem("FEATURE_DISABLED",404,"買取相場（仮）は現在利用できません");
+      const rows=await tx.query<{dimension:"category"|"brand";registry_key:string;canonical_name:string}>("SELECT dimension,registry_key,canonical_name FROM market_price_source_mappings WHERE organization_id=$1 AND status IN ('CONFIRMED','COMPATIBLE') AND (expires_at IS NULL OR expires_at>now()) ORDER BY dimension,canonical_name",[ctx.organizationId]);
+      const labels:Record<ProductCondition,string>={unused:"未使用",near_unused:"未使用に近い",good:"目立った傷や汚れなし",fair:"やや傷や汚れあり",poor:"傷や汚れあり",very_poor:"全体的に状態が悪い",unspecified:"指定しない"};
+      return{conditions:productConditions.map(value=>({value,label:labels[value]})),categories:rows.rows.filter(row=>row.dimension==="category").map(row=>({key:row.registry_key,label:row.canonical_name})),brands:rows.rows.filter(row=>row.dimension==="brand").map(row=>({key:row.registry_key,label:row.canonical_name})),limits:{imageCount:5,imageBytes:10_485_760,totalImageBytes:52_428_800}};
+    });
+  }
+
+  async updateMarketPriceOutlierPolicy(ctx:RequestContext,searchId:string,key:string|undefined,b:Json){
+    const policy:MarketPriceOutlierPolicy={enabled:b.enabled!==false,deviationThreshold:Number(b.deviationThreshold??.2),minimumGroupSize:Number(b.minimumGroupSize??5)};
+    if(!Number.isFinite(policy.deviationThreshold)||policy.deviationThreshold<.01||policy.deviationThreshold>1)throw invalid("外れ値の基準は1〜100%で指定してください");
+    if(!Number.isInteger(policy.minimumGroupSize)||policy.minimumGroupSize<5||policy.minimumGroupSize>100)throw invalid("外れ値判定の最低件数は5〜100件で指定してください");
+    return this.write(ctx,"market_price.outlier_policy.update",key,b,"market_price.outlier_policy.updated","market_price_search",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");
+      const found=await tx.query<any>("SELECT query_json,condition_filters_json,period_start,period_end,status FROM market_price_searches WHERE organization_id=$1 AND id=$2 FOR UPDATE",[ctx.organizationId,searchId]);const search=found.rows[0];if(!search||!["ready","partial","review_required"].includes(search.status))throw new ApiProblem("JOB_STATE_CONFLICT",409,"取得完了後に外れ値基準を変更してください");
+      const rows=await tx.query<any>("SELECT id,source_item_id,source_type,canonical_url,title,closing_price::text,ended_at,condition_label,normalized_condition,tax_display,content_hash,inclusion_override FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2 ORDER BY ended_at DESC,source_item_id",[ctx.organizationId,searchId]);
+      const query=search.query_json as Json;const evaluated=evaluateMarketPriceCandidates({items:rows.rows.map(row=>({sourceItemId:row.source_item_id,sourceType:row.source_type,canonicalUrl:row.canonical_url,title:row.title,closingPrice:Number(row.closing_price),endedAt:new Date(row.ended_at).toISOString(),sourceCondition:row.condition_label,normalizedCondition:row.normalized_condition,taxDisplay:row.tax_display,categoryId:null,brandId:null,contentHash:row.content_hash})),selectedKeyword:String(query.keyword??""),periodStart:new Date(search.period_start),periodEnd:new Date(search.period_end),selectedConditions:search.condition_filters_json,excludeKeywords:Array.isArray(query.excludeKeywords)?query.excludeKeywords.map(String):[],outlierPolicy:policy});
+      for(const candidate of evaluated.candidates){await tx.query(`UPDATE market_price_candidates SET match_score=$4,match_reasons=$5::jsonb,condition_matched=$6,exclusion_reasons=$7::jsonb,condition_group_count=$8,condition_median_price=$9,price_deviation_rate=$10,iqr_lower_bound=$11,iqr_upper_bound=$12,auto_outlier=$13,included=CASE WHEN inclusion_override='include' THEN true WHEN inclusion_override='exclude' THEN false ELSE $14 END,decision_source=CASE WHEN inclusion_override IS NULL THEN 'automatic' ELSE 'manual' END WHERE organization_id=$1 AND search_id=$2 AND source_item_id=$3`,[ctx.organizationId,searchId,candidate.sourceItemId,candidate.matchScore,JSON.stringify(candidate.matchReasons),candidate.conditionMatched,JSON.stringify(candidate.exclusionReasons),candidate.conditionGroupCount,candidate.conditionMedianPrice,candidate.priceDeviationRate,candidate.iqrLowerBound,candidate.iqrUpperBound,candidate.autoOutlier,candidate.included]);}
+      await tx.query("UPDATE market_price_searches SET outlier_policy_json=$3 WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId,policy]);const statistics=await this.marketPriceStatistics(tx,ctx.organizationId,searchId);return{status:200,body:{outlierPolicy:policy,statistics},resourceId:searchId};
+    });
+  }
+
+  async confirmMarketPriceSearch(ctx:RequestContext,searchId:string,key:string|undefined,b:Json){
+    return this.write(ctx,"market_price.search.confirm",key,b,"market_price.search.confirmed","market_price_search",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+      const found=await tx.query<any>("SELECT * FROM market_price_searches WHERE organization_id=$1 AND id=$2 AND lock_version=$3 AND status IN ('ready','partial','review_required') FOR UPDATE",[ctx.organizationId,searchId,expected]);const search=found.rows[0];if(!search)throw new ApiProblem("VERSION_CONFLICT",409,"検索結果を再読み込みしてください");
+      const candidates=await tx.query<{id:string}>("SELECT id FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2 AND included ORDER BY ended_at DESC,id",[ctx.organizationId,searchId]);if(!candidates.rows.length)throw invalid("集計対象を1件以上選択してください");
+      const version=await tx.query<{version:number}>("SELECT COALESCE(max(snapshot_version),0)+1 version FROM market_price_results WHERE organization_id=$1 AND search_id=$2",[ctx.organizationId,searchId]);const snapshotVersion=Number(version.rows[0]?.version??1);const includedCandidateIds=candidates.rows.map(row=>row.id);const snapshot={searchId,snapshotVersion,conditions:search.condition_filters_json,outlierPolicy:search.outlier_policy_json,coverageStatus:search.coverage_status,periodStart:new Date(search.period_start).toISOString(),periodEnd:new Date(search.period_end).toISOString(),candidateCount:Number(search.candidate_count),includedCount:Number(search.included_count),minimumPrice:Number(search.minimum_price),medianPriceBeforeOutlierExclusion:marketPriceNumber(search.median_price_before_outlier_exclusion),medianPrice:Number(search.median_price),maximumPrice:Number(search.maximum_price),exclusionCounts:search.exclusion_counts_json,includedCandidateIds};const snapshotHash=sha(JSON.stringify(snapshot));const resultId=randomUUID();
+      await tx.query("INSERT INTO market_price_results(id,organization_id,search_id,snapshot_version,snapshot_hash,condition_filters_json,outlier_policy_json,coverage_status,period_start,period_end,candidate_count,included_count,minimum_price,median_price_before_outlier_exclusion,median_price,maximum_price,exclusion_counts_json,included_candidate_ids,confirmed_by_membership_id) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,$18::jsonb,$19)",[resultId,ctx.organizationId,searchId,snapshotVersion,snapshotHash,JSON.stringify(snapshot.conditions),JSON.stringify(snapshot.outlierPolicy),snapshot.coverageStatus,search.period_start,search.period_end,snapshot.candidateCount,snapshot.includedCount,snapshot.minimumPrice,snapshot.medianPriceBeforeOutlierExclusion,snapshot.medianPrice,snapshot.maximumPrice,JSON.stringify(snapshot.exclusionCounts),JSON.stringify(includedCandidateIds),ctx.membershipId]);await tx.query("UPDATE market_price_searches SET status='confirmed',result_id=$3,confirmed_by_membership_id=$4,confirmed_at=now(),lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId,resultId,ctx.membershipId]);return{status:201,body:{id:resultId,...snapshot,snapshotHash,confirmedAt:new Date().toISOString()},resourceId:resultId};
+    });
+  }
+
+  async retryMarketPriceSearch(ctx:RequestContext,searchId:string,key:string|undefined,b:Json){
+    return this.write(ctx,"market_price.search.retry",key,b,"market_price.search.retried","market_price_search",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");const found=await tx.query<any>("SELECT status,failure_class FROM market_price_searches WHERE organization_id=$1 AND id=$2 FOR UPDATE",[ctx.organizationId,searchId]);if(!found.rows[0]||!["blocked","failed"].includes(found.rows[0].status))throw new ApiProblem("JOB_STATE_CONFLICT",409,"この検索は再試行できません");if(["YAHOO_CAPTCHA","YAHOO_SORT_DRIFT","YAHOO_PARSER_DRIFT","MARKET_PRICE_KILL_SWITCH"].includes(String(found.rows[0].failure_class)))throw new ApiProblem("JOB_STATE_CONFLICT",409,"安全停止の原因が解消されるまで再試行できません");const jobId=randomUUID();await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_search','market_price_search',$3,$4,$5,$6,5,$7)",[jobId,ctx.organizationId,searchId,key,sha(JSON.stringify({searchId,retry:true})),{searchId,retry:true},ctx.membershipId]);await tx.query("UPDATE market_price_searches SET status='queued',coverage_status='pending',failure_class=NULL,job_id=$3,completed_at=NULL WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId,jobId]);await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_search"},`job:${jobId}`]);return{status:202,body:{searchId,jobId,status:"queued"},resourceId:searchId};
+    });
+  }
+
+  async cancelMarketPriceSearch(ctx:RequestContext,searchId:string,key:string|undefined,b:Json){
+    return this.write(ctx,"market_price.search.cancel",key,b,"market_price.search.cancelled","market_price_search",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");const found=await tx.query<any>("SELECT status,job_id FROM market_price_searches WHERE organization_id=$1 AND id=$2 FOR UPDATE",[ctx.organizationId,searchId]);if(!found.rows[0]||["ready","partial","confirmed","cancelled"].includes(found.rows[0].status))throw new ApiProblem("JOB_STATE_CONFLICT",409,"この検索は取り消せません");const queued=found.rows[0].status==="queued";await tx.query("UPDATE market_price_searches SET status=CASE WHEN $3 THEN 'cancelled' ELSE status END,cancel_requested_at=now(),completed_at=CASE WHEN $3 THEN now() ELSE completed_at END WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId,queued]);if(found.rows[0].job_id)await tx.query("UPDATE jobs SET cancel_requested_at=now(),status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END WHERE organization_id=$1 AND id=$2",[ctx.organizationId,found.rows[0].job_id]);return{status:200,body:{searchId,status:queued?"cancelled":found.rows[0].status,cancelRequested:true},resourceId:searchId};
+    });
+  }
+
+  async repeatMarketPriceSearch(ctx:RequestContext,searchId:string,key:string|undefined,b:Json){
+    return this.write(ctx,"market_price.search.repeat",key,b,"market_price.search.repeated","market_price_search",async tx=>{
+      await this.assertMarketPriceSearchAccess(tx,ctx,searchId,"market_price:search");const found=await tx.query<any>("SELECT identification_id,branch_id,query_json,condition_filters_json,outlier_policy_json,normalized_query_hash FROM market_price_searches WHERE organization_id=$1 AND id=$2",[ctx.organizationId,searchId]);const source=found.rows[0];if(!source)throw notFound();const id=randomUUID(),jobId=randomUUID(),period=searchPeriod(new Date());await tx.query("INSERT INTO market_price_searches(id,organization_id,branch_id,identification_id,created_by_membership_id,job_id,status,query_json,condition_filters_json,outlier_policy_json,normalized_query_hash,period_start,period_end,started_at) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$12,$12)",[id,ctx.organizationId,source.branch_id,source.identification_id,ctx.membershipId,jobId,source.query_json,source.condition_filters_json,source.outlier_policy_json,source.normalized_query_hash,period.periodStart,period.periodEnd]);await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_search','market_price_search',$3,$4,$5,$6,5,$7)",[jobId,ctx.organizationId,id,key,sha(JSON.stringify({searchId:id,repeatOf:searchId})),{searchId:id,repeatOf:searchId},ctx.membershipId]);await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_search"},`job:${jobId}`]);return{status:202,body:{searchId:id,jobId,status:"queued",cacheHit:false},resourceId:id};
+    });
+  }
+
+  async listMarketPriceSourceMappings(ctx:RequestContext){
+    this.requireOrganizationCapability(ctx,"market_price:manage");
+    return this.read(ctx,"market_price.source_mapping.list","market_price_source_mapping",async tx=>{
+      const result=await tx.query("SELECT id,dimension,registry_key,source_id,canonical_name,aliases,status,registry_version,verified_at,expires_at,created_at,updated_at FROM market_price_source_mappings WHERE organization_id=$1 ORDER BY dimension,canonical_name,registry_key",[ctx.organizationId]);
+      return{items:camel(result.rows),nextCursor:null,hasMore:false};
+    });
+  }
+
+  async upsertMarketPriceSourceMapping(ctx:RequestContext,registryKey:string,key:string|undefined,b:Json){
+    this.requireOrganizationCapability(ctx,"market_price:manage");
+    if(!/^[a-z0-9][a-z0-9_-]{0,149}$/u.test(registryKey))throw invalid("レジストリキーを確認してください");
+    const dimension=String(b.dimension??"");if(!["category","brand"].includes(dimension))throw invalid("カテゴリまたはブランドを指定してください");
+    const sourceId=String(b.sourceId??"");if(!/^[1-9]\d{0,18}$/u.test(sourceId))throw invalid("Yahoo IDを確認してください");
+    const canonicalName=text(b.canonicalName,300,"canonicalName");
+    const rawAliases=Array.isArray(b.aliases)?b.aliases:[];if(rawAliases.length>50)throw invalid("別名は50件以内で指定してください");
+    const aliases=[...new Set(rawAliases.map((value,index)=>text(value,300,`aliases.${index}`)))];
+    const status=String(b.status??"");if(!["CONFIRMED","COMPATIBLE","DEPRECATED"].includes(status))throw invalid("検証状態を確認してください");
+    const registryVersion=text(b.registryVersion,50,"registryVersion");
+    const verifiedAt=b.verifiedAt==null?new Date():new Date(String(b.verifiedAt));if(!Number.isFinite(verifiedAt.getTime()))throw invalid("検証日時を確認してください");
+    const expiresAt=b.expiresAt==null?null:new Date(String(b.expiresAt));if(expiresAt&&!Number.isFinite(expiresAt.getTime()))throw invalid("有効期限を確認してください");
+    const request={dimension,sourceId,canonicalName,aliases,status,registryVersion,verifiedAt:verifiedAt.toISOString(),expiresAt:expiresAt?.toISOString()??null};
+    return this.write(ctx,"market_price.source_mapping.upsert",key,request,"market_price.source_mapping.updated","market_price_source_mapping",async tx=>{
+      const result=await tx.query(`INSERT INTO market_price_source_mappings(id,organization_id,dimension,registry_key,source_id,canonical_name,aliases,status,registry_version,verified_at,expires_at)
+        VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11)
+        ON CONFLICT(organization_id,dimension,registry_key) DO UPDATE SET source_id=EXCLUDED.source_id,canonical_name=EXCLUDED.canonical_name,aliases=EXCLUDED.aliases,status=EXCLUDED.status,registry_version=EXCLUDED.registry_version,verified_at=EXCLUDED.verified_at,expires_at=EXCLUDED.expires_at
+        RETURNING id,dimension,registry_key,source_id,canonical_name,aliases,status,registry_version,verified_at,expires_at,created_at,updated_at`,[randomUUID(),ctx.organizationId,dimension,registryKey,sourceId,canonicalName,JSON.stringify(aliases),status,registryVersion,verifiedAt,expiresAt]);
+      return{status:200,body:camel(result.rows[0]),resourceId:String(result.rows[0]?.id??"")};
+    });
+  }
+
   async createManualTranscript(ctx:RequestContext,visitId:string,key:string|undefined,b:Json){
     const source=text(b.text,100000,"text");
     const lines=source.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map((line,index)=>{const match=line.match(/^(査定員|お客様)\s*[:：]\s*(.+)$/);if(!match)throw invalid(`${index+1}行目は「査定員:」または「お客様:」で始めてください`);return{role:match[1]==="査定員"?("staff" as const):("customer" as const),text:match[2]!.trim()};});
@@ -2399,7 +2770,9 @@ export class BackendService {
                       "SELECT id FROM reviews WHERE organization_id=$1 AND job_id=$2 ORDER BY version DESC LIMIT 1",
                       [ctx.organizationId, id],
                     )
-                  : null;
+                  : job.job_type === "market_price_search"
+                    ? await tx.query<{id:string}>("SELECT id FROM market_price_searches WHERE organization_id=$1 AND job_id=$2 AND status IN ('ready','partial')",[ctx.organizationId,id])
+                    : null;
         const outputId = output?.rows[0]?.id;
         if (outputId) {
           if (job.job_type === "preparation")
@@ -2408,6 +2781,7 @@ export class BackendService {
               id: outputId,
               href: `/api/v1/visits/${job.entity_id}/preparation`,
             };
+          else if(job.job_type==="market_price_search")resultResource={type:"market_price_search",id:outputId,href:`/api/v1/market-price/searches/${outputId}`};
           else {
             const type =
               job.job_type === "pdf_extract"
@@ -4246,8 +4620,8 @@ export class BackendService {
       return { items: camel(r.rows), nextCursor: null, hasMore: false };
     });
   }
-  async featureFlags(ctx:RequestContext){this.requireOrganizationCapability(ctx,"job:manage");return this.read(ctx,"feature_flags.read","feature_flag",async tx=>{const result=await tx.query("SELECT flag_key,enabled,rollback_note,updated_at FROM feature_flags WHERE organization_id=$1 AND flag_key IN ('pilot_content_ai','content_approval','team_analytics') ORDER BY flag_key",[ctx.organizationId]);return{items:camel(result.rows),hasMore:false,nextCursor:null};});}
-  async updateFeatureFlag(ctx:RequestContext,flagKey:string,key:string|undefined,b:Json){this.requireOrganizationCapability(ctx,"job:manage");if(!["pilot_content_ai","content_approval","team_analytics"].includes(flagKey))throw notFound();if(typeof b.enabled!=="boolean")throw invalid("有効・無効を選択してください");const enabled=b.enabled;const reason=text(b.reason,500,"reason");return this.write(ctx,"feature_flag.update",key,{flagKey,enabled,reason},"feature_flag.update","feature_flag",async tx=>{const result=await tx.query("UPDATE feature_flags SET enabled=$3,owner_membership_id=$4,rollback_note=$5,updated_at=now() WHERE organization_id=$1 AND flag_key=$2 RETURNING flag_key,enabled,rollback_note,updated_at",[ctx.organizationId,flagKey,enabled,ctx.membershipId,reason]);if(!result.rows[0])throw notFound();return{status:200,body:camel(result.rows[0]),resourceId:null};});}
+  async featureFlags(ctx:RequestContext){this.requireOrganizationCapability(ctx,"job:manage");return this.read(ctx,"feature_flags.read","feature_flag",async tx=>{const result=await tx.query("SELECT flag_key,enabled,rollback_note,updated_at FROM feature_flags WHERE organization_id=$1 AND flag_key IN ('pilot_content_ai','content_approval','team_analytics','market_price_search') ORDER BY flag_key",[ctx.organizationId]);return{items:camel(result.rows),hasMore:false,nextCursor:null};});}
+  async updateFeatureFlag(ctx:RequestContext,flagKey:string,key:string|undefined,b:Json){this.requireOrganizationCapability(ctx,"job:manage");if(!["pilot_content_ai","content_approval","team_analytics","market_price_search"].includes(flagKey))throw notFound();if(typeof b.enabled!=="boolean")throw invalid("有効・無効を選択してください");const enabled=b.enabled;const reason=text(b.reason,500,"reason");return this.write(ctx,"feature_flag.update",key,{flagKey,enabled,reason},"feature_flag.update","feature_flag",async tx=>{const result=await tx.query("UPDATE feature_flags SET enabled=$3,owner_membership_id=$4,rollback_note=$5,updated_at=now() WHERE organization_id=$1 AND flag_key=$2 RETURNING flag_key,enabled,rollback_note,updated_at",[ctx.organizationId,flagKey,enabled,ctx.membershipId,reason]);if(!result.rows[0])throw notFound();return{status:200,body:camel(result.rows[0]),resourceId:null};});}
   async approvals(ctx: RequestContext) {
     this.requireOrganizationCapability(ctx, "content:approve");
     return this.read(ctx, "content.approval.list", "content", async (tx) => {

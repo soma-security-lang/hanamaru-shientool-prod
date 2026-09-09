@@ -23,6 +23,7 @@ function routes(){return [
   ["SCR-016","/admin/contents"],["SCR-017","/admin/users"],
   ["SCR-018","/admin/operations"],["SCR-019","/admin/approvals"],
   ["SCR-020","/admin/analytics"],
+  ["SCR-021","/market-price"],
 ] as const;}
 
 async function waitForResolvedScreen(page:Page,route:string){
@@ -40,7 +41,7 @@ async function expectCurrentMobileNavigation(page:Page){
   await expect(mobileNavigation).toBeVisible();
   await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(5);
   await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText([
-    "ホーム","訪問","振り返り","知識","その他",
+    "ホーム","訪問","買取相場","振り返り","その他",
   ]);
 }
 
@@ -61,7 +62,7 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>{await managerSession?.api.dispose();});
 test.beforeEach(async({context})=>{await installLiveSession(context,managerSession);});
 
-test("all 20 canonical routes render semantic content from the live local stack",async({page})=>{
+test("all 21 canonical routes render semantic content from the live local stack",async({page})=>{
   test.setTimeout(remoteAcceptance?300_000:120_000);
   for(const [id,route] of routes()){
     await page.goto(route);
@@ -182,7 +183,7 @@ test("keyboard interaction and 44px targets remain available",async({page})=>{
   }
 });
 
-test("all 20 screens have zero serious or critical axe violations",async({page})=>{
+test("all 21 screens have zero serious or critical axe violations",async({page})=>{
   test.setTimeout(remoteAcceptance?600_000:180_000);await page.emulateMedia({reducedMotion:"reduce"});
   for(const [,route] of routes()){
     await page.goto(route);
@@ -200,7 +201,7 @@ test("assessor is denied every administration route without query role overrides
   await context.close();await assessorSession.api.dispose();
 });
 
-test("captures the 60 current local-product images",async({page})=>{
+test("captures the 63 current local-product images",async({page})=>{
   test.setTimeout(remoteAcceptance?900_000:300_000);const output=resolve(process.env.HITL_SCREENSHOT_DIR??".artifacts/hitl-screenshots-web");await mkdir(output,{recursive:true});
   for(const [viewport,width,height] of viewports){await page.setViewportSize({width,height});for(const [id,route] of routes()){await page.goto(route);await waitForResolvedScreen(page,route);if(viewport==="mobile"&&route!=="/login")await expectCurrentMobileNavigation(page);await page.screenshot({path:resolve(output,`${id}-${viewport}.png`),fullPage:true,caret:"initial",animations:"disabled"});}}
 });

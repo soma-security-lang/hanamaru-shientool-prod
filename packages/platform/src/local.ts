@@ -112,6 +112,16 @@ function labelledValue(text:string,aliases:string[]):string|null{
 }
 
 class LocalAi implements AiProvider {
+  async identifyMarketProduct(input:Parameters<AiProvider["identifyMarketProduct"]>[0]){
+    if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: 商品特定AI補助にはPROVIDER_MODE=local-connectedが必要です");
+    const productName=input.productName||"匿名デモ カメラ ボディ";const brand=input.brand||"Canon";const modelNumber=input.modelNumber||"EOS R6";
+    return{model:"test-deterministic-v1",productCandidates:[{id:"candidate-1",productName,category:input.category||"カメラ",brand,modelNumber,attributes:{...input.attributes,構成:"ボディのみ"},confidence:.94,decision:"pending" as const}],searchQueries:[
+      {id:"query-strict",keyword:`${brand} ${modelNumber} ボディ`,breadth:"strict" as const,source:"ai" as const,decision:"pending" as const},
+      {id:"query-standard",keyword:`${brand} ${modelNumber}`,breadth:"standard" as const,source:"ai" as const,decision:"pending" as const},
+      {id:"query-broad",keyword:`${modelNumber} カメラ`,breadth:"broad" as const,source:"ai" as const,decision:"pending" as const},
+    ],excludeKeywords:[...new Set([...input.excludeKeywords,"ジャンク","部品取り"])],suggestedConditions:input.confirmedConditions,warnings:input.images.length?["画像から読み取れない付属品は検索条件へ追加していません"]:[]};
+  }
+  async planYahooSearch(input:Parameters<AiProvider["planYahooSearch"]>[0]){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: 相場検索AI補助にはPROVIDER_MODE=local-connectedが必要です");return{model:"test-deterministic-v1",suggestion:{selectedKeyword:input.selectedKeyword,categoryRegistryKey:input.categoryCandidates[0]?.key??null,brandRegistryKey:input.brandCandidates[0]?.key??null,suggestedConditions:input.confirmedConditions,confidence:.9,warnings:[]}};}
   async extract(input:Parameters<AiProvider["extract"]>[0]){
     const properties=(input.schema.properties&&typeof input.schema.properties==="object"?input.schema.properties:{}) as Record<string,unknown>;
     try{
@@ -180,4 +190,12 @@ class LocalDrive implements DriveProvider {
   async openFile(input:Parameters<DriveProvider["openFile"]>[0]){void input;if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Google Drive連携にはPROVIDER_MODE=local-connectedが必要です");const body=Buffer.from("local-drive-audio-fixture");return{source:Readable.from([body]),mimeType:"audio/mp4",sizeBytes:body.byteLength,sourceVersion:"drive-v1",modifiedTime:null};}
 }
 
-export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),mode:"local"}; }
+function localMarketPriceHtml(url:string){
+  const parsed=new URL(url);const keyword=parsed.searchParams.get("p")??"匿名デモ商品";const offset=Number(parsed.searchParams.get("b")??1);
+  if(keyword.includes("fixture captcha"))return"<html>CAPTCHA 画像認証</html>";
+  if(keyword.includes("fixture parser drift"))return"<html><main>changed</main></html>";
+  const prices=[118000,121000,124000,126000,129000,132000,310000,89000];const now=Date.now();
+  const items=keyword.includes("fixture empty")||offset>1?[]:prices.map((price,index)=>({auctionId:`fixture-${String(index+1).padStart(3,"0")}`,title:index===7?`${keyword} ジャンク`:`${keyword} ボディ ${index+1}`,price,endTime:new Date(now-(index+1)*86_400_000).toISOString(),itemCondition:"USED20",taxFlag:1,isFleamarketItem:false,category:{id:"23632"},brandId:"100614"}));
+  return`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({props:{pageProps:{initialState:{search:{items:{listing:{metadata:{sort:"-END_TIME",limit:100},items,totalResultsAvailable:items.length}}}}}}})}</script></html>`;
+}
+export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),marketPriceSource:{async fetchPage(url){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Yahoo相場取得にはPROVIDER_MODE=local-connectedが必要です");return{status:200,body:localMarketPriceHtml(url),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};}},mode:"local"}; }

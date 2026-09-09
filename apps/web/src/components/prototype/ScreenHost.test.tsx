@@ -12,7 +12,7 @@ vi.mock("next/navigation",()=>({usePathname:()=>pathname,useRouter:()=>router}))
 vi.mock("@/features/web/Experience",()=>({WebExperience:({kind}:{kind:string})=><section><h1>{kind}</h1></section>}));
 vi.mock("@/components/shell/AppShell",()=>({AppShell:({children,organizationName,branchName}:{children:React.ReactNode;organizationName?:string;branchName?:string})=><main><span>{organizationName}</span><span>{branchName}</span>{children}</main>}));
 
-function viewer(roles:Role[],featureFlags:Record<string,boolean>={content_approval:true,team_analytics:true}){return{id:"member",displayName:"匿名利用者",organizationName:"華丸買取サービス",branchName:"東京中央店",roles,capabilities:[],featureFlags};}
+function viewer(roles:Role[],featureFlags:Record<string,boolean>={content_approval:true,team_analytics:true,market_price_search:true}){return{id:"member",displayName:"匿名利用者",organizationName:"華丸買取サービス",branchName:"東京中央店",roles,capabilities:[],featureFlags};}
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();pathname="/";});
 

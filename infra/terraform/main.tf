@@ -1654,6 +1654,17 @@ resource "google_logging_metric" "retry_wait_overdue" {
   depends_on = [google_project_service.required]
 }
 
+resource "google_logging_metric" "market_price_operational_failure" {
+  name   = "${local.prefix}-market-price-operational-failure"
+  filter = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${google_cloud_run_v2_service.worker.name}\" AND jsonPayload.operationalAlert=true AND (jsonPayload.failureClass=\"MARKET_PRICE_STALLED\" OR jsonPayload.failureClass=\"MARKET_PRICE_BLOCKED\")"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+  depends_on = [google_project_service.required]
+}
+
 resource "google_monitoring_alert_policy" "stt_stalled" {
   display_name          = "${local.prefix} STT processing stalled"
   combiner              = "OR"
@@ -1750,6 +1761,28 @@ resource "google_monitoring_alert_policy" "retry_wait_overdue" {
     display_name = "A retry_wait job is overdue by more than ten minutes"
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.retry_wait_overdue.name}\" AND resource.type=\"cloud_run_revision\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+      trigger { count = 1 }
+    }
+  }
+  alert_strategy { auto_close = "3600s" }
+}
+
+resource "google_monitoring_alert_policy" "market_price_operational_failure" {
+  display_name          = "${local.prefix} market-price acquisition blocked"
+  combiner              = "OR"
+  notification_channels = local.alert_channels
+  conditions {
+    display_name = "Yahoo market-price search stalled or stopped by a safety contract"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.market_price_operational_failure.name}\" AND resource.type=\"cloud_run_revision\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"

@@ -1,5 +1,6 @@
 import type { AudioMetadata,VideoMetadata } from "./media.js";
 import type { Readable } from "node:stream";
+import type { MarketPriceProductCandidate,MarketPriceSearchQuery,ProductCondition, YahooSearchParameterSuggestion } from "@hanamaru/contracts";
 
 export interface UploadDeclaration {
   organizationId: string; objectName: string; mimeType: string; sizeBytes: number; sha256: string; expiresAt: Date;
@@ -71,6 +72,25 @@ export interface SpeechProvider {
   cancelTranscription?(providerOperationId:string,cleanupToken:string|null):Promise<void>;
 }
 export interface AiProvider {
+  identifyMarketProduct(input:{
+    inputMode:"image_assisted"|"manual_assisted";
+    productName:string;
+    category:string|null;
+    brand:string|null;
+    modelNumber:string|null;
+    attributes:Record<string,string>;
+    excludeKeywords:string[];
+    confirmedConditions:ProductCondition[];
+    images:Array<{content:Buffer;mimeType:"image/jpeg"|"image/png"|"image/webp"}>;
+  }):Promise<{model:string;productCandidates:MarketPriceProductCandidate[];searchQueries:MarketPriceSearchQuery[];excludeKeywords:string[];suggestedConditions:ProductCondition[];warnings:string[]}>;
+  planYahooSearch(input:{
+    selectedKeyword:string;
+    confirmedCategory:string|null;
+    confirmedBrand:string|null;
+    confirmedConditions:ProductCondition[];
+    categoryCandidates:Array<{key:string;label:string}>;
+    brandCandidates:Array<{key:string;label:string}>;
+  }):Promise<{model:string;suggestion:YahooSearchParameterSuggestion}>;
   extract(input: { text?: string; content?:Buffer; sourceUri?: string; mimeType?: string; schema: Record<string,unknown> }): Promise<{ model:string; fields:Array<{ key:string; value:unknown; page:number|null; excerpt:string|null; confidence:number|null }> }>;
   prepareVisit(input:{
     extractedFields:Array<{key:string;value:unknown;sourcePage:number|null;sourceExcerpt:string|null}>;
@@ -98,6 +118,9 @@ export interface AiProvider {
   review(input: { transcript: string; segments: Array<{ id:string; text:string }>; dimensions?:ReviewDimension[]; objective?: string; systemInstruction?:string; criteria?:unknown; promptVersion?:number; criteriaVersion?:number; modelName?:string }): Promise<{ model:string; summary:string; findings:Array<{ category:string; title:string; description:string; recommendedAction:string|null; evidenceSegmentIds:string[] }> }>;
   roleplay(input:{scenarioTitle:string;customerProfile:string;messages:Array<{role:"staff"|"customer";text:string}>}):Promise<{model:string;customerReply:string;feedback:Array<{category:string;message:string}>}>;
 }
+export interface MarketPriceSourceProvider {
+  fetchPage(url:string):Promise<{status:number;body:string;retryAfterSeconds:number|null;fetchedAt:string}>;
+}
 export const reviewDimensions=["strength","improvement","talk","compliance","next_action","revisit"] as const;
 export type ReviewDimension=typeof reviewDimensions[number];
 export interface DriveProvider {
@@ -108,4 +131,4 @@ export interface DriveProvider {
   openFile(input:{accessToken:string;fileId:string}):Promise<{source:Readable;mimeType:string;sizeBytes:number;sourceVersion:string|null;modifiedTime:string|null}>;
 }
 export interface TokenCipher { keyVersion:string; encrypt(plainText:string):Buffer; decrypt(cipherText:Buffer):string; }
-export interface PlatformProviders { storage: StorageProvider; tasks: TaskProvider; speech: SpeechProvider; ai: AiProvider; drive: DriveProvider; mode: "local"|"local-connected"|"gcp"; }
+export interface PlatformProviders { storage: StorageProvider; tasks: TaskProvider; speech: SpeechProvider; ai: AiProvider; drive: DriveProvider; marketPriceSource:MarketPriceSourceProvider; mode: "local"|"local-connected"|"gcp"; }

@@ -6,17 +6,24 @@ source "$(cd "$(dirname "$0")" && pwd)/local-lib.sh"
 
 skip_build=false
 open_browser=true
+fixture_mode=false
 for argument in "$@"; do
   case "$argument" in
     --skip-build) skip_build=true ;;
     --no-open) open_browser=false ;;
+    --fixture) fixture_mode=true ;;
     *) hanamaru_fail "unknown option: $argument" ;;
   esac
 done
 
 hanamaru_use_node22
-hanamaru_load_env
-"$HANAMARU_REPO_DIR/scripts/local-preflight.sh" --runtime
+if [[ "$fixture_mode" == true ]]; then
+  for command_name in pnpm brew curl jq openssl lsof; do hanamaru_require_command "$command_name"; done
+  hanamaru_pg_bin >/dev/null
+else
+  hanamaru_load_env
+  "$HANAMARU_REPO_DIR/scripts/local-preflight.sh" --runtime
+fi
 
 mkdir -p "$HANAMARU_PID_DIR" "$HANAMARU_LOG_DIR" "$HANAMARU_PG_SOCKET" "$HANAMARU_STORAGE_DIR"
 chmod 700 "$HANAMARU_RUNTIME_DIR" "$HANAMARU_STORAGE_DIR"
@@ -28,6 +35,10 @@ postgres_port="${LOCAL_POSTGRES_PORT:-54329}"
 pg_bin="$(hanamaru_pg_bin)"
 postgres_started=false
 services_started=false
+
+for port in "$web_port" "$api_port" "$worker_port" "$postgres_port"; do
+  hanamaru_port_in_use "$port" && hanamaru_fail "local runtime port $port は使用中です。既存processを停止するか LOCAL_*_PORT を変更してください。"
+done
 
 cleanup_failed_start() {
   local status=$?
@@ -51,6 +62,7 @@ if [[ "$skip_build" != true ]]; then
   -u LOCAL_ALLOWED_GOOGLE_EMAIL -u LOCAL_ALLOWED_ASSESSOR_GOOGLE_EMAIL -u LOCAL_ALLOWED_SYSTEM_ADMIN_EMAIL \
   NEXT_PUBLIC_DATA_MODE=api \
   NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
+  NEXT_PUBLIC_OFFLINE_E2E_AUTH="$([[ "$fixture_mode" == true ]] && printf enabled || printf disabled)" \
   pnpm build
 fi
 
@@ -90,13 +102,27 @@ HANAMARU_LOCAL_API_DB_PASSWORD="$api_database_password" HANAMARU_LOCAL_WORKER_DB
   -f "$HANAMARU_REPO_DIR/scripts/local-db-runtime-roles.sql" >"$HANAMARU_LOG_DIR/runtime-roles.log" 2>&1
 NODE_ENV=development DATABASE_CONTEXT_ROLE= pnpm --filter @hanamaru/database seed:dev >"$HANAMARU_LOG_DIR/seed.log" 2>&1
 NODE_ENV=development DATABASE_CONTEXT_ROLE= pnpm --filter @hanamaru/database content:import >"$HANAMARU_LOG_DIR/content-import.log" 2>&1
+"$pg_bin/psql" -h "$HANAMARU_PG_SOCKET" -p "$postgres_port" -d "$database_name" -v ON_ERROR_STOP=1 \
+  -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  >"$HANAMARU_LOG_DIR/market-price-feature.log" 2>&1
 
 api_database_url="postgresql://hanamaru_local_api:$api_database_password@127.0.0.1:$postgres_port/$database_name"
 worker_database_url="postgresql://hanamaru_local_worker:$worker_database_password@127.0.0.1:$postgres_port/$database_name"
 
-export NODE_ENV=production
-export PROVIDER_MODE=local-connected
-export ALLOW_DEV_AUTH=false
+if [[ "$fixture_mode" == true ]]; then
+  runtime_node_env=test
+  runtime_provider_mode=local
+  runtime_dev_auth=true
+  runtime_label="production-build/local-fixture"
+else
+  runtime_node_env=production
+  runtime_provider_mode=local-connected
+  runtime_dev_auth=false
+  runtime_label="production-build/local-connected"
+fi
+export NODE_ENV="$runtime_node_env"
+export PROVIDER_MODE="$runtime_provider_mode"
+export ALLOW_DEV_AUTH="$runtime_dev_auth"
 export API_HOST=127.0.0.1
 export API_PORT="$api_port"
 export WORKER_HOST=127.0.0.1
@@ -109,7 +135,7 @@ env -u LIVE_E2E_GOOGLE_ID_TOKEN -u LIVE_E2E_ASSESSOR_GOOGLE_ID_TOKEN \
   -u LIVE_E2E_GOOGLE_DRIVE_REFRESH_TOKEN -u LIVE_E2E_GOOGLE_DRIVE_FILE_ID \
   -u LIVE_E2E_PDF_PATH -u LIVE_E2E_AUDIO_PATH \
   -u LOCAL_ALLOWED_GOOGLE_EMAIL -u LOCAL_ALLOWED_ASSESSOR_GOOGLE_EMAIL -u LOCAL_ALLOWED_SYSTEM_ADMIN_EMAIL \
-  NODE_ENV=production DATABASE_URL="$api_database_url" DATABASE_CONTEXT_ROLE=hanamaru_api DATABASE_SYSTEM_ROLE=hanamaru_api_system \
+  NODE_ENV="$runtime_node_env" PROVIDER_MODE="$runtime_provider_mode" ALLOW_DEV_AUTH="$runtime_dev_auth" LOCAL_PROVIDER_TEST_FIXTURES="$([[ "$fixture_mode" == true ]] && printf enabled || printf disabled)" DATABASE_URL="$api_database_url" DATABASE_CONTEXT_ROLE=hanamaru_api DATABASE_SYSTEM_ROLE=hanamaru_api_system \
   nohup node apps/api/dist/server.js </dev/null >>"$HANAMARU_LOG_DIR/api.log" 2>&1 &
 api_pid=$!
 printf '%s\n' "$api_pid" > "$HANAMARU_PID_DIR/api.pid"
@@ -118,7 +144,7 @@ env -u LIVE_E2E_GOOGLE_ID_TOKEN -u LIVE_E2E_ASSESSOR_GOOGLE_ID_TOKEN \
   -u LIVE_E2E_GOOGLE_DRIVE_REFRESH_TOKEN -u LIVE_E2E_GOOGLE_DRIVE_FILE_ID \
   -u LIVE_E2E_PDF_PATH -u LIVE_E2E_AUDIO_PATH \
   -u LOCAL_ALLOWED_GOOGLE_EMAIL -u LOCAL_ALLOWED_ASSESSOR_GOOGLE_EMAIL -u LOCAL_ALLOWED_SYSTEM_ADMIN_EMAIL \
-  NODE_ENV=production DATABASE_URL="$worker_database_url" DATABASE_CONTEXT_ROLE=hanamaru_worker DATABASE_SYSTEM_ROLE=hanamaru_worker_system \
+  NODE_ENV="$runtime_node_env" PROVIDER_MODE="$runtime_provider_mode" LOCAL_PROVIDER_TEST_FIXTURES="$([[ "$fixture_mode" == true ]] && printf enabled || printf disabled)" DATABASE_URL="$worker_database_url" DATABASE_CONTEXT_ROLE=hanamaru_worker DATABASE_SYSTEM_ROLE=hanamaru_worker_system \
   nohup node apps/worker/dist/server.js </dev/null >>"$HANAMARU_LOG_DIR/worker.log" 2>&1 &
 worker_pid=$!
 printf '%s\n' "$worker_pid" > "$HANAMARU_PID_DIR/worker.pid"
@@ -126,6 +152,7 @@ printf '%s\n' "$worker_pid" > "$HANAMARU_PID_DIR/worker.pid"
 pushd "$HANAMARU_REPO_DIR/apps/web" >/dev/null
 nohup env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$web_port" HOSTNAME=127.0.0.1 \
   NEXT_PUBLIC_DATA_MODE=api NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
+  NEXT_PUBLIC_OFFLINE_E2E_AUTH="$([[ "$fixture_mode" == true ]] && printf enabled || printf disabled)" \
   node node_modules/next/dist/bin/next start -H 127.0.0.1 -p "$web_port" </dev/null >>"$HANAMARU_LOG_DIR/web.log" 2>&1 &
 web_pid=$!
 popd >/dev/null
@@ -146,7 +173,8 @@ jq -n \
   --arg node "$(node --version)" \
   --arg pnpm "$(pnpm --version)" \
   --arg url "http://127.0.0.1:$web_port/login" \
-  '{startedAt:$startedAt,gitSha:$gitSha,node:$node,pnpm:$pnpm,url:$url,mode:"production-build/local-connected"}' \
+  --arg mode "$runtime_label" \
+  '{startedAt:$startedAt,gitSha:$gitSha,node:$node,pnpm:$pnpm,url:$url,mode:$mode}' \
   > "$HANAMARU_RUNTIME_DIR/status.json"
 
 trap - EXIT

@@ -284,3 +284,244 @@
 @media (prefers-reduced-motion: reduce) { .primaryButton,.secondaryButton,.dangerButton,.googleButton { transition: opacity 100ms; }.primaryButton:active,.secondaryButton:active,.dangerButton:active,.googleButton:active { transform: none; opacity: .75; } }
 @media (prefers-contrast: more) { .chatWorkspace,.homeAside > section,.tablePane,.detailPane,.pdfPane,.formPane,.prepSummary,.prepMain,.prepAside section,.recordingPane,.transcriptPane,.editorPane,.conditionPane,.evidencePane,.analysisPane,.historyList,.reviewDetail,.categoryPane,.resultPane,.contentDetail,.referenceTable,.videoList,.videoPlayer,.scenarioList,.roleplayChat,.feedbackPane,.adminList,.adminEditor,.adminPreview,.dangerPane,.approvalList,.diffPane,.analyticsGrid > section { border-color: #59595e; } }
 @media (prefers-reduced-transparency: reduce) { .modal::backdrop { backdrop-filter: none; background: rgba(13,24,36,.62); } }
+
+/* Digital Agency Design System v2.17.1 — shared application layer */
+.pageTitle { min-height: 0; margin-bottom: 1.5rem; align-items: flex-end; }
+.pageTitle h1 { font-size: 2rem; line-height: 1.5; letter-spacing: 0; }
+.pageTitle p { margin-top: .25rem; color: var(--color-ink-secondary); font-size: 1rem; line-height: 1.7; }
+.kicker { color: var(--color-accent-strong); font-size: .875rem; line-height: 1.5; letter-spacing: 0; }
+.muted { color: var(--color-ink-secondary); font-size: .875rem; line-height: 1.6; }
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.googleButton,
+.textButton,
+.tableSelectButton {
+  min-height: 3rem;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 700;
+  box-shadow: none;
+}
+.primaryButton { border-color: var(--color-accent); background: var(--color-accent); }
+.primaryButton:hover { border-color: var(--color-accent-strong); background: var(--color-accent-strong); }
+.primaryButton:active { background: var(--dads-color-key-1000); }
+.secondaryButton { border-color: var(--color-accent); color: var(--color-accent-strong); background: var(--color-surface); }
+.secondaryButton:hover { border-color: var(--color-accent-strong); color: var(--color-accent-strong); background: var(--dads-color-key-50); text-decoration: underline; text-underline-offset: .2em; }
+.dangerButton { border-color: var(--color-danger); color: var(--color-danger); background: var(--color-surface); }
+.dangerButton:hover { color: #fff; background: var(--color-danger); }
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled { border-color: var(--dads-color-neutral-300); color: var(--dads-color-neutral-536); background: var(--dads-color-neutral-50); opacity: 1; }
+.textButton { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: .2em; }
+.primaryButton:active,
+.secondaryButton:active,
+.dangerButton:active,
+.googleButton:active { transform: none; }
+
+.subnav { min-height: 3.25rem; margin-bottom: 1.5rem; padding: 0; gap: 1.75rem; }
+.subnav a { min-height: 3.25rem; padding: .875rem .25rem .75rem; border-bottom-width: .25rem; font-size: 1rem; }
+.subnav a:hover { color: var(--color-accent-strong); text-decoration: underline; text-underline-offset: .2em; }
+.subnav a[aria-current="page"] { border-color: var(--color-accent); color: var(--color-accent-strong); }
+
+.status { padding: .25rem .5rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); color: var(--color-ink); background: var(--color-surface); font-size: .8125rem; line-height: 1.4; }
+
+.chatWorkspace,
+.homeAside > section,
+.tablePane,
+.detailPane,
+.pdfPane,
+.formPane,
+.prepSummary,
+.prepMain,
+.prepAside section,
+.recordingPane,
+.transcriptPane,
+.editorPane,
+.conditionPane,
+.evidencePane,
+.analysisPane,
+.historyList,
+.reviewDetail,
+.categoryPane,
+.resultPane,
+.contentDetail,
+.referenceTable,
+.videoList,
+.videoPlayer,
+.scenarioList,
+.roleplayChat,
+.feedbackPane,
+.adminList,
+.adminEditor,
+.adminPreview,
+.dangerPane,
+.approvalList,
+.diffPane,
+.analyticsGrid > section,
+.metrics article,
+.retentionPolicies article,
+.retentionBindings,
+.healthSummary {
+  border-color: var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+.paneHeader h2,
+.homeAside h2,
+.answer h2,
+.prepGrid h2,
+.reviewDetail h2,
+.contentDetail h2,
+.videoList h2,
+.videoPlayer h2,
+.scenarioList h2,
+.roleplayChat header h2,
+.feedbackPane h2,
+.adminEditor h2,
+.adminPreview h2,
+.dangerPane h2,
+.approvalList h2,
+.diffPane header h2,
+.analyticsGrid h2,
+.retentionBindings h2,
+.healthSummary h2 { font-size: 1.25rem; line-height: 1.5; }
+
+.question p,
+.answer p,
+.composer textarea,
+.prepGrid p,
+.prepAside blockquote,
+.recordingPane p,
+.transcriptList p,
+.evidencePane p,
+.analysisPane p,
+.reviewDetail article p,
+.contentDetail p,
+.contentDetail li,
+.contentDetail dd,
+.readableBody,
+.videoPlayer p,
+.videoPlayer li,
+.messages p,
+.roleplayChat textarea,
+.feedbackPane p,
+.adminPreview p,
+.dangerPane p,
+.healthEmpty { font-size: 1rem; line-height: 1.7; }
+.readableBody,
+.contentDetail p,
+.contentDetail li,
+.contentDetail dd,
+.videoPlayer p,
+.videoPlayer li { line-height: 1.75; }
+
+.searchBox,
+.filterSelect select,
+.modalForm input,
+.modalForm select,
+.modalForm textarea,
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.adminEditor input,
+.adminEditor select,
+.adminEditor textarea,
+.detailPane select,
+.conditionPane textarea,
+.editorPane textarea,
+.transcriptPane textarea,
+.roleplayChat textarea,
+.selfNote textarea,
+.retentionBindings select {
+  min-height: 3rem;
+  border-color: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.searchBox { background: var(--color-surface); }
+.searchBox:focus-within { border-color: var(--dads-color-focus-black); box-shadow: 0 0 0 3px var(--dads-color-focus-yellow); }
+.formGrid label,
+.adminEditor label,
+.modalForm label,
+.detailPane label,
+.conditionPane > label,
+.transcriptList label { color: var(--color-ink); font-size: 1rem; line-height: 1.5; font-weight: 700; }
+
+.tablePane table,
+.referenceTable table,
+.analyticsGrid table { font-size: .9375rem; line-height: 1.55; }
+.tablePane th,
+.referenceTable th,
+.analyticsGrid th { color: var(--color-ink); background: var(--dads-color-neutral-50); font-size: .875rem; font-weight: 700; }
+.tablePane th,
+.tablePane td,
+.referenceTable th,
+.referenceTable td,
+.analyticsGrid th,
+.analyticsGrid td { border-color: var(--color-border); }
+.tablePane tr[data-selected="true"],
+.tablePane tr:hover { background: var(--dads-color-key-50); }
+
+.modal { border-radius: var(--radius-xl); box-shadow: var(--shadow-float); }
+.modal::backdrop { background: rgba(0,0,0,.48); backdrop-filter: none; }
+.modal > section { border-radius: var(--radius-xl); }
+.modal > section > header { min-height: 4rem; }
+.modal h2 { font-size: 1.25rem; line-height: 1.5; }
+.modal header button { border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm); }
+
+.pilotNotice,
+.notice,
+.recovery,
+.qualityWarning,
+.callout {
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+.pilotNotice,
+.notice { border-left: .25rem solid var(--color-accent); }
+.recovery,
+.qualityWarning { border-left: .25rem solid var(--color-warning); }
+.pilotNotice p,
+.notice span,
+.recovery p,
+.qualityWarning p,
+.qualityWarning li,
+.callout p { font-size: 1rem; line-height: 1.7; }
+
+.segmented { padding: .25rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--dads-color-neutral-50); }
+.segmented button { min-height: 2.75rem; border-radius: var(--radius-sm); font-size: .9375rem; }
+.segmented button[data-active="true"],
+.segmented button[aria-pressed="true"] { color: var(--color-accent-strong); background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-accent); }
+
+.loginPage { background: var(--color-canvas); }
+.loginCard { padding: 2.5rem 2.25rem; border-color: var(--color-border); border-radius: var(--radius-lg); box-shadow: none; }
+.loginBrand { border-radius: var(--radius-sm); background: var(--color-accent); box-shadow: none; }
+.loginCard h1 { font-size: 2rem; line-height: 1.5; letter-spacing: 0; }
+.loginCard p { font-size: 1rem; line-height: 1.7; }
+.helpLink { font-size: .875rem; text-decoration: underline; text-underline-offset: .2em; }
+
+@media (max-width: 47.99rem) {
+  .pageTitle h1 { font-size: var(--font-mobile-page-title); line-height: 1.5; }
+  .pageTitle p { font-size: var(--font-mobile-body); }
+  .subnav { gap: 1rem; }
+  .subnav a { font-size: .9375rem; }
+  .mobilePaneTabs { border-radius: var(--radius-sm); background: var(--dads-color-neutral-50); }
+  .mobilePaneTabs button { border-radius: var(--radius-sm); font-size: .875rem; }
+  .mobilePaneTabs button[aria-current="page"] { color: var(--color-accent-strong); box-shadow: inset 0 -3px 0 var(--color-accent); }
+  .compactVisitStepper,
+  .tablePane tbody tr,
+  .referenceTable tbody tr,
+  .analyticsGrid tbody tr,
+  .transcriptList details { border-radius: var(--radius-md); box-shadow: none; }
+  .mobileSearchResults,
+  .mobileContinueButton { min-height: 3rem; border-radius: var(--radius-sm) !important; }
+  .mobileStickyAction,
+  .stickyActions { border-top: 1px solid var(--color-border); background: var(--color-surface); box-shadow: 0 -4px 12px rgba(0,0,0,.08); }
+}

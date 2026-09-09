@@ -28,16 +28,16 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
     try{
       const dryRun=await bootstrapProduction(pool,config);
       expect(dryRun.mode).toBe("dry-run");
-      expect(dryRun.created).toHaveLength(22);
+      expect(dryRun.created).toHaveLength(24);
       expect((await pool.query("SELECT 1 FROM organizations WHERE organization_key=$1",[config.organizationKey])).rowCount).toBe(0);
 
       const applied=await bootstrapProduction(pool,config,true);
       expect(applied.mode).toBe("apply");
-      expect(applied.created).toHaveLength(22);
+      expect(applied.created).toHaveLength(24);
       expect(JSON.stringify(applied)).not.toContain(email);
       const repeated=await bootstrapProduction(pool,config,true);
       expect(repeated.created).toEqual([]);
-      expect(repeated.existing).toHaveLength(22);
+      expect(repeated.existing).toHaveLength(24);
 
       const organization=await pool.query<{id:string}>("SELECT id FROM organizations WHERE organization_key=$1",[config.organizationKey]);
       organizationId=organization.rows[0]?.id;
@@ -58,12 +58,12 @@ describe.skipIf(!databaseUrl)("production database bootstrap",()=>{
       await pool.query("UPDATE feature_flags SET enabled=true,owner_membership_id=$2,rollback_note='運用判断による継続',updated_at=now() WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId,operationalMembershipId]);
       const reappliedAfterOperationalChange=await bootstrapProduction(pool,config,true);
       expect(reappliedAfterOperationalChange).toMatchObject({mode:"apply",created:[]});
-      expect(reappliedAfterOperationalChange.existing).toHaveLength(22);
+      expect(reappliedAfterOperationalChange.existing).toHaveLength(24);
       expect((await pool.query<{enabled:boolean;owner_membership_id:string;rollback_note:string}>("SELECT enabled,owner_membership_id,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]).toEqual({enabled:true,owner_membership_id:operationalMembershipId,rollback_note:"運用判断による継続"});
 
       const dryRunAfterOperationalChange=await bootstrapProduction(pool,config);
       expect(dryRunAfterOperationalChange).toMatchObject({mode:"dry-run",created:[]});
-      expect(dryRunAfterOperationalChange.existing).toHaveLength(22);
+      expect(dryRunAfterOperationalChange.existing).toHaveLength(24);
       expect((await pool.query<{enabled:boolean;owner_membership_id:string;rollback_note:string}>("SELECT enabled,owner_membership_id,rollback_note FROM feature_flags WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId])).rows[0]).toEqual({enabled:true,owner_membership_id:operationalMembershipId,rollback_note:"運用判断による継続"});
 
       await pool.query("UPDATE feature_flags SET target_rule='{\"branchIds\":[]}'::jsonb WHERE organization_id=$1 AND flag_key='team_analytics'",[organizationId]);

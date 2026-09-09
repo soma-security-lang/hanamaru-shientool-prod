@@ -31,6 +31,7 @@ function canonicalRoutes(){return [
   ["SCR-016","/admin/contents"],["SCR-017","/admin/users"],
   ["SCR-018","/admin/operations"],["SCR-019","/admin/approvals"],
   ["SCR-020","/admin/analytics"],
+  ["SCR-021","/market-price"],
 ] as const;}
 
 async function waitForResolvedScreen(page:Page,path:string){
@@ -48,7 +49,7 @@ async function expectCurrentMobileNavigation(page:Page){
   await expect(mobileNavigation).toBeVisible();
   await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveCount(5);
   await expect(mobileNavigation.locator(":scope > a, :scope > button")).toHaveText([
-    "ホーム","訪問","振り返り","知識","その他",
+    "ホーム","訪問","買取相場","振り返り","その他",
   ]);
 }
 
@@ -77,7 +78,7 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>api?.dispose());
 test.beforeEach(async({context})=>addRole(context));
 
-test("all 20 API-backed screens render and remain free of serious accessibility violations",async({page})=>{
+test("all 21 API-backed screens render and remain free of serious accessibility violations",async({page})=>{
   test.setTimeout(240_000);
   await page.goto(`${webBase}/`);
   expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith("firebase:authUser:")))).toEqual([]);
@@ -123,6 +124,45 @@ test("operations exposes aggregate health and per-visit retention without body d
   await expect(page.getByRole("columnheader",{name:"削除予定日"})).toBeVisible();
 });
 
+test("market price completes image-assisted, manual-assisted, and manual-direct workflows",async({page,browserName})=>{
+  test.setTimeout(180_000);
+  async function start(mode:"画像＋AI補助"|"手入力＋AI補助"|"手入力のみ",suffix:string){
+    await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+    await page.getByRole("radio",{name:new RegExp(mode)}).check();
+    if(mode==="画像＋AI補助"){
+      const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWMIyOv5D8IMMAYATgAJJbPQh8gAAAAASUVORK5CYII=","base64");
+      await page.locator('input[type="file"]').setInputFiles({name:`market-${suffix}.png`,mimeType:"image/png",buffer:png});
+    }
+    await page.getByLabel(/商品名/).fill(`Canon EOS R6 ボディ ${suffix}`);
+    if(mode!=="手入力のみ"){
+      await page.getByLabel(/ブランド/).fill("Canon");
+      await page.getByLabel(/型番/).fill(`EOS R6 ${suffix}`);
+    }
+    if(mode==="手入力のみ")await page.getByLabel(/検索キーワード/).fill(`Canon EOS R6 ボディ ${suffix}`);
+    await page.getByRole("button",{name:/検索条件を確認/}).click();
+    await expect(page).toHaveURL(/\/market-price\?view=identify&searchId=[0-9a-f-]{36}/);
+    if(mode!=="手入力のみ"){
+      await page.getByRole("button",{name:"採用して編集"}).first().click({timeout:30_000});
+      await page.getByRole("radio",{name:/Canon EOS R6/}).first().check();
+    }
+    await page.getByRole("button",{name:/直近90日を検索/}).click();
+    await expect(page.getByRole("heading",{name:"落札候補を確認"})).toBeVisible({timeout:60_000});
+  }
+
+  await start("画像＋AI補助",`${browserName}-image`);
+  const firstToggle=page.getByRole("button",{name:"集計から除外"}).first();await firstToggle.click();
+  await expect(page.getByRole("button",{name:"集計へ戻す"}).first()).toBeVisible();
+  await page.getByRole("button",{name:"集計へ戻す"}).first().click();
+  await page.getByRole("button",{name:"基準を再適用"}).click();
+  await page.getByRole("button",{name:/この相場を確定/}).click();
+  await expect(page.getByText("相場を確定しました")).toBeVisible({timeout:30_000});
+  const confirmedUrl=page.url();await page.reload();await expect(page).toHaveURL(confirmedUrl);await expect(page.getByText("相場を確定しました")).toBeVisible();
+  await page.getByRole("button",{name:"履歴を見る"}).click();await expect(page.getByRole("heading",{name:"買取相場の履歴"})).toBeVisible();
+
+  await start("手入力＋AI補助",`${browserName}-assisted`);
+  await start("手入力のみ",`${browserName}-direct`);
+});
+
 test("mobile navigation and progressive panes preserve URL-addressable state",async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await page.goto(`${webBase}/`);
@@ -148,7 +188,17 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await expect(page.getByRole("button",{name:"検索結果へ戻る"})).toBeVisible();
 });
 
-test("smartphone business content uses the readable typography scale without changing shell density",async({page})=>{
+test("keyboard focus uses the high-visibility DADS double indicator",async({page})=>{
+  await page.goto(`${webBase}/visits`);await waitForResolvedScreen(page,"/visits");
+  const action=page.getByRole("link",{name:"PDFから訪問を登録"});
+  await action.focus();
+  const focusStyle=await action.evaluate(element=>{const style=getComputedStyle(element);return{outlineColor:style.outlineColor,outlineWidth:style.outlineWidth,boxShadow:style.boxShadow};});
+  expect(focusStyle.outlineColor).toBe("rgb(0, 0, 0)");
+  expect(focusStyle.outlineWidth).toBe("2px");
+  expect(focusStyle.boxShadow).toContain("rgb(255, 212, 61)");
+});
+
+test("smartphone business content and navigation use the readable typography scale",async({page})=>{
   test.setTimeout(240_000);
   await page.setViewportSize({width:390,height:844});
   const allUndersized:Array<{screenId:string;tag:string;text:string;fontSize:string}>=[];
@@ -173,10 +223,31 @@ test("smartphone business content uses the readable typography scale without cha
   await page.goto(`${webBase}/`);await waitForResolvedScreen(page,"/");
   await expect(page.locator("main h1")).toHaveCSS("font-size","26px");
   await expect(page.locator("main textarea")).toHaveCSS("font-size","16px");
-  await expect(page.getByRole("navigation",{name:"モバイルナビゲーション"}).getByRole("link",{name:"ホーム"})).toHaveCSS("font-size","10.88px");
+  await expect(page.getByRole("navigation",{name:"モバイルナビゲーション"}).getByRole("link",{name:"ホーム"})).toHaveCSS("font-size","12px");
 
   await page.setViewportSize({width:768,height:1024});
-  await expect(page.locator("main h1")).toHaveCSS("font-size","26.4px");
+  await expect(page.locator("main h1")).toHaveCSS("font-size","32px");
+});
+
+test("market price input methods stay readable at panel and smartphone widths",async({page})=>{
+  async function assertSingleColumn(width:number,height:number){
+    await page.setViewportSize({width,height});
+    await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+    const cards=page.locator('main input[name="inputMode"]').locator("..");
+    await expect(cards).toHaveCount(3);
+    const cardBoxes=await cards.evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return{x:rect.x,y:rect.y,width:rect.width,height:rect.height};}));
+    expect(cardBoxes[0].width).toBeGreaterThan(width<=430?280:400);
+    expect(cardBoxes[1].y).toBeGreaterThan(cardBoxes[0].y+cardBoxes[0].height-1);
+    expect(cardBoxes[2].y).toBeGreaterThan(cardBoxes[1].y+cardBoxes[1].height-1);
+    const titles=cards.locator("strong");
+    for(let index=0;index<await titles.count();index++){
+      const metrics=await titles.nth(index).evaluate(element=>{const style=getComputedStyle(element);return{height:element.getBoundingClientRect().height,lineHeight:Number.parseFloat(style.lineHeight)};});
+      expect(metrics.height).toBeLessThanOrEqual(metrics.lineHeight*1.25);
+    }
+  }
+  await assertSingleColumn(1440,900);
+  await assertSingleColumn(390,844);
+  await assertSingleColumn(360,800);
 });
 
 test("200 percent reflow and a reduced keyboard viewport keep focused input above navigation",async({page})=>{
@@ -196,7 +267,7 @@ test("200 percent reflow and a reduced keyboard viewport keep focused input abov
   expect(geometry.inputBottom).toBeLessThanOrEqual(geometry.navigationTop);
 });
 
-test("all 20 screens remain horizontally bounded at all eight responsive widths",async({page})=>{
+test("all 21 screens remain horizontally bounded at all eight responsive widths",async({page})=>{
   test.setTimeout(480_000);
   for(const [width,height] of [[320,720],[360,800],[390,844],[430,932],[768,1024],[834,1112],[1024,768],[1440,900]] as const){
     await page.setViewportSize({width,height});

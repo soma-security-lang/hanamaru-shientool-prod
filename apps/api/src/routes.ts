@@ -65,6 +65,26 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.post<{Params:{id:string}}>("/api/v1/reviews/:id/acknowledgements",async(r,reply)=>send(reply,service.acknowledgeReview(r.auth,r.params.id,key(r),body(r))));
   app.get("/api/v1/history",async r=>service.history(r.auth));
 
+  app.post("/api/v1/market-price/identifications",async(r,reply)=>send(reply,service.createMarketPriceIdentification(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>("/api/v1/market-price/identifications/:id",async r=>service.getMarketPriceIdentification(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/identifications/:id/image-uploads",async(r,reply)=>send(reply,service.startMarketPriceImageUpload(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{uploadId:string}}>("/api/v1/market-price/image-uploads/:uploadId/complete",async(r,reply)=>send(reply,service.completeMarketPriceImageUpload(r.auth,r.params.uploadId,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/identifications/:id/analyze",async(r,reply)=>send(reply,service.analyzeMarketPriceIdentification(r.auth,r.params.id,key(r),body(r))));
+  app.patch<{Params:{id:string}}>("/api/v1/market-price/identifications/:id",async(r,reply)=>send(reply,service.updateMarketPriceIdentification(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/identifications/:id/confirm",async(r,reply)=>send(reply,service.confirmMarketPriceIdentification(r.auth,r.params.id,key(r),body(r))));
+  app.get("/api/v1/market-price/options",async r=>service.marketPriceOptions(r.auth));
+  app.get("/api/v1/market-price/searches",async r=>service.listMarketPriceSearches(r.auth));
+  app.post("/api/v1/market-price/searches",async(r,reply)=>send(reply,service.createMarketPriceSearch(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>("/api/v1/market-price/searches/:id",async r=>service.getMarketPriceSearch(r.auth,r.params.id));
+  app.patch<{Params:{id:string;candidateId:string}}>("/api/v1/market-price/searches/:id/candidates/:candidateId",async(r,reply)=>send(reply,service.overrideMarketPriceCandidate(r.auth,r.params.id,r.params.candidateId,key(r),body(r))));
+  app.patch<{Params:{id:string}}>("/api/v1/market-price/searches/:id/outlier-policy",async(r,reply)=>send(reply,service.updateMarketPriceOutlierPolicy(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/searches/:id/confirm",async(r,reply)=>send(reply,service.confirmMarketPriceSearch(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/searches/:id/retry",async(r,reply)=>send(reply,service.retryMarketPriceSearch(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/searches/:id/cancel",async(r,reply)=>send(reply,service.cancelMarketPriceSearch(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/market-price/searches/:id/repeat",async(r,reply)=>send(reply,service.repeatMarketPriceSearch(r.auth,r.params.id,key(r),body(r))));
+  app.get("/api/v1/admin/market-price/source-mappings",async r=>service.listMarketPriceSourceMappings(r.auth));
+  app.put<{Params:{key:string}}>("/api/v1/admin/market-price/source-mappings/:key",async(r,reply)=>send(reply,service.upsertMarketPriceSourceMapping(r.auth,r.params.key,key(r),body(r))));
+
   app.get("/api/v1/contents",async r=>service.listContents(r.auth,query(r)));
   app.get<{Params:{id:string}}>("/api/v1/contents/:id",async r=>service.getContent(r.auth,r.params.id));
   app.post("/api/v1/contents",async(r,reply)=>send(reply,service.createContent(r.auth,key(r),body(r))));

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { RequestContext } from "@hanamaru/contracts";
+import sharp from "sharp";
+import type { MarketPriceOutlierPolicy,ProductCondition,RequestContext,YahooClosedSearchSpec } from "@hanamaru/contracts";
 import type {
   HanamaruRepository,
   RepositoryTransaction,
@@ -11,6 +12,7 @@ import type {
   TokenCipher,
 } from "@hanamaru/platform";
 import { createTokenCipher,type ReviewDimension } from "@hanamaru/platform";
+import { evaluateMarketPriceCandidates,generateYahooClosedSearchUrl,mapProductConditions,MARKET_PRICE_POLICY,pageOffset,parseYahooClosedSearchHtml,resolveYahooDimensionMapping,YAHOO_PARAMETER_REGISTRY_VERSION,YAHOO_RESULT_PARSER_VERSION,YAHOO_URL_GENERATOR_VERSION,YahooClosedSearchContractError,type YahooClosedSearchItem,type YahooDimensionMapping } from "@hanamaru/market-price";
 
 interface ClaimedJob {
   id: string;
@@ -88,6 +90,7 @@ export function transcriptQualityInputChunks(segments:QualitySegment[]):QualityS
 }
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+async function streamBuffer(source:NodeJS.ReadableStream,maxBytes=52_428_800):Promise<Buffer>{const chunks:Buffer[]=[];let size=0;for await(const chunk of source){const body=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);size+=body.length;if(size>maxBytes)throw new Error("PROVIDER_PERMANENT: market price image exceeds memory limit");chunks.push(body);}return Buffer.concat(chunks,size);}
 export function reviewChunks(segments:Array<{id:string;text:string;sequence_no:number}>,targetCharacters=16000){
   const chunks:Array<typeof segments>=[];let current:typeof segments=[];let size=0;
   for(const segment of segments){const next=segment.text.length+1;if(current.length&&size+next>targetCharacters){chunks.push(current);current=[];size=0;}current.push(segment);size+=next;}
@@ -583,6 +586,10 @@ export class WorkerProcessor {
         return this.transcribe(ctx, job);
       case "review":
         return this.review(ctx, job);
+      case "market_price_identification":
+        return this.marketPriceIdentification(ctx,job);
+      case "market_price_search":
+        return this.marketPriceSearch(ctx,job);
       case "delete":
         return this.remove(ctx, job);
       case "retention_scan":
@@ -664,6 +671,10 @@ export class WorkerProcessor {
         "UPDATE drive_imports SET status='failed' WHERE organization_id=$1 AND id=$2 AND status='copying'",
         [job.organization_id, job.entity_id],
       );
+    } else if(job.job_type==="market_price_search"){
+      await tx.query("UPDATE market_price_searches SET status='failed',coverage_status=CASE WHEN coverage_status='blocked' THEN 'blocked' ELSE 'partial' END,failure_class=COALESCE(failure_class,'WORKER_FAILED'),completed_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('ready','partial','blocked')",[job.organization_id,job.entity_id]);
+    } else if(job.job_type==="market_price_identification"){
+      await tx.query("UPDATE market_price_identifications SET status='failed',failure_class='IDENTIFICATION_FAILED' WHERE organization_id=$1 AND id=$2 AND status='analyzing'",[job.organization_id,job.entity_id]);
     }
   }
 
@@ -686,6 +697,10 @@ export class WorkerProcessor {
         "UPDATE drive_imports SET status='cancelled' WHERE organization_id=$1 AND id=$2 AND status='copying'",
         [job.organization_id, job.entity_id],
       );
+    else if(job.job_type==="market_price_identification")
+      await tx.query("UPDATE market_price_identifications SET status='draft' WHERE organization_id=$1 AND id=$2 AND status='analyzing'",[job.organization_id,job.entity_id]);
+    else if(job.job_type==="market_price_search")
+      await tx.query("UPDATE market_price_searches SET status='cancelled',completed_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('ready','partial','confirmed')",[job.organization_id,job.entity_id]);
   }
 
   private async assertNotCancelled(job: ClaimedJob): Promise<void> {
@@ -1476,6 +1491,129 @@ export class WorkerProcessor {
     });
   }
 
+  private async marketPriceIdentification(ctx:RequestContext,job:ClaimedJob):Promise<void>{
+    type IdentificationRow={id:string;input_mode:"image_assisted"|"manual_assisted";input_redacted:Record<string,unknown>;status:string};
+    type ImageRow={id:string;status:string;storage_object_id:string;object_name:string;object_generation:string;mime_type:"image/jpeg"|"image/png"|"image/webp"};
+    const prepared=await this.repository.withContext(ctx,async tx=>{
+      const enabled=await tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_search' AND (expires_at IS NULL OR expires_at>now())",[job.organization_id]);if(!enabled.rows[0]?.enabled)throw new Error("PROVIDER_PERMANENT: market price feature is disabled");
+      const found=await tx.query<IdentificationRow>("SELECT id,input_mode,input_redacted,status FROM market_price_identifications WHERE organization_id=$1 AND id=$2 FOR UPDATE",[job.organization_id,job.entity_id]);const identification=found.rows[0];if(!identification||identification.status!=="analyzing")throw new Error("PROVIDER_PERMANENT: market price identification is not available");
+      const images=await tx.query<ImageRow>(`SELECT image.id,image.status,image.storage_object_id,o.object_name,o.object_generation::text,o.mime_type
+        FROM market_price_images image JOIN storage_objects o ON o.id=image.storage_object_id AND o.organization_id=image.organization_id
+        WHERE image.organization_id=$1 AND image.identification_id=$2 AND image.deleted_at IS NULL AND o.status='available' ORDER BY image.created_at,image.id`,[job.organization_id,job.entity_id]);
+      if(identification.input_mode==="image_assisted"&&!images.rows.length)throw new Error("PROVIDER_PERMANENT: product image is required");
+      await tx.query("UPDATE market_price_images SET status='normalizing' WHERE organization_id=$1 AND identification_id=$2 AND status='uploaded'",[job.organization_id,job.entity_id]);return{identification,images:images.rows};
+    });
+    const images:Array<{content:Buffer;mimeType:"image/jpeg"|"image/png"|"image/webp"}>=[];
+    for(const image of prepared.images){
+      await this.assertNotCancelled(job);const original=await streamBuffer(await this.providers.storage.openRead(image.object_name,image.object_generation),10_485_760);
+      if(image.status==="uploaded"||image.status==="normalizing"){
+        const pipeline=sharp(original,{failOn:"warning"}).rotate().resize({width:2048,height:2048,fit:"inside",withoutEnlargement:true}).webp({quality:90});const metadata=await pipeline.metadata();const normalized=await pipeline.toBuffer();const objectName=`organizations/${job.organization_id}/market-price/${job.entity_id}/${image.id}/normalized.webp`;const stored=await this.providers.storage.put({organizationId:job.organization_id,objectName,mimeType:"image/webp",body:normalized});
+        try{await this.repository.withContext(ctx,async tx=>{await tx.query("UPDATE storage_objects SET object_name=$3,object_generation=$4,mime_type=$5,size_bytes=$6,sha256=$7 WHERE organization_id=$1 AND id=$2",[job.organization_id,image.storage_object_id,stored.objectName,Number(stored.generation),stored.mimeType,stored.sizeBytes,stored.sha256]);await tx.query("UPDATE market_price_images SET status='ready',width=$3,height=$4 WHERE organization_id=$1 AND id=$2",[job.organization_id,image.id,metadata.width??null,metadata.height??null]);});}catch(error){await this.providers.storage.delete(stored.objectName,stored.generation).catch(()=>undefined);throw error;}
+        await this.providers.storage.delete(image.object_name,image.object_generation);images.push({content:normalized,mimeType:"image/webp"});
+      }else{images.push({content:original,mimeType:image.mime_type});}
+    }
+    const input=prepared.identification.input_redacted;const stringOrNull=(value:unknown)=>typeof value==="string"&&value.trim()?value.trim():null;
+    const result=await this.providers.ai.identifyMarketProduct({inputMode:prepared.identification.input_mode,productName:stringOrNull(input.productName)??"",category:stringOrNull(input.category),brand:stringOrNull(input.brand),modelNumber:stringOrNull(input.modelNumber),attributes:input.attributes&&typeof input.attributes==="object"&&!Array.isArray(input.attributes)?Object.fromEntries(Object.entries(input.attributes as Record<string,unknown>).map(([key,value])=>[key,String(value)])): {},excludeKeywords:Array.isArray(input.excludeKeywords)?input.excludeKeywords.map(String):[],confirmedConditions:Array.isArray(input.conditions)?input.conditions.map(String) as ProductCondition[]:[],images});
+    await this.repository.withContext(ctx,async tx=>{const current=await tx.query("SELECT 1 FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status='analyzing' FOR UPDATE",[job.organization_id,job.entity_id]);if(!current.rowCount)throw new Error("JOB_CANCELLED");const suggestion={productCandidates:result.productCandidates,searchQueries:result.searchQueries,excludeKeywords:result.excludeKeywords,suggestedConditions:result.suggestedConditions,warnings:result.warnings};await tx.query("UPDATE market_price_identifications SET status='suggestion_ready',suggestion_json=$3,model_name=$4,prompt_version=1,failure_class=NULL,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[job.organization_id,job.entity_id,suggestion,result.model]);await tx.audit("market_price.identification.suggested","market_price_identification",job.entity_id,"allowed",{model:result.model,candidateCount:result.productCandidates.length,queryCount:result.searchQueries.length,imageCount:images.length});});
+  }
+
+  private async marketPriceSearch(ctx:RequestContext,job:ClaimedJob):Promise<void>{
+    type SearchRow={id:string;status:string;query_json:Record<string,unknown>;condition_filters_json:ProductCondition[];outlier_policy_json:MarketPriceOutlierPolicy;period_start:Date;period_end:Date;ai_parameter_plan_json:Record<string,unknown>;closed_search_spec_json:Record<string,unknown>;planner_prompt_version:number|null};
+    type MappingRow={dimension:"category"|"brand";registry_key:string;source_id:string;canonical_name:string;aliases:unknown;status:"CONFIRMED"|"COMPATIBLE"|"DEPRECATED";verified_at:Date;expires_at:Date|null;registry_version:string};
+    const prepared=await this.repository.withContext(ctx,async tx=>{
+      const enabled=await tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_search' AND (expires_at IS NULL OR expires_at>now())",[job.organization_id]);
+      if(!enabled.rows[0]?.enabled)throw new Error("PROVIDER_PERMANENT: market price feature is disabled");
+      const found=await tx.query<SearchRow>("SELECT id,status,query_json,condition_filters_json,outlier_policy_json,period_start,period_end,ai_parameter_plan_json,closed_search_spec_json,planner_prompt_version FROM market_price_searches WHERE organization_id=$1 AND id=$2 FOR UPDATE",[job.organization_id,job.entity_id]);
+      const search=found.rows[0];if(!search)throw new Error("PROVIDER_PERMANENT: market price search not found");
+      if(["ready","partial"].includes(search.status))return null;
+      await tx.query("UPDATE market_price_searches SET status='planning',started_at=COALESCE(started_at,now()),failure_class=NULL WHERE organization_id=$1 AND id=$2",[job.organization_id,job.entity_id]);
+      const mappings=await tx.query<MappingRow>("SELECT dimension,registry_key,source_id,canonical_name,aliases,status,verified_at,expires_at,registry_version FROM market_price_source_mappings WHERE organization_id=$1 AND status IN ('CONFIRMED','COMPATIBLE') ORDER BY dimension,canonical_name LIMIT 400",[job.organization_id]);
+      const prompt=await tx.query<{version:number;model_name:string}>("SELECT version,model_name FROM prompt_versions WHERE organization_id=$1 AND purpose='market_price_search' AND status='approved' ORDER BY version DESC LIMIT 1",[job.organization_id]);
+      return{search,mappings:mappings.rows,prompt:prompt.rows[0]??null};
+    });
+    if(!prepared)return;
+    const {search}=prepared;const query=search.query_json;
+    const keyword=typeof query.keyword==="string"?query.keyword:"";if(!keyword)throw new Error("PROVIDER_PERMANENT: selected market price keyword is missing");
+    const conditions=search.condition_filters_json;
+    const toMapping=(row:MappingRow):YahooDimensionMapping=>({key:row.registry_key,sourceId:row.source_id,canonicalName:row.canonical_name,aliases:Array.isArray(row.aliases)?row.aliases.map(String):[],status:row.status,verifiedAt:row.verified_at.toISOString(),...(row.expires_at?{expiresAt:row.expires_at.toISOString()}:{})});
+    const categoryMappings=prepared.mappings.filter(row=>row.dimension==="category").map(toMapping);const brandMappings=prepared.mappings.filter(row=>row.dimension==="brand").map(toMapping);
+    const categoryLabel=typeof query.category==="string"?query.category:null;const brandLabel=typeof query.brand==="string"?query.brand:null;
+    let category=resolveYahooDimensionMapping(categoryLabel,categoryMappings);let brand=resolveYahooDimensionMapping(brandLabel,brandMappings);
+    const candidatesFor=(value:string|null,mappings:YahooDimensionMapping[],resolved:YahooDimensionMapping|null)=>{
+      if(resolved)return[resolved];if(!value)return[];const normalized=value.normalize("NFKC").replace(/\s+/gu," ").trim().toLocaleLowerCase("ja-JP");
+      return mappings.filter(mapping=>[mapping.canonicalName,...mapping.aliases].some(label=>{const candidate=label.normalize("NFKC").replace(/\s+/gu," ").trim().toLocaleLowerCase("ja-JP");return candidate===normalized||(candidate.length>=2&&normalized.length>=2&&(candidate.includes(normalized)||normalized.includes(candidate)));})).slice(0,20);
+    };
+    const categoryCandidates=candidatesFor(categoryLabel,categoryMappings,category);const brandCandidates=candidatesFor(brandLabel,brandMappings,brand);
+    const unresolvedRequested=Boolean((categoryLabel&&!category)||(brandLabel&&!brand));const plannerNeeded=Boolean((categoryLabel&&!category&&categoryCandidates.length>1)||(brandLabel&&!brand&&brandCandidates.length>1));
+    let plannerStatus:"registry_resolved"|"ai_applied"|"deterministic_fallback"="registry_resolved";let plannerModel:string|null=null;let warnings:string[]=[];
+    if(plannerNeeded){
+      try{
+        if(!prepared.prompt)throw new Error("approved market price prompt missing");
+        const planned=await this.providers.ai.planYahooSearch({selectedKeyword:keyword,confirmedCategory:categoryLabel,confirmedBrand:brandLabel,confirmedConditions:conditions,categoryCandidates:categoryCandidates.map(mapping=>({key:mapping.key,label:mapping.canonicalName})),brandCandidates:brandCandidates.map(mapping=>({key:mapping.key,label:mapping.canonicalName}))});
+        if(!category)category=categoryCandidates.find(mapping=>mapping.key===planned.suggestion.categoryRegistryKey)??null;if(!brand)brand=brandCandidates.find(mapping=>mapping.key===planned.suggestion.brandRegistryKey)??null;warnings=planned.suggestion.warnings;plannerModel=planned.model;plannerStatus="ai_applied";
+      }catch{plannerStatus="deterministic_fallback";warnings=["カテゴリまたはブランドを省略し、確認済み検索語と状態だけで取得しました"];
+        await this.repository.withContext(ctx,tx=>tx.audit("market_price.parameter_plan_fallback","market_price_search",search.id,"allowed",{reason:"planner_contract_or_provider"}));}
+    }else if(unresolvedRequested){plannerStatus="deterministic_fallback";warnings=["一意に検証できないカテゴリまたはブランドを省略しました"];
+      await this.repository.withContext(ctx,tx=>tx.audit("market_price.parameter_plan_fallback","market_price_search",search.id,"allowed",{reason:"no_ambiguous_registered_candidates"}));
+    }
+    const conditionIds=mapProductConditions(conditions);
+    const baseSpec:YahooClosedSearchSpec={keyword,...(category?{categoryId:category.sourceId}:{}),...(brand?{brandId:brand.sourceId}:{}),...(conditionIds?{conditionIds}:{}),sort:"ENDED_AT_NEWEST",pageSize:100,offset:1};
+    const usedRegistryVersions=prepared.mappings.filter(mapping=>(mapping.dimension==="category"&&mapping.registry_key===category?.key)||(mapping.dimension==="brand"&&mapping.registry_key===brand?.key)).map(mapping=>mapping.registry_version);
+    const registryVersionParts=[YAHOO_PARAMETER_REGISTRY_VERSION,...new Set(usedRegistryVersions)].sort();const registryVersionLabel=registryVersionParts.join("+");const registryVersion=registryVersionLabel.length<=50?registryVersionLabel:`sha256-${sha(registryVersionLabel).slice(0,32)}`;
+    const firstGenerated=generateYahooClosedSearchUrl(baseSpec,registryVersion);
+    await this.repository.withContext(ctx,async tx=>{
+      await tx.query("UPDATE market_price_searches SET status='fetching',ai_parameter_plan_json=$3,closed_search_spec_json=$4,query_plan_hash=$5,parameter_registry_version=$6,generator_version=$7,planner_model=$8,planner_prompt_version=$9,planner_status=$10,generated_url_hash=$11,parser_version=$12 WHERE organization_id=$1 AND id=$2",[job.organization_id,search.id,{selectedKeyword:keyword,categoryRegistryKey:category?.key??null,brandRegistryKey:brand?.key??null,suggestedConditions:conditions,confidence:plannerStatus==="deterministic_fallback"?0:1,warnings},{...baseSpec,offset:1},firstGenerated.specHash,firstGenerated.registryVersion,YAHOO_URL_GENERATOR_VERSION,plannerModel,prepared.prompt?.version??null,plannerStatus,firstGenerated.urlHash,YAHOO_RESULT_PARSER_VERSION]);
+      await tx.audit("market_price.parameter_plan_created","market_price_search",search.id,"allowed",{plannerStatus,parameterNames:Object.keys(firstGenerated.canonicalParams).filter(key=>key!=="p")});
+      await tx.audit("market_price.search_url_generated","market_price_search",search.id,"allowed",{specHash:firstGenerated.specHash,urlHash:firstGenerated.urlHash,generatorVersion:YAHOO_URL_GENERATOR_VERSION,registryVersion:firstGenerated.registryVersion,parameterNames:Object.keys(firstGenerated.canonicalParams)});
+    });
+    let coverage:"complete"|"partial"="partial";let oldestSeen:Date|null=null;let parseIncomplete=false;
+    for(let pageNumber=1;pageNumber<=MARKET_PRICE_POLICY.maxPages;pageNumber+=1){
+      await this.assertNotCancelled(job);
+      const checkpoint=await this.repository.withContext(ctx,tx=>tx.query<{source_count:number;parsed_count:number;parse_failure_count:number;oldest_ended_at:Date|null}>("SELECT source_count,parsed_count,parse_failure_count,oldest_ended_at FROM market_price_search_pages WHERE organization_id=$1 AND search_id=$2 AND page_number=$3 AND status='succeeded'",[job.organization_id,search.id,pageNumber]));
+      if(checkpoint.rows[0]){
+        oldestSeen=checkpoint.rows[0].oldest_ended_at;
+        parseIncomplete=parseIncomplete||checkpoint.rows[0].parse_failure_count>0;
+        if(checkpoint.rows[0].source_count===0||checkpoint.rows[0].source_count<100||(oldestSeen&&oldestSeen<=search.period_start)){coverage=parseIncomplete?"partial":"complete";break;}
+        continue;
+      }
+      if(pageNumber>1&&process.env.NODE_ENV!=="test")await new Promise(resolve=>setTimeout(resolve,MARKET_PRICE_POLICY.requestIntervalMs));
+      const generated=generateYahooClosedSearchUrl({...baseSpec,offset:pageOffset(pageNumber)},firstGenerated.registryVersion);const started=Date.now();
+      try{
+        const stillEnabled=await this.repository.withContext(ctx,tx=>tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_search' AND (expires_at IS NULL OR expires_at>now())",[job.organization_id]));
+        if(!stillEnabled.rows[0]?.enabled)throw new Error("PROVIDER_PERMANENT: market price kill switch is active");
+        const fetched=await this.providers.marketPriceSource.fetchPage(generated.url);const parsed=parseYahooClosedSearchHtml(fetched.body);oldestSeen=parsed.oldestEndedAt?new Date(parsed.oldestEndedAt):oldestSeen;parseIncomplete=parseIncomplete||parsed.parseFailureCount>0;
+        await this.repository.withContext(ctx,async tx=>{
+          if(pageNumber>1){
+            const previous=await tx.query<{source_item_id:string}>("SELECT source_item_id FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2 AND source_page_number=$3 ORDER BY source_item_id",[job.organization_id,search.id,pageNumber-1]);
+            const priorSet=previous.rows.map(row=>row.source_item_id);const currentSet=parsed.items.map(item=>item.sourceItemId).sort();
+            if(priorSet.length===currentSet.length&&priorSet.length>0&&priorSet.every((id,index)=>id===currentSet[index]))throw new Error("PROVIDER_PERMANENT: Yahoo repeated an identical result page");
+            const previousPage=await tx.query<{oldest_ended_at:Date|null}>("SELECT oldest_ended_at FROM market_price_search_pages WHERE organization_id=$1 AND search_id=$2 AND page_number=$3",[job.organization_id,search.id,pageNumber-1]);
+            if(previousPage.rows[0]?.oldest_ended_at&&parsed.newestEndedAt&&previousPage.rows[0].oldest_ended_at.getTime()<Date.parse(parsed.newestEndedAt))throw new Error("PROVIDER_PERMANENT: Yahoo page order is not newest first");
+          }
+          await tx.query("INSERT INTO market_price_search_pages(id,organization_id,search_id,page_number,result_offset,url_hash,http_status,source_count,parsed_count,parse_failure_count,newest_ended_at,oldest_ended_at,response_hash,fetch_duration_ms,status,fetched_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'succeeded',$15) ON CONFLICT(search_id,page_number) DO NOTHING",[randomUUID(),job.organization_id,search.id,pageNumber,pageOffset(pageNumber),generated.urlHash,fetched.status,parsed.sourceItemCount,parsed.items.length,parsed.parseFailureCount,parsed.newestEndedAt,parsed.oldestEndedAt,parsed.responseHash,Date.now()-started,fetched.fetchedAt]);
+          for(const item of parsed.items)await tx.query("INSERT INTO market_price_candidates(id,organization_id,search_id,source_page_number,source_item_id,source_type,canonical_url,title,closing_price,ended_at,condition_label,normalized_condition,condition_matched,tax_display,content_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,$13,$14) ON CONFLICT(search_id,source_item_id) DO NOTHING",[randomUUID(),job.organization_id,search.id,pageNumber,item.sourceItemId,item.sourceType,item.canonicalUrl,item.title,item.closingPrice,item.endedAt,item.sourceCondition,item.normalizedCondition,item.taxDisplay,item.contentHash]);
+          await tx.audit("market_price.search_page_fetched","market_price_search",search.id,"allowed",{urlHash:generated.urlHash,pageNumber,offset:pageOffset(pageNumber),sourceCount:parsed.sourceItemCount,parsedCount:parsed.items.length,parseFailureCount:parsed.parseFailureCount,newestEndedAt:parsed.newestEndedAt,oldestEndedAt:parsed.oldestEndedAt,fetchDurationMs:Date.now()-started,httpStatus:fetched.status,parserVersion:parsed.parserVersion});
+        });
+        const reachedBoundary=oldestSeen!=null&&oldestSeen<=search.period_start;const reachedEnd=parsed.sourceItemCount<100||((pageNumber-1)*100+parsed.sourceItemCount)>=parsed.totalResultsAvailable;
+        if(reachedBoundary||reachedEnd){coverage=parseIncomplete?"partial":"complete";break;}
+      }catch(error){
+        const failureClass=error instanceof YahooClosedSearchContractError
+          ?error.code==="CAPTCHA_DETECTED"?"YAHOO_CAPTCHA":error.code==="SORT_CONTRACT_MISMATCH"?"YAHOO_SORT_DRIFT":"YAHOO_PARSER_DRIFT"
+          :error instanceof Error&&error.message.includes("kill switch")?"MARKET_PRICE_KILL_SWITCH":"YAHOO_FETCH_BLOCKED";
+        await this.repository.withContext(ctx,async tx=>{await tx.query("UPDATE market_price_searches SET status='blocked',coverage_status='blocked',failure_class=$3,completed_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,search.id,failureClass]);await tx.audit("market_price.search_blocked","market_price_search",search.id,"failed",{failureClass,pageNumber,offset:pageOffset(pageNumber),urlHash:generated.urlHash});});throw error;
+      }
+    }
+    const stored=await this.repository.withContext(ctx,tx=>tx.query<{source_item_id:string;source_type:"auction"|"fleamarket";canonical_url:string;title:string;closing_price:string;ended_at:Date;condition_label:string|null;normalized_condition:ProductCondition;tax_display:"included"|"not_included"|"unknown";content_hash:string}>("SELECT source_item_id,source_type,canonical_url,title,closing_price::text,ended_at,condition_label,normalized_condition,tax_display,content_hash FROM market_price_candidates WHERE organization_id=$1 AND search_id=$2 ORDER BY ended_at DESC,source_item_id",[job.organization_id,search.id]));
+    const items:YahooClosedSearchItem[]=stored.rows.map(row=>({sourceItemId:row.source_item_id,sourceType:row.source_type,canonicalUrl:row.canonical_url,title:row.title,closingPrice:Number(row.closing_price),endedAt:row.ended_at.toISOString(),sourceCondition:row.condition_label,normalizedCondition:row.normalized_condition,taxDisplay:row.tax_display,categoryId:null,brandId:null,contentHash:row.content_hash}));
+    const excludes=Array.isArray(query.excludeKeywords)?query.excludeKeywords.map(String):[];const evaluated=evaluateMarketPriceCandidates({items,selectedKeyword:keyword,periodStart:search.period_start,periodEnd:search.period_end,selectedConditions:conditions,excludeKeywords:excludes,outlierPolicy:search.outlier_policy_json});
+    await this.repository.withContext(ctx,async tx=>{
+      await tx.query("UPDATE market_price_searches SET status='normalizing' WHERE organization_id=$1 AND id=$2",[job.organization_id,search.id]);
+      for(const candidate of evaluated.candidates)await tx.query("UPDATE market_price_candidates SET match_score=$4,match_reasons=$5::jsonb,condition_matched=$6,exclusion_reasons=$7::jsonb,condition_group_count=$8,condition_median_price=$9,price_deviation_rate=$10,iqr_lower_bound=$11,iqr_upper_bound=$12,auto_outlier=$13,included=$14,updated_at=now() WHERE organization_id=$1 AND search_id=$2 AND source_item_id=$3",[job.organization_id,search.id,candidate.sourceItemId,candidate.matchScore,JSON.stringify(candidate.matchReasons),candidate.conditionMatched,JSON.stringify(candidate.exclusionReasons),candidate.conditionGroupCount,candidate.conditionMedianPrice,candidate.priceDeviationRate,candidate.iqrLowerBound,candidate.iqrUpperBound,candidate.autoOutlier,candidate.included]);
+      const stats=evaluated.statistics;const finalStatus=coverage==="complete"?"ready":"partial";await tx.query("UPDATE market_price_searches SET status=$3,coverage_status=$4,coverage_oldest_at=$5,candidate_count=$6,included_count=$7,minimum_price=$8,median_price_before_outlier_exclusion=$9,median_price=$10,maximum_price=$11,exclusion_counts_json=$12,completed_at=now() WHERE organization_id=$1 AND id=$2",[job.organization_id,search.id,finalStatus,coverage,oldestSeen,stats.candidateCount,stats.includedCount,stats.minimumPrice,stats.medianPriceBeforeOutlierExclusion,stats.medianPrice,stats.maximumPrice,stats.exclusionCounts]);
+      await tx.audit(coverage==="complete"?"market_price.coverage_completed":"market_price.search_partial","market_price_search",search.id,"allowed",{coverage,candidateCount:stats.candidateCount,includedCount:stats.includedCount,oldestEndedAt:oldestSeen?.toISOString()??null});
+    });
+  }
+
   private async drive(ctx: RequestContext, job: ClaimedJob): Promise<void> {
     const item = await this.repository.withContext(ctx, async (tx) => {
       const result = await tx.query<{
@@ -1861,6 +1999,9 @@ export class WorkerProcessor {
 
   private async retention(ctx: RequestContext, job: ClaimedJob): Promise<void> {
     const incompleteUploadsDeleted=await cleanupExpiredUploadObjects(this.repository,this.providers.storage,ctx,job);
+    const expiredMarketUploads=await this.repository.withContext(ctx,tx=>tx.query<{id:string;object_name:string}>("SELECT id,object_name FROM market_price_image_upload_sessions WHERE organization_id=$1 AND completed_at IS NULL AND expires_at<now()-interval '24 hours' ORDER BY expires_at,id LIMIT 500",[job.organization_id]));
+    let marketUploadDeletedCount=0;
+    for(const upload of expiredMarketUploads.rows){await this.providers.storage.deleteIncompleteUpload(upload.object_name);const removed=await this.repository.withContext(ctx,tx=>tx.query("DELETE FROM market_price_image_upload_sessions WHERE organization_id=$1 AND id=$2 AND completed_at IS NULL AND expires_at<now()-interval '24 hours'",[job.organization_id,upload.id]));marketUploadDeletedCount+=removed.rowCount??0;}
     let idempotencyDeleted=0;
     let terminalJobInputsRedacted=0;
     for(let batch=0;batch<20;batch+=1){
@@ -1998,6 +2139,9 @@ export class WorkerProcessor {
       });
       deleted += 1;
     }
+    const expiredMarketImages=await this.repository.withContext(ctx,async tx=>{const rows=await tx.query<StoredObjectRow>(`SELECT s.id,s.object_name,s.object_generation::text,s.mime_type,s.bucket_name FROM storage_objects s JOIN market_price_images image ON image.storage_object_id=s.id WHERE s.organization_id=$1 AND image.expires_at<now() AND image.deleted_at IS NULL AND s.status IN ('available','deleting') ORDER BY image.expires_at,image.id FOR UPDATE OF s SKIP LOCKED LIMIT 500`,[job.organization_id]);for(const item of rows.rows)await tx.query("UPDATE storage_objects SET status='deleting',updated_at=now() WHERE id=$1",[item.id]);return rows.rows;});
+    let marketImageDeletedCount=0;
+    for(const image of expiredMarketImages){await this.providers.storage.delete(image.object_name,image.object_generation);await this.repository.withContext(ctx,async tx=>{await tx.query("UPDATE storage_objects SET status='deleted',deleted_at=now(),updated_at=now() WHERE id=$1",[image.id]);await tx.query("UPDATE market_price_images SET status='deleted',deleted_at=now() WHERE storage_object_id=$1",[image.id]);});marketImageDeletedCount+=1;}
     const expiredVideos=await this.repository.withContext(ctx,async tx=>{
       const rows=await tx.query<StoredObjectRow>(`SELECT s.id,s.object_name,s.object_generation::text,s.mime_type,s.bucket_name FROM storage_objects s JOIN training_videos v ON v.storage_object_id=s.id WHERE s.organization_id=$1 AND s.retention_until<now() AND s.status IN ('available','deleting') AND v.status='ready' ORDER BY s.retention_until,s.id FOR UPDATE OF s SKIP LOCKED LIMIT 500`,[job.organization_id]);
       for(const item of rows.rows)await tx.query("UPDATE storage_objects SET status='deleting',updated_at=now() WHERE id=$1",[item.id]);
@@ -2103,6 +2247,8 @@ export class WorkerProcessor {
             audit_purged_count: auditPurged,
             policy_application_count: policyApplications,
             incomplete_upload_deleted_count: incompleteUploadsDeleted,
+            market_price_upload_deleted_count:marketUploadDeletedCount,
+            market_price_image_deleted_count:marketImageDeletedCount,
             idempotency_deleted_count: idempotencyDeleted,
             terminal_job_input_redacted_count: terminalJobInputsRedacted,
           }),

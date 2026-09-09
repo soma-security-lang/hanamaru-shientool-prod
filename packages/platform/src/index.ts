@@ -1,7 +1,7 @@
 export * from "./types.js";
 export { probeAudioSource,probeAudioStream,probeVideoSource,probeVideoStream,type AudioMetadata,type VideoMetadata } from "./media.js";
 export { acceptLocalUpload,acceptLocalUploadStream,createLocalProviders } from "./local.js";
-export { cloudRunAudience,createGcpProviders,createLocalConnectedProviders,createGcpStorageProvider,createGoogleAiProvider,createGoogleDriveProvider } from "./gcp.js";
+export { cloudRunAudience,createGcpProviders,createLocalConnectedProviders,createGcpStorageProvider,createGoogleAiProvider,createGoogleDriveProvider,createYahooMarketPriceSourceProvider } from "./gcp.js";
 export { CHIRP3_MODEL,buildChirp3BatchRequest,createGoogleSpeechProvider,parseChirp3BatchResponse } from "./google-speech.js";
 import { createGcpProviders,createLocalConnectedProviders } from "./gcp.js";
 import { createLocalProviders } from "./local.js";

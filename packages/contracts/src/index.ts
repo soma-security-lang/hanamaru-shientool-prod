@@ -40,6 +40,9 @@ export const capabilities = [
   "retention:manage",
   "audit:read",
   "analytics:read",
+  "market_price:search",
+  "market_price:read",
+  "market_price:manage",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -133,6 +136,8 @@ export interface Job {
     | "drive_import"
     | "transcribe"
     | "review"
+    | "market_price_identification"
+    | "market_price_search"
     | "delete"
     | "retention_scan";
   entityType: string;
@@ -147,6 +152,228 @@ export interface Job {
   requestedByMembershipId: Identifier;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export const productConditions = [
+  "unused",
+  "near_unused",
+  "good",
+  "fair",
+  "poor",
+  "very_poor",
+  "unspecified",
+] as const;
+export type ProductCondition = (typeof productConditions)[number];
+
+export interface YahooSearchParameterSuggestion {
+  selectedKeyword: string;
+  categoryRegistryKey: string | null;
+  brandRegistryKey: string | null;
+  suggestedConditions: ProductCondition[];
+  confidence: number;
+  warnings: string[];
+}
+export interface MarketPriceOutlierPolicy {
+  enabled:boolean;
+  deviationThreshold:number;
+  minimumGroupSize:number;
+}
+export interface CreateMarketPriceSearchRequest {
+  identificationId:string|null;
+  selectedSearchQueryId:string;
+  conditions:ProductCondition[];
+  outlierPolicy:MarketPriceOutlierPolicy;
+}
+
+export const marketPriceInputModes = [
+  "image_assisted",
+  "manual_assisted",
+  "manual_direct",
+] as const;
+export type MarketPriceInputMode = (typeof marketPriceInputModes)[number];
+
+export const marketPriceIdentificationStatuses = [
+  "draft",
+  "analyzing",
+  "suggestion_ready",
+  "confirmation_required",
+  "confirmed",
+  "failed",
+  "expired",
+] as const;
+export type MarketPriceIdentificationStatus =
+  (typeof marketPriceIdentificationStatuses)[number];
+
+export interface MarketPriceSearchQuery {
+  id: string;
+  keyword: string;
+  breadth: "strict" | "standard" | "broad";
+  source: "user" | "ai" | "edited";
+  decision: "pending" | "accepted" | "rejected";
+}
+
+export interface MarketPriceProductCandidate {
+  id: string;
+  productName: string;
+  category: string | null;
+  brand: string | null;
+  modelNumber: string | null;
+  attributes: Record<string, string>;
+  confidence: number;
+  decision: "pending" | "accepted" | "rejected";
+}
+
+export interface MarketPriceIdentificationFields {
+  productName: string;
+  category: string | null;
+  brand: string | null;
+  modelNumber: string | null;
+  attributes: Record<string, string>;
+  searchQueries: MarketPriceSearchQuery[];
+  excludeKeywords: string[];
+  conditions: ProductCondition[];
+}
+
+export interface MarketPriceIdentificationDto {
+  id: Identifier;
+  inputMode: MarketPriceInputMode;
+  status: MarketPriceIdentificationStatus;
+  input: MarketPriceIdentificationFields;
+  suggestions: {
+    productCandidates: MarketPriceProductCandidate[];
+    searchQueries: MarketPriceSearchQuery[];
+    excludeKeywords: string[];
+    suggestedConditions: ProductCondition[];
+    warnings: string[];
+  };
+  confirmedFields: MarketPriceIdentificationFields | null;
+  imageCount: number;
+  jobId: Identifier | null;
+  failureClass: string | null;
+  lockVersion: number;
+  expiresAt: Timestamp;
+  confirmedAt: Timestamp | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface MarketPriceImageUploadSessionDto {
+  uploadId: Identifier;
+  imageId: Identifier;
+  url: string;
+  method: "PUT";
+  headers: Record<string, string>;
+  expiresAt: Timestamp;
+}
+
+export const marketPriceSearchStatuses = [
+  "queued",
+  "planning",
+  "fetching",
+  "normalizing",
+  "review_required",
+  "ready",
+  "partial",
+  "blocked",
+  "failed",
+  "cancelled",
+  "confirmed",
+] as const;
+export type MarketPriceSearchStatus = (typeof marketPriceSearchStatuses)[number];
+
+export interface MarketPriceCandidateDto {
+  id: Identifier;
+  sourceItemId: string;
+  sourceType: "auction" | "fleamarket";
+  canonicalUrl: string;
+  title: string;
+  closingPrice: number;
+  endedAt: Timestamp;
+  normalizedCondition: ProductCondition;
+  matchScore: number;
+  matchReasons: string[];
+  conditionMatched: boolean;
+  exclusionReasons: string[];
+  conditionGroupCount: number;
+  conditionMedianPrice: number | null;
+  priceDeviationRate: number | null;
+  iqrLowerBound: number | null;
+  iqrUpperBound: number | null;
+  autoOutlier: boolean;
+  inclusionOverride: "include" | "exclude" | null;
+  included: boolean;
+  decisionSource: "automatic" | "manual";
+}
+
+export interface MarketPriceStatisticsDto {
+  candidateCount: number;
+  includedCount: number;
+  minimumPrice: number | null;
+  medianPriceBeforeOutlierExclusion: number | null;
+  medianPrice: number | null;
+  maximumPrice: number | null;
+  exclusionCounts: Record<string, number>;
+}
+
+export interface MarketPriceSearchDto extends MarketPriceStatisticsDto {
+  id: Identifier;
+  identificationId: Identifier;
+  jobId: Identifier | null;
+  status: MarketPriceSearchStatus;
+  coverageStatus: "pending" | "complete" | "partial" | "blocked";
+  periodStart: Timestamp;
+  periodEnd: Timestamp;
+  periodDays: 90;
+  query: Record<string, unknown>;
+  conditions: ProductCondition[];
+  outlierPolicy: MarketPriceOutlierPolicy;
+  failureClass: string | null;
+  lockVersion: number;
+  resultId: Identifier | null;
+  confirmedAt: Timestamp | null;
+  createdAt: Timestamp;
+  completedAt: Timestamp | null;
+  candidates: MarketPriceCandidateDto[];
+}
+
+export interface MarketPriceResultDto extends MarketPriceStatisticsDto {
+  id: Identifier;
+  searchId: Identifier;
+  snapshotVersion: number;
+  snapshotHash: string;
+  conditions: ProductCondition[];
+  outlierPolicy: MarketPriceOutlierPolicy;
+  coverageStatus: "complete" | "partial";
+  periodStart: Timestamp;
+  periodEnd: Timestamp;
+  includedCandidateIds: Identifier[];
+  confirmedAt: Timestamp;
+}
+
+export interface MarketPriceOptionsDto {
+  conditions: Array<{ value: ProductCondition; label: string }>;
+  categories: Array<{ key: string; label: string }>;
+  brands: Array<{ key: string; label: string }>;
+  limits: { imageCount: 5; imageBytes: number; totalImageBytes: number };
+}
+
+export interface YahooClosedSearchSpec {
+  keyword: string;
+  categoryId?: string;
+  brandId?: string;
+  conditionIds?: Array<1 | 3 | 4 | 5 | 6 | 7>;
+  sort: "ENDED_AT_NEWEST";
+  pageSize: 100;
+  offset: number;
+}
+
+export interface GeneratedYahooSearchUrl {
+  url: string;
+  canonicalParams: Record<string, string>;
+  generatorVersion: string;
+  registryVersion: string;
+  specHash: string;
+  urlHash: string;
 }
 
 export interface TranscriptSegment {
@@ -225,6 +452,8 @@ export const operationalFailureClasses = [
   "MODEL_OUTPUT_INVALID",
   "EVIDENCE_INVALID",
   "RETRY_LIMIT_EXCEEDED",
+  "MARKET_PRICE_STALLED",
+  "MARKET_PRICE_BLOCKED",
 ] as const;
 export type OperationalFailureClass = (typeof operationalFailureClasses)[number];
 
@@ -320,6 +549,7 @@ export const errorCodes = [
   "FILE_TYPE_INVALID",
   "FILE_SIZE_INVALID",
   "CHECKSUM_MISMATCH",
+  "DUPLICATE_IMAGE",
   "UPLOAD_EXPIRED",
   "JOB_STATE_CONFLICT",
   "FEATURE_DISABLED",

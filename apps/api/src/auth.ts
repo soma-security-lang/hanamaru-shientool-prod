@@ -21,7 +21,7 @@ import type { ApiConfig } from "./config.js";
 import { ApiProblem } from "./errors.js";
 
 const roleCapabilities: Record<Role, Capability[]> = {
-  assessor: ["visit:self", "content:read"],
+  assessor: ["visit:self", "content:read", "market_price:search", "market_price:read"],
   manager: [
     "visit:scope",
     "content:read",
@@ -30,10 +30,13 @@ const roleCapabilities: Record<Role, Capability[]> = {
     "job:manage",
     "retention:manage",
     "analytics:read",
+    "market_price:search",
+    "market_price:read",
+    "market_price:manage",
   ],
   educator: ["content:read", "content:write"],
   content_approver: ["content:read", "content:approve"],
-  system_admin: ["user:manage", "job:manage", "audit:read"],
+  system_admin: ["user:manage", "job:manage", "audit:read", "market_price:manage"],
 };
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 const jwksCache = new Map<string, JWTVerifyGetKey>();

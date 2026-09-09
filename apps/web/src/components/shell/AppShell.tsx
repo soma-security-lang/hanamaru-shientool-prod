@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
-import { BookOpen, BriefcaseBusiness, ChevronLeft, GraduationCap, Home, LogOut, Menu, MessageSquareText, ShieldCheck, UserRound, X } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, ChevronLeft, GraduationCap, Home, LogOut, Menu, MessageSquareText, Scale, ShieldCheck, UserRound, X } from "lucide-react";
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type { Role } from "@/lib/prototype/types";
 import styles from "./AppShell.module.css";
@@ -9,6 +9,7 @@ import styles from "./AppShell.module.css";
 const baseNavigation = [
   { href: "/", label: "買取支援AI", icon: Home },
   { href: "/visits", label: "訪問前チェック", icon: BriefcaseBusiness },
+  { href: "/market-price", label: "買取相場", icon: Scale, featureFlag:"market_price_search" },
   { href: "/reviews", label: "振り返りチェックシート", icon: MessageSquareText },
   { href: "/knowledge/talks", label: "現場の知識", icon: BookOpen },
   { href: "/training/roleplay", label: "研修", icon: GraduationCap },
@@ -40,6 +41,7 @@ function mobilePageTitle(pathname:string){
   if(pathname.endsWith("/review/input"))return"振り返りを作成";
   if(pathname.endsWith("/review"))return"振り返り結果";
   if(pathname==="/reviews")return"振り返り";
+  if(pathname==="/market-price")return"買取相場";
   if(pathname.startsWith("/knowledge"))return"現場の知識";
   if(pathname.startsWith("/training"))return"研修";
   if(pathname.startsWith("/admin"))return"管理";
@@ -61,7 +63,7 @@ function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,
     <section>
       <header><div><span>メニュー</span><h2 id="mobile-more-title">その他</h2></div><button type="button" aria-label="メニューを閉じる" onClick={onClose}><X size={22}/></button></header>
       <nav aria-label="その他の機能">
-        {showBusiness?<><Link href="/training/roleplay" onClick={onClose}><GraduationCap size={20}/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link><Link href="/knowledge/manuals" onClick={onClose}><BookOpen size={20}/><span><strong>マニュアル・法務</strong><small>接客手順とコンプライアンス</small></span></Link></>:null}
+        {showBusiness?<><Link href="/knowledge/talks" onClick={onClose}><BookOpen size={20}/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" onClick={onClose}><GraduationCap size={20}/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
         {showAdmin?<Link href={adminHref} onClick={onClose}><ShieldCheck size={20}/><span><strong>管理</strong><small>権限に応じた管理機能</small></span></Link>:null}
       </nav>
       <footer><div><UserRound size={20}/><span><strong>{displayName??roleLabels[role]}</strong><small>{roleLabels[role]}</small></span></div><button type="button" onClick={onLogout}><LogOut size={19}/>ログアウト</button></footer>
@@ -69,22 +71,22 @@ function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,
   </dialog>;
 }
 
-export function AppShell({ children, pathname, role,roles,displayName,organizationName,branchName }: { children: ReactNode; pathname: string; role: Role;roles:Role[];displayName?:string;organizationName?:string;branchName?:string }) {
+export function AppShell({ children, pathname, role,roles,displayName,organizationName,branchName,featureFlags={} }: { children: ReactNode; pathname: string; role: Role;roles:Role[];displayName?:string;organizationName?:string;branchName?:string;featureFlags?:Record<string,boolean> }) {
   const router=useRouter();
   const [moreOpen,setMoreOpen]=useState(false);
   const systemAdminAccount=roles.includes("system_admin");
   const showAdmin = roles.some(value=>value === "manager" || value === "system_admin" || value === "content_approver");
   const adminHref = systemAdminAccount ? "/admin/operations" : roles.includes("manager") ? "/admin/contents" : roles.includes("content_approver") ? "/admin/approvals" : "/admin/operations";
   const homeHref=systemAdminAccount?adminHref:"/";
-  const navigation = systemAdminAccount||roles.every(value=>value==="content_approver")?[]:baseNavigation;
+  const navigation = systemAdminAccount||roles.every(value=>value==="content_approver")?[]:baseNavigation.filter(item=>!item.featureFlag||featureFlags[item.featureFlag]);
   const mobileParent=mobileParentHref(pathname,homeHref);
   const mobileNavigation=systemAdminAccount||roles.every(value=>value==="content_approver")
     ?[{href:adminHref,label:systemAdminAccount?"運用":"承認",icon:ShieldCheck}]
     :[
       {href:"/",label:"ホーム",icon:Home},
       {href:"/visits",label:"訪問",icon:BriefcaseBusiness},
+      ...(featureFlags.market_price_search?[{href:"/market-price",label:"買取相場",icon:Scale}]:[]),
       {href:"/reviews",label:"振り返り",icon:MessageSquareText},
-      {href:"/knowledge/talks",label:"知識",icon:BookOpen},
     ];
   async function leave(){try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}router.replace("/login");router.refresh();}
   return (

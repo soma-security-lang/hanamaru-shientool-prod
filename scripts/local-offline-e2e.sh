@@ -71,6 +71,9 @@ pnpm build:packages >"$evidence_dir/build-packages.log" 2>&1
 pnpm --filter @hanamaru/database migrate >"$evidence_dir/migrate.log" 2>&1
 pnpm --filter @hanamaru/database seed:dev >"$evidence_dir/seed.log" 2>&1
 pnpm --filter @hanamaru/database content:import >"$evidence_dir/content-import.log" 2>&1
+"$pg_bin/psql" -h "$pg_socket" -p "$postgres_port" -d hanamaru_offline_e2e -v ON_ERROR_STOP=1 \
+  -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  >"$evidence_dir/market-price-feature.log" 2>&1
 
 hanamaru_info "API、Worker、Webを最新sourceからbuildします。"
 pnpm --filter @hanamaru/api build >"$evidence_dir/api-build.log" 2>&1
@@ -100,24 +103,33 @@ hanamaru_wait_url "http://127.0.0.1:$api_port/health/ready" 120 || hanamaru_fail
 hanamaru_wait_url "http://127.0.0.1:$worker_port/health/ready" 120 || hanamaru_fail "offline Worker readinessに失敗しました。"
 hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offline Web readinessに失敗しました。"
 
-hanamaru_info "全20画面、PDF→準備、音声→文字起こし→振り返り、RBAC、axe、正式60画像＋中核14画像を実走します。"
+playwright_arguments=(e2e/offline-stack.spec.ts --trace=retain-on-failure)
+if [[ -n "${OFFLINE_E2E_GREP:-}" ]]; then
+  playwright_arguments+=(--grep "$OFFLINE_E2E_GREP")
+  hanamaru_info "対象を絞ったoffline browser E2Eを実走します: $OFFLINE_E2E_GREP"
+else
+  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、RBAC、axe、正式63画像＋中核14画像を実走します。"
+fi
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
   E2E_REMOTE=1 \
   E2E_WEB_BASE_URL="http://127.0.0.1:$web_port" \
   E2E_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
   OFFLINE_E2E_SCREENSHOT_DIR="$evidence_dir/screenshots" \
-  pnpm --filter @hanamaru/web exec playwright test e2e/offline-stack.spec.ts --trace=retain-on-failure \
+  pnpm --filter @hanamaru/web exec playwright test "${playwright_arguments[@]}" \
   2>&1 | tee "$evidence_dir/playwright.log"
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
-[[ "$screenshot_count" == "74" ]] || hanamaru_fail "offline E2E screenshotは正式60枚＋中核画面360/430pxの14枚、計74枚必要です（actual: $screenshot_count）。"
+if [[ -z "${OFFLINE_E2E_GREP:-}" ]]; then
+  [[ "$screenshot_count" == "77" ]] || hanamaru_fail "offline E2E screenshotは正式63枚＋中核画面360/430pxの14枚、計77枚必要です（actual: $screenshot_count）。"
+fi
 jq -n \
   --arg gitSha "$(git rev-parse HEAD)" \
   --arg node "$(node --version)" \
   --arg completedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson screenshots "$screenshot_count" \
-  '{status:"PASS",mode:"offline-deterministic-browser-to-db",gitSha:$gitSha,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
+  --arg filter "${OFFLINE_E2E_GREP:-}" \
+  '{status:"PASS",mode:"offline-deterministic-browser-to-db",filter:(if ($filter|length)>0 then $filter else null end),gitSha:$gitSha,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
   >"$evidence_dir/result.json"
 
 hanamaru_info "offline browser E2E PASS: $evidence_dir"

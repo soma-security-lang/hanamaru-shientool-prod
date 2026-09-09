@@ -1,7 +1,7 @@
 import {ApiClientError,apiClient} from "./client";
 import {sha256Blob} from "@/lib/files/sha256";
-import {recordingConsentNoticeVersion,type OperationsHealthDto,type RetentionBindingDto,type TranscriptQualityAssessment,type TranscriptQualityFlag} from "@hanamaru/contracts";
-export type {OperationsHealthDto,RetentionBindingDto,TranscriptQualityFlag};
+import {recordingConsentNoticeVersion,type CreateMarketPriceSearchRequest,type MarketPriceIdentificationDto,type MarketPriceIdentificationFields,type MarketPriceImageUploadSessionDto,type MarketPriceOptionsDto,type MarketPriceOutlierPolicy,type MarketPriceProductCandidate,type MarketPriceResultDto,type MarketPriceSearchDto,type MarketPriceStatisticsDto,type OperationsHealthDto,type RetentionBindingDto,type TranscriptQualityAssessment,type TranscriptQualityFlag} from "@hanamaru/contracts";
+export type {MarketPriceIdentificationDto,MarketPriceIdentificationFields,MarketPriceOptionsDto,MarketPriceOutlierPolicy,MarketPriceResultDto,MarketPriceSearchDto,MarketPriceStatisticsDto,OperationsHealthDto,RetentionBindingDto,TranscriptQualityFlag};
 export type TranscriptQualityAssessmentDto=TranscriptQualityAssessment;
 
 export interface VisitDto {id:string;caseNumber:string;status:string;visitDate:string|null;visitTime:string|null;timeZone:"Asia/Tokyo";scheduledAt:string|null;customerLabel:string|null;branchName?:string;branchId:string;lockVersion:number;}
@@ -24,7 +24,7 @@ export interface RoleplaySessionDetailDto {id:string;status:"active"|"completed"
 export interface ApprovalDto {id:string;title:string;type:string;versionId:string;version:number;bodyJson:Record<string,unknown>;changeSummary:string|null;previousVersionId:string|null;previousVersion:number|null;previousBodyJson:Record<string,unknown>|null;selfAuthored:boolean;}
 export interface ApprovalBatchDto {id:string;type:string;category:string;status:"in_review"|"approved"|"rejected"|"invalidated";itemCount:number;requiredApprovals:number;approvalCount:number;snapshotHash:string;submittedAt:string;decidedAt:string|null;selfSubmitted:boolean;items:Array<{id:string;versionId:string;version:number;sourceHash:string;title:string}>;decisions:Array<{decision:"approved"|"rejected";reason:string;decidedAt:string;decidedBy:string}>;}
 export interface ApprovalCandidateDto {type:string;category:string;itemCount:number;requiredApprovals:number;}
-export interface FeatureFlagDto {flagKey:"pilot_content_ai"|"content_approval"|"team_analytics";enabled:boolean;rollbackNote:string;updatedAt:string;}
+export interface FeatureFlagDto {flagKey:"pilot_content_ai"|"content_approval"|"team_analytics"|"market_price_search";enabled:boolean;rollbackNote:string;updatedAt:string;}
 
 type List<T>={items:T[];hasMore:boolean;nextCursor:string|null;total?:number};
 async function upload(path:string,file:File,extra:Record<string,unknown>={}){const sha256=await sha256Blob(file);const session=await apiClient.request<{uploadId:string;url:string;method:"PUT";headers:Record<string,string>}>(path,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({mimeType:file.type||"application/octet-stream",sizeBytes:file.size,sha256,...extra})});const url=apiClient.resolveUrl(session.url);const headers=await apiClient.uploadHeadersFor(url,session.headers);const response=await fetch(url,{method:session.method,headers,body:file,credentials:"omit"});if(!response.ok)throw new Error("ファイルをアップロードできませんでした");return session;}
@@ -93,4 +93,25 @@ export const resources={
   roleplaySessions:()=>apiClient.request<List<RoleplaySessionDto>>("/training/roleplay-sessions"),
   roleplaySession:(id:string)=>apiClient.request<RoleplaySessionDetailDto>(`/training/roleplay-sessions/${id}`),
   completeRoleplaySession:(id:string,selfNote:string)=>apiClient.request(`/training/roleplay-sessions/${id}/complete`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({selfNote})}),
+  marketPriceOptions:()=>apiClient.request<MarketPriceOptionsDto>("/market-price/options"),
+  createMarketPriceIdentification:(body:Record<string,unknown>)=>apiClient.request<MarketPriceIdentificationDto>("/market-price/identifications",{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify(body)}),
+  marketPriceIdentification:(id:string)=>apiClient.request<MarketPriceIdentificationDto>(`/market-price/identifications/${id}`),
+  async uploadMarketPriceImage(identificationId:string,file:File){
+    const sha256=await sha256Blob(file);
+    const session=await apiClient.request<MarketPriceImageUploadSessionDto>(`/market-price/identifications/${identificationId}/image-uploads`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({mimeType:file.type||"application/octet-stream",sizeBytes:file.size,sha256})});
+    await putUpload(session,file);
+    return apiClient.request<{id:string;status:string;expiresAt:string}>(`/market-price/image-uploads/${session.uploadId}/complete`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})});
+  },
+  analyzeMarketPriceIdentification:(id:string)=>apiClient.request<{jobId:string;status:string}>(`/market-price/identifications/${id}/analyze`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})}),
+  updateMarketPriceIdentification:(id:string,expectedLockVersion:number,fields:MarketPriceIdentificationFields,productCandidates:MarketPriceProductCandidate[]=[])=>apiClient.request<{id:string;status:string;lockVersion:number}>(`/market-price/identifications/${id}`,{method:"PATCH",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({expectedLockVersion,fields,suggestionDecisions:{productCandidates:productCandidates.map(candidate=>({id:candidate.id,decision:candidate.decision}))}})}),
+  confirmMarketPriceIdentification:(id:string,expectedLockVersion:number)=>apiClient.request<{id:string;status:string;lockVersion:number;confirmedAt:string}>(`/market-price/identifications/${id}/confirm`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({expectedLockVersion})}),
+  marketPriceSearches:()=>apiClient.request<List<MarketPriceSearchDto>>("/market-price/searches"),
+  createMarketPriceSearch:(body:CreateMarketPriceSearchRequest)=>apiClient.request<{searchId:string;jobId:string|null;status:string;cacheHit:boolean}>("/market-price/searches",{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify(body)}),
+  marketPriceSearch:(id:string)=>apiClient.request<MarketPriceSearchDto>(`/market-price/searches/${id}`),
+  overrideMarketPriceCandidate:(searchId:string,candidateId:string,decision:"include"|"exclude"|"automatic")=>apiClient.request<{candidate:{id:string;included:boolean;inclusionOverride:"include"|"exclude"|null;decisionSource:"automatic"|"manual"};statistics:MarketPriceStatisticsDto}>(`/market-price/searches/${searchId}/candidates/${candidateId}`,{method:"PATCH",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({decision})}),
+  updateMarketPriceOutlierPolicy:(searchId:string,policy:MarketPriceOutlierPolicy)=>apiClient.request<{outlierPolicy:MarketPriceOutlierPolicy;statistics:MarketPriceStatisticsDto}>(`/market-price/searches/${searchId}/outlier-policy`,{method:"PATCH",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify(policy)}),
+  confirmMarketPriceSearch:(searchId:string,expectedLockVersion:number)=>apiClient.request<MarketPriceResultDto>(`/market-price/searches/${searchId}/confirm`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({expectedLockVersion})}),
+  retryMarketPriceSearch:(searchId:string)=>apiClient.request<{searchId:string;jobId:string;status:string}>(`/market-price/searches/${searchId}/retry`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})}),
+  cancelMarketPriceSearch:(searchId:string)=>apiClient.request<{searchId:string;status:string;cancelRequested:boolean}>(`/market-price/searches/${searchId}/cancel`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})}),
+  repeatMarketPriceSearch:(searchId:string)=>apiClient.request<{searchId:string;jobId:string;status:string}>(`/market-price/searches/${searchId}/repeat`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})}),
 };

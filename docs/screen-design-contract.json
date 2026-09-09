@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceMode": "external-design-master",
+  "sourceMode": "external-design-master+local-scr-021",
   "requiredHeadings": [
     "Apple Webデザイン意図",
     "寸法付きレイアウト",
@@ -189,6 +189,14 @@
       "sha256": "8b96dd3faefd0714ffc4c36c497a5243578901b14e915015876d9418bacc8378",
       "routes": [
         "/admin/analytics"
+      ]
+    },
+    {
+      "id": "SCR-021",
+      "filename": "docs/design/market-price/2026-09-09-market-price-detailed-screen-design.md",
+      "sha256": "90811e6df2ec44df3bad4818407e3a43b4a377c74f9fd7077c397fc9e90a1456",
+      "routes": [
+        "/market-price"
       ]
     }
   ]

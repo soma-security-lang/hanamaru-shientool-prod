@@ -59,15 +59,17 @@ export function ScreenHost(){
   const systemAdminScreen=screen.kind==="usersAdmin"||screen.kind==="operations";
   const permitted=viewer.roles.some(role=>screen.roles.includes(role))&&(!systemAdminAccount||systemAdminScreen);
   const featureEnabled=!screen.featureFlag||Boolean(viewer.featureFlags[screen.featureFlag]);
-  return <AppShell pathname={pathname} role={primaryRole(viewer)} roles={viewer.roles} displayName={viewer.displayName} organizationName={viewer.organizationName} branchName={viewer.branchName}>
+  return <AppShell pathname={pathname} role={primaryRole(viewer)} roles={viewer.roles} displayName={viewer.displayName} organizationName={viewer.organizationName} branchName={viewer.branchName} featureFlags={viewer.featureFlags}>
     {!permitted
       ? <AccessState title="この画面を利用する権限がありません" body="必要な場合は所属管理者へ権限を依頼してください。" action={<Link className={styles.secondaryButton} href="/">ホームへ戻る</Link>}/>
       : !featureEnabled
-        ? <FeatureDisabled screen={screen}/>
+        ? screen.featureFlag==="market_price_search"?<MarketPriceNotFound/>:<FeatureDisabled screen={screen}/>
         : <WebExperience kind={screen.kind} viewerId={viewer.id} capabilities={viewer.capabilities} featureFlags={viewer.featureFlags}/>
     }
   </AppShell>;
 }
+
+function MarketPriceNotFound(){return <AccessState title="画面が見つかりません" body="指定された画面は存在しないか、現在利用できません。" action={<Link className={styles.secondaryButton} href="/">ホームへ戻る</Link>}/>;}
 
 function FeatureDisabled({screen}:{screen:ScreenSpec}){return <AccessState title={`${screen.name}は現在利用できません`} body="利用開始までお待ちください。" action={<Link className={styles.secondaryButton} href="/">ホームへ戻る</Link>}/>;}
 

@@ -8,13 +8,14 @@ const concreteRoutes = [
   "/knowledge/talks", "/knowledge/flows", "/knowledge/reference", "/knowledge/manuals",
   "/training/videos", "/training/roleplay", "/admin/contents", "/admin/users",
   "/admin/operations", "/admin/approvals", "/admin/analytics",
+  "/market-price",
 ];
 
 describe("screen registry", () => {
-  it("has exactly 20 unique SCR definitions and 20 canonical route patterns", () => {
-    expect(allScreens).toHaveLength(20);
-    expect(new Set(allScreens.map((screen) => screen.id)).size).toBe(20);
-    expect(allScreens.flatMap((screen) => screen.routes)).toHaveLength(20);
+  it("has exactly 21 unique SCR definitions and 21 canonical route patterns", () => {
+    expect(allScreens).toHaveLength(21);
+    expect(new Set(allScreens.map((screen) => screen.id)).size).toBe(21);
+    expect(allScreens.flatMap((screen) => screen.routes)).toHaveLength(21);
   });
 
   it.each(concreteRoutes)("resolves %s", (route) => {
@@ -24,6 +25,7 @@ describe("screen registry", () => {
   it("keeps post-pilot screens behind explicit feature flags", () => {
     expect(allScreens.find((screen) => screen.id === "SCR-019")?.featureFlag).toBeTruthy();
     expect(allScreens.find((screen) => screen.id === "SCR-020")?.featureFlag).toBeTruthy();
+    expect(allScreens.find((screen) => screen.id === "SCR-021")?.featureFlag).toBe("market_price_search");
   });
 
   it("does not model rankings or human-resources evaluation", () => {

@@ -18,22 +18,28 @@ describe("system-admin navigation separation",()=>{
 });
 
 describe("business feature navigation",()=>{
-  it("keeps the manager mobile navigation to four primary destinations and one more menu",()=>{
-    const {container}=render(<AppShell pathname="/visits" role="manager" roles={["manager"]} displayName="管理者"><h1>訪問支援</h1></AppShell>);
+  it("shows market price in the five-item mobile navigation and moves knowledge into More",()=>{
+    const {container}=render(<AppShell pathname="/visits" role="manager" roles={["manager"]} displayName="管理者" featureFlags={{market_price_search:true}}><h1>訪問支援</h1></AppShell>);
     const navigation=container.querySelector<HTMLElement>('nav[aria-label="モバイルナビゲーション"]');
     expect(navigation).not.toBeNull();
     if(!navigation)return;
     expect(within(navigation).getAllByRole("link",{hidden:true})).toHaveLength(4);
     expect(within(navigation).getByRole("link",{name:"ホーム",hidden:true})).toHaveAttribute("href","/");
     expect(within(navigation).getByRole("link",{name:"訪問",hidden:true})).toHaveAttribute("href","/visits");
+    expect(within(navigation).getByRole("link",{name:"買取相場",hidden:true})).toHaveAttribute("href","/market-price");
     expect(within(navigation).getByRole("link",{name:"振り返り",hidden:true})).toHaveAttribute("href","/reviews");
-    expect(within(navigation).getByRole("link",{name:"知識",hidden:true})).toHaveAttribute("href","/knowledge/talks");
     fireEvent.click(within(navigation).getByRole("button",{name:"その他",hidden:true}));
     const dialog=container.querySelector<HTMLDialogElement>('dialog[aria-labelledby="mobile-more-title"]');
     expect(dialog).toHaveAttribute("open");
     if(!dialog)return;
+    expect(within(dialog).getByRole("link",{name:/現場の知識/,hidden:true})).toHaveAttribute("href","/knowledge/talks");
     expect(within(dialog).getByRole("link",{name:/研修/,hidden:true})).toHaveAttribute("href","/training/roleplay");
     expect(within(dialog).getByRole("link",{name:/管理/,hidden:true})).toHaveAttribute("href","/admin/contents");
+  });
+
+  it("hides market price navigation when the feature flag is off",()=>{
+    render(<AppShell pathname="/visits" role="assessor" roles={["assessor"]} featureFlags={{market_price_search:false}}><h1>訪問支援</h1></AppShell>);
+    expect(screen.queryByRole("link",{name:"買取相場"})).not.toBeInTheDocument();
   });
 
   it("shows every knowledge feature by its concrete business name",()=>{

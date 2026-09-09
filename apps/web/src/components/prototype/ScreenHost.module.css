@@ -62,3 +62,72 @@
   .statePanel .primaryButton,.statePanel .secondaryButton,.notFound .primaryButton { font-size: var(--font-mobile-primary) !important; }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .authCard, .audioBar, .dialog::backdrop { backdrop-filter: none; } }
+
+/* Digital Agency Design System v2.17.1 — access, error and prototype states */
+.pageHeader h1,
+.authCard h1,
+.prototypePage h1 { font-size: 2rem; line-height: 1.5; letter-spacing: 0; }
+.eyebrow { color: var(--color-accent-strong); font-size: .875rem; line-height: 1.5; letter-spacing: 0; text-transform: none; }
+.primaryButton,
+.secondaryButton { min-height: 3rem; border-radius: var(--radius-sm); font-size: 1rem; line-height: 1.5; box-shadow: none; }
+.primaryButton { background: var(--color-accent); }
+.primaryButton:hover { background: var(--color-accent-strong); }
+.secondaryButton { border-color: var(--color-accent); color: var(--color-accent-strong); }
+.secondaryButton:hover { border-color: var(--color-accent-strong); background: var(--dads-color-key-50); text-decoration: underline; text-underline-offset: .2em; }
+.flowNav ol,
+.sectionNav,
+.metric,
+.sectionCard,
+.searchPanel,
+.documentPane,
+.fieldsPane,
+.actionPanel,
+.transcript,
+.trainingPanel,
+.chartPanel,
+.formPanel,
+.statePanel,
+.prototypeGrid article { border-radius: var(--radius-lg); box-shadow: none; }
+.flowNav a,
+.sectionNav a { border-radius: var(--radius-sm); font-size: .9375rem; }
+.flowNav a[aria-current="step"],
+.sectionNav a[aria-current="page"] { box-shadow: inset 0 -.25rem 0 var(--color-accent); }
+.inlineSuccess,
+.errorSummary,
+.aiNotice { border-radius: var(--radius-sm); color: var(--color-ink); font-size: 1rem; line-height: 1.7; }
+.inlineSuccess { border: 1px solid var(--color-success); border-left-width: .25rem; }
+.errorSummary { border: 1px solid var(--color-danger); border-left-width: .25rem; }
+.aiNotice { border: 1px solid var(--color-accent); border-left-width: .25rem; }
+.searchBox,
+.fieldsPane input,
+.formPanel input,
+.formPanel select,
+.formPanel textarea,
+.trainingPanel textarea,
+.segment textarea,
+.formStack input { min-height: 3rem; border-color: var(--color-border-strong); border-radius: var(--radius-sm); font-size: 1rem; line-height: 1.5; }
+.searchBox { background: var(--color-surface); }
+.searchBox:focus-within { border-color: var(--dads-color-focus-black); box-shadow: 0 0 0 3px var(--dads-color-focus-yellow); }
+.fieldsPane label,
+.formPanel label,
+.trainingPanel label,
+.formStack label { color: var(--color-ink); font-size: 1rem; line-height: 1.5; }
+.filterChip { border-radius: var(--radius-sm); font-size: .9375rem; }
+.filterChip[data-active="true"] { border-color: var(--color-accent); }
+.dropzone { border-radius: var(--radius-md); background: var(--dads-color-key-50); }
+.audioBar { border-radius: var(--radius-sm); background: var(--color-surface); backdrop-filter: none; }
+.chat,
+.chat p { border-radius: var(--radius-sm); box-shadow: none; }
+.statePanel { min-height: 24rem; padding: 3rem 1rem; }
+.statePanel h2 { font-size: 1.5rem; line-height: 1.5; }
+.statePanel > p:not(.eyebrow) { font-size: 1rem; line-height: 1.7; }
+.dialog { border-radius: var(--radius-xl); }
+.dialog::backdrop { background: rgba(0,0,0,.48); backdrop-filter: none; }
+.dialogIcon { border-radius: var(--radius-sm); }
+.authPage { background: var(--color-canvas); }
+.authCard { border-color: var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); backdrop-filter: none; box-shadow: none; }
+.authBrand > span { border-radius: var(--radius-sm); background: var(--color-accent); }
+.authCard > p:not(.eyebrow),
+.fieldHelp { color: var(--color-ink-secondary); font-size: 1rem; line-height: 1.7; }
+.prototypeGrid p { font-size: .9375rem; line-height: 1.6; }
+.prototypeGrid a { border-radius: var(--radius-sm); font-size: .9375rem; }

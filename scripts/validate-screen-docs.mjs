@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const docsRoot = resolve(process.argv[2] ?? process.env.HANAMARU_DOCS_ROOT ?? resolve(repoRoot, "../../../03_project-management/working-docs/hanamaru-shientool"));
 const screensDir = resolve(docsRoot, "05-screen-design/screens");
+const marketPriceDesignPath = resolve(repoRoot, "docs/design/market-price/2026-09-09-market-price-detailed-screen-design.md");
 const manifestPath = resolve(repoRoot, "docs/screen-design-contract.json");
+const expectedScreenCount = 21;
 const requiredHeadings = ["Apple Webデザイン意図", "寸法付きレイアウト", "Semantic structure", "表示・入力・操作", "Motion / accessibility", "9共通状態", "Role / capability / feature flag", "Data / adapter boundary", "テストシナリオ", "HITL受入条件", "PoC対応"];
 const states = ["initial", "loading", "empty", "success", "partial", "failure", "retry", "forbidden", "deleted"];
 const viewports = ["1440", "834", "390"];
@@ -21,19 +23,23 @@ async function exists(path) {
 
 function readRoutes(source) {
   const routes = new Map();
-  const matcher = /id: "(SCR-\d{3})"[\s\S]*?routes: \[([^\]]+)\]/g;
+  const matcher = /id:\s*"(SCR-\d{3})"[\s\S]*?routes:\s*\[([^\]]+)\]/g;
   for (const match of source.matchAll(matcher)) routes.set(match[1], [...match[2].matchAll(/"([^"]+)"/g)].map((item) => item[1]));
   return routes;
 }
 
-const registrySource = await Promise.all(["lane-a", "lane-b", "lane-c"].map((lane) => readFile(resolve(repoRoot, `apps/web/src/features/${lane}/screens.ts`), "utf8")));
+const registrySource = await Promise.all([
+  ...["lane-a", "lane-b", "lane-c"].map((lane) => resolve(repoRoot, `apps/web/src/features/${lane}/screens.ts`)),
+  resolve(repoRoot, "apps/web/src/features/market-price/screens.ts"),
+].map((path) => readFile(path, "utf8")));
 const routesByScreen = new Map(registrySource.flatMap((source) => [...readRoutes(source).entries()]));
 const designMasterAvailable = await exists(screensDir);
 
 if (designMasterAvailable) {
-  const filenames = (await readdir(screensDir)).filter((file) => /^SCR-\d{3}-.+\.md$/.test(file)).sort();
-  for (const filename of filenames) {
-    const body = await readFile(resolve(screensDir, filename), "utf8");
+  const designDocuments = (await readdir(screensDir)).filter((file) => /^SCR-\d{3}-.+\.md$/.test(file)).sort().map((filename) => ({ filename, path: resolve(screensDir, filename) }));
+  if (await exists(marketPriceDesignPath)) designDocuments.push({ filename: "docs/design/market-price/2026-09-09-market-price-detailed-screen-design.md", path: marketPriceDesignPath });
+  for (const { filename, path } of designDocuments) {
+    const body = await readFile(path, "utf8");
     const id = body.match(/^#\s+(SCR-\d{3})/m)?.[1] ?? "UNKNOWN";
     const missingHeadings = requiredHeadings.filter((heading) => !body.includes(heading));
     const missingStates = states.filter((state) => !new RegExp(`\\b${state}\\b`, "i").test(body));
@@ -59,11 +65,11 @@ if (designMasterAvailable) {
     results.push(item);
     if (missingHeadings.length || missingStates.length || missingViewports.length || missingRoutes.length || jsonErrors.length || secretMatches.length) errors.push(item);
   }
-  if (results.length !== 20) errors.push({ code: "SCREEN_COUNT", expected: 20, actual: results.length });
+  if (results.length !== expectedScreenCount) errors.push({ code: "SCREEN_COUNT", expected: expectedScreenCount, actual: results.length });
   if (!errors.length) {
     const manifest = {
       schemaVersion: 1,
-      sourceMode: "external-design-master",
+      sourceMode: "external-design-master+local-scr-021",
       requiredHeadings,
       states,
       viewports,
@@ -78,7 +84,7 @@ if (designMasterAvailable) {
     if (JSON.stringify(manifest[key]) !== JSON.stringify(expected)) errors.push({ code: "MANIFEST_CONTRACT", key });
   }
   results = Array.isArray(manifest.screens) ? manifest.screens : [];
-  if (results.length !== 20) errors.push({ code: "SCREEN_COUNT", expected: 20, actual: results.length });
+  if (results.length !== expectedScreenCount) errors.push({ code: "SCREEN_COUNT", expected: expectedScreenCount, actual: results.length });
   for (const screen of results) {
     if (!/^SCR-\d{3}$/.test(screen.id) || !/^[0-9a-f]{64}$/.test(screen.sha256 ?? "")) errors.push({ code: "MANIFEST_SCREEN", id: screen.id });
     const implementationRoutes = routesByScreen.get(screen.id) ?? [];
@@ -86,13 +92,13 @@ if (designMasterAvailable) {
   }
 }
 
-if (routesByScreen.size !== 20) errors.push({ code: "REGISTRY_COUNT", expected: 20, actual: routesByScreen.size });
+if (routesByScreen.size !== expectedScreenCount) errors.push({ code: "REGISTRY_COUNT", expected: expectedScreenCount, actual: routesByScreen.size });
 const routeCount = [...routesByScreen.values()].flat().length;
-if (routeCount !== 20) errors.push({ code: "ROUTE_COUNT", expected: 20, actual: routeCount });
+if (routeCount !== expectedScreenCount) errors.push({ code: "ROUTE_COUNT", expected: expectedScreenCount, actual: routeCount });
 
 const report = {
   generated_at: new Date().toISOString(),
-  source_mode: designMasterAvailable ? "external-design-master" : "checked-in-contract-snapshot",
+  source_mode: designMasterAvailable ? "external-design-master+local-scr-021" : "checked-in-contract-snapshot",
   screen_count: results.length,
   registry_count: routesByScreen.size,
   route_pattern_count: routeCount,
@@ -106,7 +112,8 @@ const report = {
 if (designMasterAvailable) {
   const reviewRoot = resolve(docsRoot, "99-reviews");
   await writeFile(resolve(reviewRoot, "HTML-MARKDOWN-DRIFT.json"), `${JSON.stringify(report, null, 2)}\n`);
-  const markdown = `# HTML／Markdown drift検証\n\n- Screen documents: ${results.length}/20\n- Registry definitions: ${routesByScreen.size}/20\n- Route patterns: ${routeCount}/20\n- Common state contracts: ${results.length * states.length}/180\n- Required detail headings: ${requiredHeadings.length} per screen\n- Error count: ${errors.length}\n\n${errors.length ? "## Errors\n\n```json\n" + JSON.stringify(errors, null, 2) + "\n```\n" : "20画面の詳細章、9状態、3 viewport、route、secret patternのdriftは0件。\n"}`;
+  const renderedContracts = expectedScreenCount * states.length;
+  const markdown = `# HTML／Markdown drift検証\n\n- Screen documents: ${results.length}/${expectedScreenCount}\n- Registry definitions: ${routesByScreen.size}/${expectedScreenCount}\n- Route patterns: ${routeCount}/${expectedScreenCount}\n- Common state contracts: ${results.length * states.length}/${renderedContracts}\n- Required detail headings: ${requiredHeadings.length} per screen\n- Error count: ${errors.length}\n\n${errors.length ? "## Errors\n\n```json\n" + JSON.stringify(errors, null, 2) + "\n```\n" : `${expectedScreenCount}画面の詳細章、9状態、3 viewport、route、secret patternのdriftは0件。\n`}`;
   await writeFile(resolve(reviewRoot, "HTML-MARKDOWN-DRIFT.md"), markdown);
 }
 

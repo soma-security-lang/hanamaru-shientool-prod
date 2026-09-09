@@ -10,7 +10,10 @@ HANAMARU_RUNTIME_DIR="$HANAMARU_REPO_DIR/.tmp/local-runtime"
 HANAMARU_PID_DIR="$HANAMARU_RUNTIME_DIR/pids"
 HANAMARU_LOG_DIR="$HANAMARU_RUNTIME_DIR/logs"
 HANAMARU_PG_DATA="$HANAMARU_RUNTIME_DIR/postgres/data"
-HANAMARU_PG_SOCKET="$HANAMARU_RUNTIME_DIR/postgres/socket"
+# PostgreSQL limits Unix-domain socket paths to roughly 100 bytes on macOS.
+# The repository path is intentionally descriptive and exceeds that limit, so
+# keep only the socket itself in a short, user-scoped runtime directory.
+HANAMARU_PG_SOCKET="/tmp/hanamaru-pg-${UID:-local}"
 HANAMARU_STORAGE_DIR="$HANAMARU_RUNTIME_DIR/storage"
 HANAMARU_ENV_FILE="${HANAMARU_ENV_FILE:-$HANAMARU_REPO_DIR/.env.local}"
 

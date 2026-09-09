@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>買取相場（仮）画面デモ</title>
+  <style>
+    :root {
+      --canvas: #f5f5f7;
+      --surface: #fff;
+      --surface-subtle: #fafafc;
+      --material: rgba(250, 250, 252, .9);
+      --ink: #1d1d1f;
+      --secondary: #5f5f64;
+      --tertiary: #74747b;
+      --border: rgba(60, 60, 67, .18);
+      --border-strong: rgba(60, 60, 67, .34);
+      --accent: #0066cc;
+      --accent-strong: #004f9e;
+      --accent-soft: #edf6ff;
+      --success: #176a31;
+      --success-soft: #eff9f1;
+      --warning: #8a4f00;
+      --warning-soft: #fff7e8;
+      --danger: #c51c2b;
+      --danger-soft: #fff1f2;
+      --shadow-card: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px rgba(23,23,26,.06);
+      --shadow-float: 0 18px 48px rgba(23,23,26,.14);
+      --radius-sm: 10px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --press: 120ms;
+      --standard: 220ms;
+      --panel: 320ms;
+      --ease: cubic-bezier(.2,.8,.2,1);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: var(--canvas); color: var(--ink); }
+    body { min-height: 100vh; margin: 0; background: var(--canvas); font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    button, input, select, textarea { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    a { color: inherit; text-decoration: none; }
+    svg { display: block; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .skip { position: fixed; z-index: 1000; top: 8px; left: 8px; transform: translateY(-150%); padding: 12px 16px; border-radius: 10px; color: #fff; background: var(--accent); }
+    .skip:focus { transform: translateY(0); }
+
+    .shell { min-height: 100vh; }
+    .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 20; width: 240px; padding: 16px 12px; border-right: 1px solid var(--border); background: var(--material); backdrop-filter: blur(24px) saturate(160%); }
+    .brand { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 6px 10px 22px; }
+    .brand-mark { display: grid; width: 40px; height: 40px; place-items: center; border-radius: 12px; color: #fff; background: linear-gradient(145deg,#0876df,#0054a8); box-shadow: 0 8px 22px rgba(0,102,204,.22); font-weight: 800; }
+    .brand strong, .brand small { display: block; }
+    .brand strong { letter-spacing: -.02em; }
+    .brand small { color: var(--secondary); font-size: 10px; letter-spacing: .12em; }
+    .nav { display: grid; gap: 4px; }
+    .nav a { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 10px 12px; border-radius: 12px; color: var(--secondary); }
+    .nav a[aria-current="page"] { color: var(--accent-strong); background: var(--accent-soft); font-weight: 700; }
+    .nav a:active { transform: scale(.98); }
+    .sidebar-foot { position: absolute; right: 12px; bottom: 18px; left: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,.7); color: var(--secondary); font-size: 12px; }
+
+    .workspace { min-height: 100vh; margin-left: 240px; }
+    .topbar { position: sticky; z-index: 18; top: 0; height: 64px; padding: 8px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--material); backdrop-filter: blur(24px) saturate(160%); }
+    .org strong, .org small { display: block; }
+    .org strong { font-size: 14px; }
+    .org small { color: var(--secondary); font-size: 12px; }
+    .profile { min-height: 44px; padding: 7px 9px 7px 14px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+    .avatar { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 50%; color: var(--accent-strong); background: var(--accent-soft); font-weight: 750; }
+    .mobile-context { display: none; }
+
+    main { width: 100%; padding: 24px 32px 48px; }
+    .demo-notice { margin: 0 0 16px; padding: 9px 12px; display: flex; align-items: center; gap: 9px; border: 1px solid rgba(0,102,204,.2); border-radius: 10px; color: var(--accent-strong); background: var(--accent-soft); font-size: 13px; }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    .page-head h1 { margin: 0; font-size: clamp(28px,3vw,38px); line-height: 1.1; letter-spacing: -.04em; }
+    .page-head p { margin: 7px 0 0; color: var(--secondary); font-size: 15px; }
+    .history-shortcut { min-height: 44px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-weight: 650; }
+    .mobile-history { display: none; }
+
+    .stepper { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; margin: 0 0 20px; padding: 6px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    .stepper button { min-height: 44px; padding: 7px 9px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; color: var(--secondary); background: transparent; }
+    .stepper button span:first-child { display: grid; width: 24px; height: 24px; place-items: center; border: 1px solid var(--border); border-radius: 50%; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .stepper button[data-active="true"] { color: var(--accent-strong); background: var(--accent-soft); font-weight: 700; }
+    .stepper button[data-done="true"] span:first-child { color: #fff; border-color: var(--success); background: var(--success); }
+    .stepper button:disabled { color: var(--tertiary); opacity: .52; }
+
+    .view { animation: appear var(--standard) var(--ease); }
+    @keyframes appear { from { opacity: .55; } to { opacity: 1; } }
+    .section-title { margin: 0 0 4px; font-size: 20px; letter-spacing: -.02em; }
+    .section-lead { margin: 0 0 16px; color: var(--secondary); }
+    .card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-card); }
+    .card-pad { padding: 18px; }
+    .subtle { color: var(--secondary); }
+    .eyebrow { color: var(--accent-strong); font-size: 12px; font-weight: 750; letter-spacing: .04em; }
+    .badge { width: fit-content; min-height: 25px; padding: 3px 8px; display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; color: var(--secondary); background: var(--surface-subtle); font-size: 12px; font-weight: 700; }
+    .badge.ai { color: var(--accent-strong); background: var(--accent-soft); }
+    .badge.success { color: var(--success); background: var(--success-soft); }
+    .badge.warning { color: var(--warning); background: var(--warning-soft); }
+    .button { min-height: 46px; padding: 10px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-weight: 700; transition: transform var(--press),background var(--standard),border-color var(--standard); }
+    .button:hover { border-color: var(--border-strong); background: var(--surface-subtle); }
+    .button:active { transform: scale(.98); }
+    .button.primary { color: #fff; border-color: var(--accent); background: var(--accent); box-shadow: 0 8px 20px rgba(0,102,204,.16); }
+    .button.primary:hover { background: var(--accent-strong); }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--accent-strong); }
+    .button.small { min-height: 38px; padding: 7px 11px; border-radius: 10px; font-size: 13px; }
+    .button.danger-ghost { color: var(--danger); border-color: rgba(197,28,43,.22); background: var(--danger-soft); }
+    .action-row { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+    .view[data-view="input"] { container-name: market-price-demo-input; container-type: inline-size; }
+    .method-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 18px; }
+    .method-card { min-height: 138px; padding: 16px; display: grid; align-content: start; gap: 9px; text-align: left; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+    .method-card:hover { border-color: var(--border-strong); }
+    .method-card[aria-pressed="true"] { border-color: rgba(0,102,204,.45); background: var(--accent-soft); box-shadow: 0 0 0 1px rgba(0,102,204,.12); }
+    .method-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; color: var(--accent-strong); background: var(--accent-soft); }
+    .method-card[aria-pressed="true"] .method-icon { color: #fff; background: var(--accent); }
+    .method-card strong { font-size: 16px; }
+    .method-card small { color: var(--secondary); font-size: 13px; line-height: 1.5; }
+    @container market-price-demo-input (min-width: 720px) {
+      .method-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    }
+
+    .input-layout { display: grid; grid-template-columns: minmax(0,1fr) 310px; gap: 18px; }
+    .form-card { padding: 20px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+    .field { display: grid; gap: 6px; }
+    .field.full { grid-column: 1 / -1; }
+    .field label, .field .label { font-size: 13px; font-weight: 700; }
+    .field input, .field select, .field textarea { width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 11px; color: var(--ink); background: var(--surface); }
+    .field textarea { min-height: 88px; resize: vertical; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,102,204,.14); outline: 0; }
+    .field small { color: var(--secondary); }
+    .required { color: var(--danger); }
+
+    .condition-fieldset { margin: 18px 0 0; padding: 0; border: 0; }
+    .condition-fieldset legend { padding: 0; font-size: 14px; font-weight: 750; }
+    .condition-head { margin: 4px 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .condition-head p { margin: 0; color: var(--secondary); font-size: 13px; }
+    .condition-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+    .condition-actions button { min-height: 36px; padding: 5px 9px; border: 0; border-radius: 9px; color: var(--accent-strong); background: transparent; font-size: 13px; font-weight: 700; }
+    .condition-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+    .condition-option { min-width: 0; min-height: 48px; padding: 9px 11px; display: grid; grid-template-columns: 22px minmax(0,1fr); align-items: center; gap: 9px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); cursor: pointer; }
+    .condition-option:has(input:checked) { border-color: rgba(0,102,204,.45); background: var(--accent-soft); }
+    .condition-option input { width: 19px; height: 19px; margin: 0; accent-color: var(--accent); }
+    .condition-option span { min-width: 0; overflow-wrap: anywhere; }
+    .condition-error { margin: 8px 0 0; color: var(--danger); font-size: 13px; font-weight: 700; }
+
+    .upload-zone { min-height: 174px; padding: 22px; display: grid; place-items: center; align-content: center; gap: 8px; border: 1.5px dashed var(--border-strong); border-radius: 15px; color: var(--secondary); background: var(--surface-subtle); text-align: center; }
+    .upload-zone label { min-height: 44px; padding: 8px 14px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 11px; color: var(--ink); background: var(--surface); font-weight: 700; cursor: pointer; }
+    .upload-preview { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+    .preview-item { min-width: 0; padding: 8px; display: grid; gap: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-subtle); }
+    .preview-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 8px; background: #e9e9ed; }
+    .preview-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .preview-item button { min-height: 34px; border: 0; border-radius: 8px; color: var(--danger); background: var(--danger-soft); font-size: 12px; }
+
+    .summary-card { padding: 18px; align-self: start; position: sticky; top: 84px; }
+    .summary-card h3 { margin: 0 0 12px; font-size: 16px; }
+    .summary-list { display: grid; gap: 0; margin: 0; }
+    .summary-list div { padding: 10px 0; display: grid; grid-template-columns: 110px minmax(0,1fr); gap: 10px; border-top: 1px solid var(--border); }
+    .summary-list dt { color: var(--secondary); font-size: 12px; }
+    .summary-list dd { margin: 0; overflow-wrap: anywhere; font-weight: 650; }
+    .privacy-note { margin-top: 14px; padding: 12px; border-radius: 11px; color: var(--warning); background: var(--warning-soft); font-size: 13px; }
+
+    .three-pane { display: grid; grid-template-columns: minmax(250px,3fr) minmax(390px,5fr) minmax(280px,4fr); gap: 16px; align-items: start; }
+    .pane { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow-card); }
+    .pane h3 { margin: 0 0 4px; font-size: 16px; }
+    .pane-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .pane-head p { margin: 3px 0 0; color: var(--secondary); font-size: 13px; }
+    .notice { padding: 12px; display: flex; align-items: flex-start; gap: 9px; border: 1px solid rgba(0,102,204,.2); border-radius: 12px; color: var(--accent-strong); background: var(--accent-soft); }
+    .notice.warning { color: var(--warning); border-color: rgba(138,79,0,.22); background: var(--warning-soft); }
+    .notice strong, .notice span { display: block; }
+    .notice span { margin-top: 2px; color: var(--secondary); font-size: 13px; }
+
+    .candidate-options { display: grid; gap: 8px; }
+    .product-option { width: 100%; padding: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; text-align: left; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .product-option[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+    .product-option strong, .product-option small { display: block; }
+    .product-option small { margin-top: 3px; color: var(--secondary); }
+    .confidence { align-self: start; padding: 3px 7px; border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); font-size: 11px; font-weight: 700; }
+
+    .field-review-list { display: grid; gap: 10px; }
+    .field-review { padding: 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-subtle); }
+    .field-review-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .field-review-head strong { font-size: 13px; }
+    .decision { font-size: 11px; font-weight: 750; color: var(--warning); }
+    .decision.done { color: var(--success); }
+    .value-pair { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .value-box { padding: 8px; border-radius: 9px; background: var(--surface); }
+    .value-box span { display: block; color: var(--secondary); font-size: 11px; }
+    .value-box strong { display: block; margin-top: 2px; font-size: 13px; overflow-wrap: anywhere; }
+    .review-actions { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .strategy-list { display: grid; gap: 8px; }
+    .strategy { min-height: 58px; padding: 10px; display: grid; grid-template-columns: 22px 1fr; gap: 8px; border: 1px solid var(--border); border-radius: 11px; cursor: pointer; }
+    .strategy:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    .strategy input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .strategy strong, .strategy small { display: block; }
+    .strategy small { margin-top: 2px; color: var(--secondary); font-size: 12px; overflow-wrap: anywhere; }
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .chip { min-height: 34px; padding: 6px 9px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-subtle); font-size: 12px; }
+    .chip button { width: 24px; height: 24px; border: 0; border-radius: 50%; color: var(--secondary); background: transparent; }
+
+    .status-layout { max-width: 920px; margin: 0 auto; display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 18px; }
+    .status-card { padding: 26px; }
+    .status-symbol { display: grid; width: 52px; height: 52px; place-items: center; margin-bottom: 16px; border-radius: 16px; color: var(--accent-strong); background: var(--accent-soft); }
+    .status-card h2 { margin: 0; font-size: 24px; }
+    .status-card > p { color: var(--secondary); }
+    .timeline { display: grid; gap: 0; margin: 22px 0 0; }
+    .timeline-item { position: relative; min-height: 62px; padding: 2px 0 18px 38px; }
+    .timeline-item::before { content: ""; position: absolute; left: 12px; top: 24px; bottom: -3px; width: 1px; background: var(--border); }
+    .timeline-item:last-child::before { display: none; }
+    .timeline-dot { position: absolute; left: 0; top: 0; display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--secondary); background: var(--surface); font-size: 11px; }
+    .timeline-item.done .timeline-dot { color: #fff; border-color: var(--success); background: var(--success); }
+    .timeline-item.current .timeline-dot { color: #fff; border-color: var(--accent); background: var(--accent); }
+    .timeline-item strong, .timeline-item small { display: block; }
+    .timeline-item small { color: var(--secondary); }
+
+    .candidate-toolbar { margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+    .outlier-panel { margin-bottom: 14px; padding: 16px; }
+    .outlier-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .outlier-head h3 { margin: 0; font-size: 16px; }
+    .outlier-head p { margin: 4px 0 0; color: var(--secondary); font-size: 13px; }
+    .policy-toggle { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
+    .policy-toggle input { width: 20px; height: 20px; accent-color: var(--accent); }
+    .outlier-controls { margin-top: 13px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+    .policy-field { min-width: 0; padding: 10px; display: grid; gap: 4px; border-radius: 10px; background: var(--surface-subtle); }
+    .policy-field span { color: var(--secondary); font-size: 11px; }
+    .policy-field strong { overflow-wrap: anywhere; font-size: 13px; }
+    .policy-field label { color: var(--secondary); font-size: 11px; }
+    .policy-field input { width: 100%; min-height: 38px; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface); }
+    .outlier-status { margin: 12px 0 0; padding-top: 11px; display: flex; flex-wrap: wrap; gap: 8px 16px; border-top: 1px solid var(--border); color: var(--secondary); font-size: 13px; }
+    .outlier-status strong { color: var(--ink); }
+    .segmented { padding: 4px; display: inline-flex; flex-wrap: wrap; gap: 3px; border-radius: 11px; background: #ededf0; }
+    .segmented button { min-height: 36px; padding: 6px 10px; border: 0; border-radius: 8px; color: var(--secondary); background: transparent; font-size: 13px; }
+    .segmented button[aria-pressed="true"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 4px rgba(0,0,0,.1); font-weight: 700; }
+    .candidate-layout { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 16px; align-items: start; }
+    .table-wrap { overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 10px 12px; color: var(--secondary); background: var(--surface-subtle); font-size: 12px; text-align: left; }
+    td { padding: 12px; border-top: 1px solid var(--border); vertical-align: top; }
+    .row-title { min-width: 220px; }
+    .row-title strong, .row-title small { display: block; }
+    .row-title small { margin-top: 3px; color: var(--secondary); font-size: 12px; }
+    .money { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 750; }
+    .include-toggle { min-width: 88px; min-height: 38px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 10px; color: var(--secondary); background: var(--surface); font-weight: 700; }
+    .include-toggle[aria-pressed="true"] { color: var(--success); border-color: rgba(35,122,59,.28); background: var(--success-soft); }
+    .detail-link { min-height: 38px; padding: 6px 8px; border: 0; color: var(--accent-strong); background: transparent; font-weight: 650; }
+    .mobile-candidates { display: none; }
+
+    .stats-card { position: sticky; top: 84px; padding: 18px; }
+    .coverage { margin-bottom: 14px; padding: 10px; display: flex; align-items: flex-start; gap: 8px; border-radius: 10px; color: var(--success); background: var(--success-soft); font-size: 13px; font-weight: 700; }
+    .median { margin: 8px 0 16px; }
+    .median span { display: block; color: var(--secondary); font-size: 12px; }
+    .median output { display: block; font-size: clamp(30px,3vw,42px); line-height: 1.15; letter-spacing: -.04em; font-variant-numeric: tabular-nums; font-weight: 780; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-box { padding: 10px; border-radius: 10px; background: var(--surface-subtle); }
+    .stat-box dt { color: var(--secondary); font-size: 11px; }
+    .stat-box dd { margin: 3px 0 0; font-variant-numeric: tabular-nums; font-weight: 730; }
+    .stats-note { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--border); color: var(--secondary); font-size: 12px; }
+
+    .result-layout { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 18px; align-items: start; }
+    .result-hero { padding: 26px; }
+    .result-hero .coverage { width: fit-content; }
+    .result-hero .median output { font-size: clamp(42px,6vw,70px); }
+    .result-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 20px 0; }
+    .result-stats .stat-box { padding: 14px; }
+    .result-warning { padding: 13px; border-radius: 11px; color: var(--warning); background: var(--warning-soft); font-size: 13px; }
+    .result-list { padding: 18px; }
+    .result-list h3 { margin: 0 0 12px; }
+    .compact-row { padding: 10px 0; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); }
+    .compact-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .history-layout { display: grid; grid-template-columns: 360px minmax(0,1fr); gap: 16px; }
+    .history-list { display: grid; gap: 8px; }
+    .history-item { width: 100%; padding: 13px; display: grid; gap: 5px; text-align: left; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+    .history-item:hover { border-color: var(--border-strong); }
+    .history-item strong { font-size: 14px; }
+    .history-meta { display: flex; flex-wrap: wrap; gap: 7px; color: var(--secondary); font-size: 12px; }
+    .history-price { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: 760; }
+
+    .mobile-bottom, .mobile-sticky { display: none; }
+    dialog { width: min(560px,calc(100% - 32px)); padding: 0; border: 1px solid var(--border); border-radius: 20px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-float); }
+    dialog::backdrop { background: rgba(13,24,36,.38); backdrop-filter: blur(5px); }
+    .dialog-head { padding: 18px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); }
+    .dialog-head h2 { margin: 0; font-size: 20px; }
+    .dialog-close { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--surface-subtle); font-size: 22px; }
+    .dialog-body { padding: 18px; }
+    .dialog-body dl { margin: 0; display: grid; gap: 10px; }
+    .dialog-body dl div { display: grid; grid-template-columns: 120px 1fr; gap: 12px; }
+    .dialog-body dt { color: var(--secondary); }
+    .dialog-body dd { margin: 0; }
+
+    @media (max-width: 1100px) {
+      .three-pane { grid-template-columns: minmax(240px,3fr) minmax(420px,6fr); }
+      .three-pane > :last-child { grid-column: 1 / -1; position: static; }
+      .result-layout { grid-template-columns: 1fr; }
+      .result-list { display: none; }
+    }
+    @media (max-width: 1023px) {
+      .sidebar { width: 72px; padding-inline: 8px; }
+      .brand { padding-inline: 8px; }
+      .brand > span:last-child, .nav span, .sidebar-foot { display: none; }
+      .nav a { justify-content: center; padding-inline: 0; }
+      .workspace { margin-left: 72px; }
+      main { padding: 24px; }
+      .input-layout, .candidate-layout { grid-template-columns: minmax(0,1fr) 280px; }
+      .method-grid { grid-template-columns: 1fr; }
+      .method-card { min-height: 86px; grid-template-columns: 38px 1fr; align-items: center; }
+      .method-card small { grid-column: 2; margin-top: -9px; }
+      .history-layout { grid-template-columns: 300px minmax(0,1fr); }
+    }
+    @media (max-width: 767px) {
+      body { font-size: 16px; }
+      .sidebar { display: none; }
+      .workspace { margin-left: 0; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+      .topbar { height: 56px; padding: 6px 16px; }
+      .org, .profile { display: none; }
+      .mobile-context { min-width: 0; width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+      .mobile-context strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+      .mobile-context span { color: var(--secondary); font-size: 13px; font-variant-numeric: tabular-nums; }
+      main { padding: 16px 16px 118px; }
+      .demo-notice { margin-bottom: 12px; font-size: 13px; }
+      .page-head { margin-bottom: 16px; align-items: flex-start; }
+      .page-head h1 { font-size: 26px; }
+      .page-head p { font-size: 15px; line-height: 1.6; }
+      .history-shortcut { display: none; }
+      .mobile-history { width: 100%; min-height: 46px; margin: -4px 0 14px; padding: 9px 13px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-weight: 700; }
+      .stepper { grid-template-columns: repeat(5,1fr); gap: 2px; padding: 4px; overflow: hidden; }
+      .stepper button { min-width: 0; padding: 5px 2px; gap: 0; }
+      .stepper button span:last-child { display: none; }
+      .stepper button span:first-child { width: 29px; height: 29px; }
+      .section-title { font-size: 19px; }
+      .section-lead { font-size: 15px; }
+      .method-grid { gap: 10px; }
+      .method-card { min-height: 94px; padding: 14px; }
+      .method-card strong { font-size: 15px; }
+      .method-card small { font-size: 14px; }
+      .input-layout, .status-layout, .candidate-layout, .result-layout, .history-layout, .three-pane { display: block; }
+      .summary-card { position: static; margin-top: 12px; }
+      .form-card { padding: 16px; }
+      .form-grid { grid-template-columns: 1fr; gap: 13px; }
+      .condition-head { align-items: flex-start; flex-direction: column; }
+      .condition-grid { grid-template-columns: 1fr; }
+      .condition-option { min-height: 52px; font-size: 15px; }
+      .field.full { grid-column: auto; }
+      .field label, .field .label { font-size: 14px; }
+      .field input, .field select, .field textarea { min-height: 48px; font-size: 16px; }
+      .upload-preview { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .action-row { margin-bottom: 4px; justify-content: stretch; }
+      .action-row .button { flex: 1 1 100%; }
+      .three-pane .pane { margin-bottom: 12px; }
+      .three-pane .pane:first-child { display: none; }
+      .value-pair { grid-template-columns: 1fr; }
+      .strategy { min-height: 66px; }
+      .status-card { padding: 20px; }
+      .status-layout .summary-card { margin-top: 12px; }
+      .candidate-toolbar { align-items: stretch; }
+      .outlier-head { flex-direction: column; }
+      .outlier-controls { grid-template-columns: 1fr 1fr; }
+      .segmented { width: 100%; display: grid; grid-template-columns: repeat(3,1fr); }
+      .segmented button { padding-inline: 4px; }
+      .table-wrap { display: none; }
+      .mobile-candidates { display: grid; gap: 10px; }
+      .candidate-card { padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-card); }
+      .candidate-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+      .candidate-card h3 { margin: 0; font-size: 16px; line-height: 1.45; }
+      .candidate-card .money { margin-top: 7px; display: block; font-size: 23px; }
+      .candidate-card dl { margin: 10px 0; display: grid; gap: 5px; }
+      .candidate-card dl div { display: grid; grid-template-columns: 80px 1fr; gap: 8px; }
+      .candidate-card dt { color: var(--secondary); font-size: 13px; }
+      .candidate-card dd { margin: 0; font-size: 14px; }
+      .candidate-card .review-actions { justify-content: space-between; }
+      .stats-card { position: static; margin-top: 12px; }
+      .result-hero { padding: 18px; }
+      .result-hero .median output { font-size: 46px; }
+      .result-stats { grid-template-columns: 1fr 1fr; }
+      .history-list { margin-top: 12px; }
+      .history-detail { display: none; }
+      .mobile-bottom { position: fixed; z-index: 40; inset: auto 0 0; min-height: calc(68px + env(safe-area-inset-bottom)); padding: 5px 4px env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border-top: 1px solid var(--border); background: var(--material); backdrop-filter: blur(24px) saturate(160%); }
+      .mobile-bottom button { min-width: 0; min-height: 58px; padding: 4px 1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 0; border-radius: 9px; color: var(--secondary); background: transparent; font-size: 11px; }
+      .mobile-bottom button[aria-current="page"] { color: var(--accent-strong); background: var(--accent-soft); font-weight: 750; }
+      .mobile-bottom .icon { width: 21px; height: 21px; }
+      .mobile-sticky { position: fixed; z-index: 35; right: 0; bottom: calc(68px + env(safe-area-inset-bottom)); left: 0; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--border); background: var(--material); backdrop-filter: blur(24px) saturate(160%); }
+      .mobile-sticky > span { min-width: 0; color: var(--secondary); font-size: 12px; }
+      .mobile-sticky strong { display: block; color: var(--ink); font-size: 17px; }
+      .mobile-sticky .button { flex: 0 0 auto; min-height: 48px; padding-inline: 15px; }
+      .view[data-view="input"] .desktop-actions,
+      .view[data-view="identify"] .desktop-actions,
+      .view[data-view="progress"] .desktop-actions,
+      .view[data-view="candidates"] .desktop-actions { display: none; }
+      dialog { width: calc(100% - 24px); }
+      .dialog-body dl div { grid-template-columns: 1fr; gap: 2px; }
+    }
+    @media (max-width: 359px) {
+      main { padding-inline: 12px; }
+      .method-card { grid-template-columns: 34px 1fr; }
+      .method-icon { width: 34px; height: 34px; }
+      .mobile-sticky { padding-inline: 12px; }
+      .mobile-sticky > span { display: none; }
+      .mobile-sticky .button { width: 100%; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+    @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+      :root { --material: #fff; --border: rgba(0,0,0,.38); --border-strong: rgba(0,0,0,.68); }
+      .sidebar, .topbar, .mobile-bottom, .mobile-sticky, dialog::backdrop { backdrop-filter: none; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V9"/><path d="M10 19V5"/><path d="M16 19v-8"/><path d="M22 19H2"/></symbol>
+    <symbol id="i-case" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5h8v2"/><path d="M3 12h18"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v15.5"/><path d="M20 22V2H6.5A2.5 2.5 0 0 0 4 4.5"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4 16 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l1.5-3z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3-1.4 4.2L6 9l4.6 1.8L12 15l1.4-4.2L18 9l-4.6-1.8z"/><path d="m18.5 14-.8 2.2-2.2.8 2.2.8.8 2.2.8-2.2 2.2-.8-2.2-.8z"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M20 15v5H4v-5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  </svg>
+
+  <a class="skip" href="#main-content">本文へ移動</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="メインナビゲーション">
+      <a class="brand" href="#" data-go="input" aria-label="買取支援ツール ホーム">
+        <span class="brand-mark" aria-hidden="true">華</span>
+        <span><strong>買取支援</strong><small>HANAMARU</small></span>
+      </a>
+      <nav class="nav">
+        <a href="#"><svg class="icon"><use href="#i-home"/></svg><span>買取支援AI</span></a>
+        <a href="#" aria-current="page"><svg class="icon"><use href="#i-chart"/></svg><span>買取相場</span></a>
+        <a href="#"><svg class="icon"><use href="#i-case"/></svg><span>訪問前チェック</span></a>
+        <a href="#"><svg class="icon"><use href="#i-message"/></svg><span>振り返り</span></a>
+        <a href="#"><svg class="icon"><use href="#i-book"/></svg><span>現場の知識</span></a>
+      </nav>
+      <div class="sidebar-foot">このデモは画面遷移の確認用です。外部サービスへ接続しません。</div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="org"><strong>買取支援ツール</strong><small>業務ワークスペース</small></div>
+        <div class="mobile-context"><strong id="mobile-title">買取相場</strong><span id="mobile-step">1 / 5</span></div>
+        <button class="profile" type="button"><span>査定員</span><span class="avatar" aria-hidden="true">査</span></button>
+      </header>
+
+      <main id="main-content" tabindex="-1">
+        <p class="demo-notice"><svg class="icon"><use href="#i-info"/></svg><span>画面設計デモです。外部サービスには接続しません。上の工程1〜5はいつでも直接開けます。</span></p>
+        <header class="page-head">
+          <div><h1>買取相場</h1><p>商品を絞り込み、落札実績から価格帯を確認します。</p></div>
+          <button class="history-shortcut" type="button" data-go="history"><svg class="icon"><use href="#i-history"/></svg>検索履歴</button>
+        </header>
+
+        <nav class="stepper" aria-label="相場検索の工程。デモでは各工程へ直接移動できます">
+          <button type="button" data-step="input" data-active="true"><span>1</span><span>商品入力</span></button>
+          <button type="button" data-step="identify"><span>2</span><span>条件確認</span></button>
+          <button type="button" data-step="progress"><span>3</span><span>情報取得</span></button>
+          <button type="button" data-step="candidates"><span>4</span><span>候補確認</span></button>
+          <button type="button" data-step="result"><span>5</span><span>相場結果</span></button>
+        </nav>
+
+        <section class="view" data-view="input">
+          <h2 class="section-title" tabindex="-1">商品の探し方を選ぶ</h2>
+          <p class="section-lead">写真からでも、分かる商品情報からでも始められます。AI補助の利用は任意です。</p>
+          <button class="mobile-history" type="button" data-go="history"><svg class="icon"><use href="#i-history"/></svg>検索履歴を開く</button>
+          <div class="method-grid" role="group" aria-label="検索方法">
+            <button class="method-card" type="button" data-method="image_assisted" aria-pressed="false">
+              <span class="method-icon"><svg class="icon"><use href="#i-camera"/></svg></span>
+              <strong>写真から候補を作る</strong>
+              <small>写真と補足情報をAIが整理し、商品候補と検索語を提案します。</small>
+            </button>
+            <button class="method-card" type="button" data-method="manual_assisted" aria-pressed="true">
+              <span class="method-icon"><svg class="icon"><use href="#i-spark"/></svg></span>
+              <strong>手入力をAIで補助</strong>
+              <small>分かる項目を入力し、不足項目・表記揺れ・検索語の候補を受け取ります。</small>
+            </button>
+            <button class="method-card" type="button" data-method="manual_direct" aria-pressed="false">
+              <span class="method-icon"><svg class="icon"><use href="#i-edit"/></svg></span>
+              <strong>自分で検索条件を入力</strong>
+              <small>AI補助を使わず、入力した商品名・型番・キーワードで検索します。</small>
+            </button>
+          </div>
+
+          <div class="input-layout">
+            <form class="card form-card" id="product-form" novalidate>
+              <div id="image-fields" hidden>
+                <div class="upload-zone">
+                  <svg class="icon" style="width:30px;height:30px"><use href="#i-upload"/></svg>
+                  <strong>商品の写真を追加</strong>
+                  <span>正面・ロゴ・型番ラベルなど、最大5枚</span>
+                  <label for="product-images"><svg class="icon"><use href="#i-camera"/></svg>写真を選ぶ</label>
+                  <input class="sr-only" id="product-images" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+                </div>
+                <div class="upload-preview" id="upload-preview" aria-live="polite"></div>
+                <div class="field" style="margin-top:14px"><label for="image-note">写真の補足</label><textarea id="image-note" placeholder="分かるブランド名、購入時期、付属品など"></textarea></div>
+              </div>
+
+              <div id="manual-fields">
+                <div class="pane-head"><div><h3>分かる商品情報</h3><p>不明な項目は空欄のままで進めます。</p></div><span class="badge ai" id="mode-badge">AI補助</span></div>
+                <div class="form-grid">
+                  <div class="field"><label for="product-name">商品名 <span class="required">*</span></label><input id="product-name" value="ミラーレスカメラ" autocomplete="off"></div>
+                  <div class="field"><label for="category">カテゴリ <span class="required">*</span></label><select id="category"><option value="">選択してください</option><option value="camera" selected>カメラ</option><option value="watch">腕時計</option><option value="audio">オーディオ</option><option value="appliance">家電</option><option value="digital">デジタル機器</option></select></div>
+                  <div class="field"><label for="brand">ブランド・メーカー</label><input id="brand" value="Canon" autocomplete="off"></div>
+                  <div class="field"><label for="model">型番</label><input id="model" value="EOS R6" autocomplete="off"></div>
+                  <div class="field"><label for="series">シリーズ</label><input id="series" placeholder="例：EOS R"></div>
+                  <div class="field"><label for="variant">色・容量・仕様</label><input id="variant" placeholder="例：ボディのみ、ブラック"></div>
+                  <div class="field full"><label for="accessories">付属品・補足</label><textarea id="accessories" placeholder="例：元箱、バッテリー、充電器あり">ボディ、純正バッテリー、充電器</textarea></div>
+                </div>
+              </div>
+              <fieldset class="condition-fieldset" id="condition-fieldset" tabindex="-1" aria-required="true" aria-describedby="condition-help condition-error">
+                <legend>商品の状態 <span class="required">*</span></legend>
+                <div class="condition-head">
+                  <p id="condition-help">検索対象にする状態を複数選べます。AI補助の候補も自動確定しません。</p>
+                  <div class="condition-actions"><button type="button" id="condition-select-all">すべて選択</button><button type="button" id="condition-clear">選択を解除</button></div>
+                </div>
+                <div class="condition-grid">
+                  <label class="condition-option"><input type="checkbox" name="condition" value="unused"><span>未使用</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="near_unused" checked><span>未使用に近い</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="good" checked><span>目立った傷や汚れなし</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="fair" checked><span>やや傷や汚れあり</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="poor"><span>傷や汚れあり</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="very_poor"><span>全体的に状態が悪い</span></label>
+                  <label class="condition-option"><input type="checkbox" name="condition" value="unspecified"><span>状態の記載なし</span></label>
+                </div>
+                <p class="condition-error" id="condition-error" role="alert" hidden>商品状態を1件以上選択してください。</p>
+              </fieldset>
+              <div class="action-row desktop-actions">
+                <button class="button primary" type="submit" id="input-primary"><svg class="icon"><use href="#i-spark"/></svg>AIで入力を補助</button>
+              </div>
+            </form>
+
+            <aside class="card summary-card" aria-label="現在の検索内容">
+              <h3>現在の検索内容</h3>
+              <dl class="summary-list">
+                <div><dt>開始方法</dt><dd id="summary-method">手入力＋AI補助</dd></div>
+                <div><dt>商品</dt><dd id="summary-product">ミラーレスカメラ</dd></div>
+                <div><dt>ブランド</dt><dd id="summary-brand">Canon</dd></div>
+                <div><dt>型番</dt><dd id="summary-model">EOS R6</dd></div>
+                <div><dt>商品状態</dt><dd id="summary-conditions">未使用に近い、目立った傷や汚れなし、やや傷や汚れあり</dd></div>
+                <div><dt>対象期間</dt><dd>直近90日</dd></div>
+              </dl>
+              <p class="privacy-note">写真に顔、住所、本人確認書類が写っていないことを確認してください。</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="identify" hidden>
+          <h2 class="section-title" tabindex="-1">商品候補と検索条件を確認</h2>
+          <p class="section-lead">AI補助の提案は候補です。利用者が採用した値だけを検索に使います。</p>
+          <div class="notice" style="margin-bottom:14px"><svg class="icon"><use href="#i-info"/></svg><div><strong>AI補助は落札情報を取得しません</strong><span>商品候補、表記揺れ、検索キーワードを提案するだけです。落札価格は次の工程で取得します。</span></div></div>
+          <div class="three-pane">
+            <aside class="pane">
+              <div class="pane-head"><div><h3>利用者の入力</h3><p>AI補助の提案で自動上書きしません。</p></div><span class="badge" id="identify-origin">手入力</span></div>
+              <dl class="summary-list">
+                <div><dt>商品</dt><dd>ミラーレスカメラ</dd></div>
+                <div><dt>ブランド</dt><dd>Canon</dd></div>
+                <div><dt>型番</dt><dd>EOS R6</dd></div>
+                <div><dt>付属品</dt><dd>バッテリー・充電器</dd></div>
+                <div><dt>商品状態</dt><dd id="identify-conditions">未使用に近い、目立った傷や汚れなし、やや傷や汚れあり</dd></div>
+              </dl>
+              <button class="button ghost" type="button" data-go="input" style="margin-top:10px">入力を修正</button>
+            </aside>
+
+            <section class="pane">
+              <div class="pane-head"><div><h3 id="proposal-title">AI補助による商品候補</h3><p id="proposal-subtitle">候補を1つ選び、項目ごとに判断します。</p></div><span class="badge ai" id="assist-badge">AI提案</span></div>
+              <div class="candidate-options" id="product-options">
+                <button class="product-option" type="button" aria-pressed="true" data-product-option="0"><span><strong>Canon EOS R6 ボディ</strong><small>入力した型番と一致。初代モデルの候補</small></span><span class="confidence">確信度 高</span></button>
+                <button class="product-option" type="button" aria-pressed="false" data-product-option="1"><span><strong>Canon EOS R6 Mark II ボディ</strong><small>名称が近い別世代。型番ラベルの再確認が必要</small></span><span class="confidence">確信度 中</span></button>
+                <button class="product-option" type="button" aria-pressed="false" data-product-option="2"><span><strong>該当する候補がない</strong><small>手入力だけで検索条件を確定します</small></span></button>
+              </div>
+              <h3 style="margin-top:18px">項目ごとの確認 <span class="badge warning" id="pending-count">4件未確認</span></h3>
+              <div class="field-review-list" id="field-review-list"></div>
+            </section>
+
+            <aside class="pane">
+              <div class="pane-head"><div><h3>Yahoo検索条件</h3><p>実際に送る検索語を確認します。</p></div></div>
+              <div class="strategy-list" id="strategy-list">
+                <label class="strategy"><input type="radio" name="strategy" value="strict"><span><strong>厳密</strong><small>Canon EOS R6 ボディ</small></span></label>
+                <label class="strategy"><input type="radio" name="strategy" value="standard" checked><span><strong>標準</strong><small>Canon EOS R6 ミラーレス</small></span></label>
+                <label class="strategy"><input type="radio" name="strategy" value="broad"><span><strong>広め</strong><small>Canon EOS Rシリーズ カメラ</small></span></label>
+              </div>
+              <h3 style="margin-top:16px">商品状態</h3>
+              <p class="subtle" id="identify-confirmed-conditions">未使用に近い、目立った傷や汚れなし、やや傷や汚れあり</p>
+              <button class="button small" type="button" data-go="input">状態を変更</button>
+              <h3 style="margin-top:16px">除外キーワード</h3>
+              <div class="chip-list" id="exclude-chips"></div>
+              <div class="field" style="margin-top:10px"><label for="new-exclude">除外語を追加</label><div style="display:grid;grid-template-columns:1fr auto;gap:6px"><input id="new-exclude" placeholder="例：レンズのみ"><button class="button small" type="button" id="add-exclude">追加</button></div></div>
+              <div class="action-row desktop-actions"><button class="button primary" type="button" id="start-search" disabled><svg class="icon"><use href="#i-search"/></svg>この条件で検索</button></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="progress" hidden>
+          <h2 class="section-title" tabindex="-1">落札情報の取得状況</h2>
+          <p class="section-lead">処理中にこの画面を閉じても検索は続きます。</p>
+          <div class="status-layout">
+            <section class="card status-card">
+              <span class="status-symbol"><svg class="icon" style="width:27px;height:27px"><use href="#i-search"/></svg></span>
+              <span class="eyebrow">取得・正規化</span>
+              <h2>同一商品候補を整理しています</h2>
+              <p>検索条件に合う落札情報を取得し、型番、付属品、まとめ売り、重複を確認します。</p>
+              <div class="timeline" aria-label="処理段階">
+                <div class="timeline-item done"><span class="timeline-dot">✓</span><strong>検索を受け付けました</strong><small>確定済みの条件を保存</small></div>
+                <div class="timeline-item done"><span class="timeline-dot">✓</span><strong>落札情報を取得</strong><small>対象期間の公開情報を確認</small></div>
+                <div class="timeline-item current"><span class="timeline-dot">3</span><strong>同一商品候補を整理</strong><small>型番と除外語を照合</small></div>
+                <div class="timeline-item"><span class="timeline-dot">4</span><strong>利用者の確認待ち</strong><small>候補の採否を確認</small></div>
+              </div>
+              <div class="notice warning"><svg class="icon"><use href="#i-info"/></svg><div><strong>デモでは外部取得を実行しません</strong><span>時間経過による偽の進捗は使わず、下の操作で取得後の画面へ進みます。</span></div></div>
+              <div class="action-row desktop-actions"><button class="button" type="button" data-go="identify">条件を修正</button><button class="button primary" type="button" data-go="candidates">取得結果を表示</button></div>
+            </section>
+            <aside class="card summary-card">
+              <h3>確定した検索条件</h3>
+              <dl class="summary-list"><div><dt>商品</dt><dd>Canon EOS R6</dd></div><div><dt>検索語</dt><dd id="progress-query">Canon EOS R6 ミラーレス</dd></div><div><dt>商品状態</dt><dd id="progress-conditions">未使用に近い、目立った傷や汚れなし、やや傷や汚れあり</dd></div><div><dt>対象期間</dt><dd>直近90日</dd></div><div><dt>除外</dt><dd id="progress-excludes">ジャンクほか</dd></div></dl>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="candidates" hidden>
+          <h2 class="section-title" tabindex="-1">落札候補を確認</h2>
+          <p class="section-lead">同じ商品・同じ状態で比較します。明らかな価格外れ値は候補として除外し、いつでも集計へ戻せます。</p>
+          <div class="coverage"><svg class="icon"><use href="#i-check"/></svg><span>直近90日の取得範囲を確認できました</span></div>
+          <section class="card outlier-panel" aria-labelledby="outlier-title">
+            <div class="outlier-head">
+              <div><h3 id="outlier-title">価格外れ値の確認</h3><p>同じ商品状態が5件以上あり、状態別中央値から設定率を超え、IQR範囲外の候補だけを除外します。</p></div>
+              <label class="policy-toggle"><input type="checkbox" id="outlier-enabled" checked>明らかな外れ値を自動除外</label>
+            </div>
+            <div class="outlier-controls">
+              <div class="policy-field"><span>比較単位</span><strong>同じ商品状態ごと</strong></div>
+              <div class="policy-field"><span>基準</span><strong>中央値</strong></div>
+              <div class="policy-field"><label for="outlier-threshold">一次検知の乖離率（%）</label><input id="outlier-threshold" type="number" min="1" max="100" step="1" value="20"></div>
+              <div class="policy-field"><span>補助判定</span><strong>IQR 1.5倍・最低5件</strong></div>
+            </div>
+            <p class="outlier-status" aria-live="polite"><span>自動除外 <strong id="outlier-auto-count">0件</strong></span><span>除外前中央値 <strong id="outlier-before-median">—</strong></span><span>除外後中央値 <strong id="outlier-after-median">—</strong></span></p>
+          </section>
+          <div class="candidate-toolbar">
+            <div class="segmented" role="group" aria-label="候補の表示">
+              <button type="button" aria-pressed="true" data-filter="all">すべて</button>
+              <button type="button" aria-pressed="false" data-filter="included">集計対象</button>
+              <button type="button" aria-pressed="false" data-filter="excluded">除外</button>
+            </div>
+            <span class="subtle" id="candidate-count-text">10件を表示</span>
+          </div>
+          <div class="candidate-layout">
+            <div>
+              <div class="card table-wrap">
+                <table>
+                  <thead><tr><th>集計</th><th>落札商品</th><th>落札価格</th><th>落札日</th><th>判定</th><th><span class="sr-only">詳細</span></th></tr></thead>
+                  <tbody id="candidate-tbody"></tbody>
+                </table>
+              </div>
+              <div class="mobile-candidates" id="mobile-candidate-list"></div>
+            </div>
+            <aside class="card stats-card" aria-label="現在の参考相場">
+              <div class="coverage"><svg class="icon"><use href="#i-check"/></svg><span>直近90日の取得完了</span></div>
+              <div class="median"><span>現在の参考中央値</span><output id="candidate-median">—</output></div>
+              <dl class="stat-grid"><div class="stat-box"><dt>除外前中央値</dt><dd id="candidate-before-median">—</dd></div><div class="stat-box"><dt>集計対象</dt><dd id="candidate-included">—</dd></div><div class="stat-box"><dt>最低値</dt><dd id="candidate-min">—</dd></div><div class="stat-box"><dt>最高値</dt><dd id="candidate-max">—</dd></div><div class="stat-box"><dt>除外</dt><dd id="candidate-excluded">—</dd></div><div class="stat-box"><dt>手動復帰</dt><dd id="candidate-restored">—</dd></div></dl>
+              <p class="stats-note" id="candidate-exclusion-breakdown">除外内訳を計算しています。</p>
+              <p class="stats-note">送料は合算していません。推奨買取価格ではありません。</p>
+              <div class="action-row desktop-actions"><button class="button primary" id="confirm-market" type="button">相場を確定</button></div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="result" hidden>
+          <h2 class="section-title" tabindex="-1">相場結果</h2>
+          <p class="section-lead">集計対象と取得範囲を確認したうえで、査定判断の参考として使用します。</p>
+          <div class="result-layout">
+            <section class="card result-hero">
+              <div class="coverage"><svg class="icon"><use href="#i-check"/></svg><span>直近90日の取得完了</span></div>
+              <div class="median"><span>落札価格の参考中央値</span><output id="result-median">—</output></div>
+              <dl class="result-stats"><div class="stat-box"><dt>除外前中央値</dt><dd id="result-before-median">—</dd></div><div class="stat-box"><dt>集計対象</dt><dd id="result-included">—</dd></div><div class="stat-box"><dt>最低値</dt><dd id="result-min">—</dd></div><div class="stat-box"><dt>最高値</dt><dd id="result-max">—</dd></div><div class="stat-box"><dt>除外</dt><dd id="result-excluded">—</dd></div><div class="stat-box"><dt>手動復帰</dt><dd id="result-restored">—</dd></div></dl>
+              <dl class="summary-list"><div><dt>対象商品</dt><dd>Canon EOS R6 ボディ</dd></div><div><dt>商品状態</dt><dd id="result-conditions">未使用に近い、目立った傷や汚れなし、やや傷や汚れあり</dd></div><div><dt>除外内訳</dt><dd id="result-exclusion-breakdown">—</dd></div><div><dt>外れ値基準</dt><dd id="result-outlier-policy">状態別中央値から20%超＋IQR範囲外（5件以上）</dd></div><div><dt>取得期間</dt><dd>2026-03-09〜2026-09-09</dd></div><div><dt>計算日時</dt><dd>2026-09-09 14:30</dd></div><div><dt>検索語</dt><dd id="result-query">Canon EOS R6 ミラーレス</dd></div></dl>
+              <p class="result-warning">この結果は落札実績の分布です。商品の状態、付属品、相場変動を確認し、実際の買取価格は査定員が判断してください。</p>
+              <div class="action-row"><button class="button" type="button" data-go="candidates">候補を見直す</button><button class="button" type="button" id="repeat-search">同じ条件で再検索</button><button class="button primary" type="button" id="new-search">新しい相場を調べる</button></div>
+            </section>
+            <aside class="card result-list"><h3>集計に含めた商品</h3><div id="result-items"></div><button class="button ghost" type="button" data-go="candidates">すべての候補を見る</button></aside>
+          </div>
+        </section>
+
+        <section class="view" data-view="history" hidden>
+          <h2 class="section-title" tabindex="-1">検索履歴</h2>
+          <p class="section-lead">保存済みの結果を確認するか、現在時点の落札情報で再検索できます。</p>
+          <div class="history-layout">
+            <section class="pane">
+              <div class="field"><label for="history-search">履歴を検索</label><input id="history-search" type="search" placeholder="商品名、ブランド、型番"></div>
+              <div class="history-list" id="history-list">
+                <button class="history-item" type="button" data-history="Canon EOS R6"><strong>Canon EOS R6 ボディ</strong><span class="history-price">¥84,500</span><span class="history-meta"><span>本日 14:30</span><span>直近90日の取得完了</span></span></button>
+                <button class="history-item" type="button" data-history="Sony WH-1000XM5"><strong>Sony WH-1000XM5</strong><span class="history-price">¥28,800</span><span class="history-meta"><span>9月8日</span><span>18件</span></span></button>
+                <button class="history-item" type="button" data-history="Apple Watch Ultra 2"><strong>Apple Watch Ultra 2</strong><span class="history-price">¥72,000</span><span class="history-meta"><span>9月7日</span><span>部分取得</span></span></button>
+              </div>
+            </section>
+            <section class="card result-hero history-detail">
+              <span class="badge success">保存済み結果</span>
+              <h2 style="margin:12px 0 4px">Canon EOS R6 ボディ</h2>
+              <p class="subtle">本日 14:30に計算</p>
+              <div class="median"><span>落札価格の参考中央値</span><output>¥84,500</output></div>
+              <dl class="result-stats"><div class="stat-box"><dt>最低値</dt><dd>¥72,000</dd></div><div class="stat-box"><dt>最高値</dt><dd>¥103,000</dd></div><div class="stat-box"><dt>集計対象</dt><dd>6件</dd></div><div class="stat-box"><dt>取得</dt><dd>完了</dd></div></dl>
+              <div class="action-row"><button class="button" type="button" id="history-repeat">現在時点で再検索</button><button class="button primary" type="button" data-go="result">結果を見る</button></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <nav class="mobile-bottom" aria-label="モバイルナビゲーション">
+      <button type="button"><svg class="icon"><use href="#i-home"/></svg><span>ホーム</span></button>
+      <button type="button" aria-current="page" data-go="input"><svg class="icon"><use href="#i-chart"/></svg><span>相場</span></button>
+      <button type="button"><svg class="icon"><use href="#i-case"/></svg><span>訪問</span></button>
+      <button type="button"><svg class="icon"><use href="#i-message"/></svg><span>振り返り</span></button>
+      <button type="button"><svg class="icon"><use href="#i-book"/></svg><span>その他</span></button>
+    </nav>
+
+    <div class="mobile-sticky" id="mobile-sticky">
+      <span id="sticky-summary">手入力＋AI補助<strong>Canon EOS R6</strong></span>
+      <button class="button primary" type="button" id="sticky-primary">AIで入力を補助</button>
+    </div>
+  </div>
+
+  <dialog id="detail-dialog" aria-labelledby="dialog-title">
+    <header class="dialog-head"><div><span class="eyebrow">取得した落札情報</span><h2 id="dialog-title">候補の詳細</h2></div><button class="dialog-close" type="button" aria-label="閉じる">×</button></header>
+    <div class="dialog-body"><dl id="dialog-details"></dl><div class="notice warning" style="margin-top:16px"><svg class="icon"><use href="#i-info"/></svg><div><strong>画面デモの匿名データ</strong><span>元ページは開きません。正式版では取得元URLを新しいタブで確認できます。</span></div></div></div>
+  </dialog>
+
+  <script>
+    (() => {
+      const state = {
+        view: "input",
+        method: "manual_assisted",
+        completed: new Set(["input"]),
+        decisions: {},
+        conditions: new Set(["near_unused", "good", "fair"]),
+        excludes: ["ジャンク", "部品取り", "空箱", "箱のみ", "まとめ売り"],
+        filter: "all",
+        outlierPolicy: {enabled:true, thresholdRate:.2, minimumGroupSize:5},
+        candidates: [
+          {id:"A-001",title:"Canon EOS R6 ボディ 元箱・付属品あり",price:86500,date:"2026-09-02",condition:"目立った傷や汚れなし",conditionKey:"good",match:"高",reason:"型番一致／本体",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-002",title:"キヤノン EOS R6 ミラーレス ボディ",price:82000,date:"2026-08-28",condition:"目立った傷や汚れなし",conditionKey:"good",match:"高",reason:"型番一致／表記揺れ",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-003",title:"Canon EOS R6 ボディ バッテリー2個",price:91000,date:"2026-08-17",condition:"目立った傷や汚れなし",conditionKey:"good",match:"高",reason:"型番一致／付属品差",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-004",title:"EOS R6 カメラボディ 使用感あり",price:72000,date:"2026-07-29",condition:"やや傷や汚れあり",conditionKey:"fair",match:"中",reason:"型番一致／状態差",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-005",title:"Canon EOS R6 元箱のみ",price:4800,date:"2026-07-12",condition:"状態の記載なし",conditionKey:"unspecified",match:"低",reason:"本体なし",hardExcluded:true,manualOverride:null,included:false},
+          {id:"A-006",title:"Canon EOS R6 ジャンク 部品取り",price:35000,date:"2026-06-20",condition:"全体的に状態が悪い",conditionKey:"very_poor",match:"低",reason:"除外語一致",hardExcluded:true,manualOverride:null,included:false},
+          {id:"A-007",title:"Canon EOS R6 ボディ 美品",price:103000,date:"2026-05-31",condition:"未使用に近い",conditionKey:"near_unused",match:"高",reason:"型番一致／本体",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-008",title:"Canon EOS R6 ボディ シャッター確認済",price:84500,date:"2026-04-11",condition:"目立った傷や汚れなし",conditionKey:"good",match:"高",reason:"型番一致／本体",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-009",title:"Canon EOS R6 ボディ 通常使用品",price:79000,date:"2026-03-26",condition:"目立った傷や汚れなし",conditionKey:"good",match:"高",reason:"型番一致／本体",hardExcluded:false,manualOverride:null,included:true},
+          {id:"A-010",title:"Canon EOS R6 ボディ 限定セット表記",price:145000,date:"2026-03-14",condition:"目立った傷や汚れなし",conditionKey:"good",match:"中",reason:"型番一致／価格要確認",hardExcluded:false,manualOverride:null,included:true}
+        ]
+      };
+
+      const views = [...document.querySelectorAll(".view")];
+      const stepButtons = [...document.querySelectorAll("[data-step]")];
+      const methodButtons = [...document.querySelectorAll("[data-method]")];
+      const fields = [
+        {key:"brand",label:"ブランド",original:"Canon",suggested:"Canon（キヤノン）"},
+        {key:"model",label:"型番",original:"EOS R6",suggested:"EOS R6"},
+        {key:"series",label:"シリーズ",original:"未入力",suggested:"EOS R"},
+        {key:"variant",label:"商品仕様",original:"未入力",suggested:"ボディのみ・ブラック"}
+      ];
+      const yen = value => value == null ? "—" : new Intl.NumberFormat("ja-JP",{style:"currency",currency:"JPY",maximumFractionDigits:0}).format(value);
+      const stepIndex = view => ({input:0,identify:1,progress:2,candidates:3,result:4})[view];
+      const conditionLabels = {
+        unused:"未使用",
+        near_unused:"未使用に近い",
+        good:"目立った傷や汚れなし",
+        fair:"やや傷や汚れあり",
+        poor:"傷や汚れあり",
+        very_poor:"全体的に状態が悪い",
+        unspecified:"状態の記載なし"
+      };
+
+      function selectedConditionText() {
+        return [...state.conditions].map(value=>conditionLabels[value]).join("、") || "未選択";
+      }
+
+      function updateConditionUi(showError=false) {
+        document.querySelectorAll('input[name="condition"]').forEach(input=>input.checked=state.conditions.has(input.value));
+        const text=selectedConditionText();
+        ["summary-conditions","identify-conditions","identify-confirmed-conditions","progress-conditions","result-conditions"].forEach(id=>{
+          const node=document.getElementById(id); if(node)node.textContent=text;
+        });
+        const invalid=state.conditions.size===0;
+        const error=document.getElementById("condition-error");
+        error.hidden=!invalid || !showError;
+        document.getElementById("condition-fieldset").setAttribute("aria-invalid",invalid?"true":"false");
+        document.getElementById("input-primary").disabled=invalid;
+        updatePending();
+        if(state.view==="candidates"||state.view==="result")renderCandidates();
+      }
+
+      function queryText() {
+        return document.querySelector('input[name="strategy"]:checked')?.closest("label")?.querySelector("small")?.textContent || "Canon EOS R6 ミラーレス";
+      }
+
+      function setView(next, options={}) {
+        state.view = next;
+        if(next !== "history") state.completed.add(next);
+        views.forEach(view => view.hidden = view.dataset.view !== next);
+        const idx = stepIndex(next);
+        stepButtons.forEach((button, index) => {
+          button.dataset.active = index === idx ? "true" : "false";
+          button.dataset.done = idx != null && index < idx ? "true" : "false";
+        });
+        document.getElementById("mobile-title").textContent = next === "history" ? "検索履歴" : ({input:"商品入力",identify:"条件確認",progress:"情報取得",candidates:"候補確認",result:"相場結果"}[next] || "買取相場");
+        document.getElementById("mobile-step").textContent = idx == null ? "履歴" : `${idx+1} / 5`;
+        configureSticky();
+        if(!options.skipHistory) {
+          const url = new URL(location.href);
+          if(next === "input") { url.search = ""; }
+          else if(next === "history") { url.search = "?view=history"; }
+          else { url.search = `?searchId=00000000-0000-4000-8000-000000000021&view=${next}`; }
+          history.pushState({view:next},"",url);
+        }
+        requestAnimationFrame(() => {
+          const heading = document.querySelector(`.view[data-view="${next}"] .section-title`);
+          heading?.focus({preventScroll:true});
+          window.scrollTo({top:0,behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
+        });
+      }
+
+      function configureSticky() {
+        const bar = document.getElementById("mobile-sticky");
+        const label = document.getElementById("sticky-summary");
+        const button = document.getElementById("sticky-primary");
+        if(state.view === "history" || state.view === "result") { bar.hidden = true; return; }
+        bar.hidden = false;
+        if(state.view === "input") {
+          const names={image_assisted:"写真＋AI補助",manual_assisted:"手入力＋AI補助",manual_direct:"手入力のみ"};
+          label.innerHTML=`${names[state.method]}・状態${state.conditions.size}件<strong>${document.getElementById("model").value || document.getElementById("product-name").value || "商品条件を入力"}</strong>`;
+          button.disabled=state.conditions.size===0;
+          button.textContent=state.method==="image_assisted"?"AIで候補作成":state.method==="manual_assisted"?"AIで入力を補助":"検索条件を確認";
+        } else if(state.view === "identify") {
+          const pending=fields.filter(field=>!state.decisions[field.key]).length;
+          label.innerHTML=`検索前の確認<strong>${pending}件 未確認</strong>`;
+          button.textContent="この条件で検索";
+          button.disabled=pending>0||state.conditions.size===0;
+        } else if(state.view === "progress") {
+          label.innerHTML="外部取得は未実行<strong>取得後の画面を確認</strong>";
+          button.textContent="取得結果を表示";
+          button.disabled=false;
+        } else if(state.view === "candidates") {
+          const stats=calculateStats();
+          label.innerHTML=`${stats.count}件を集計<strong>${yen(stats.median)}</strong>`;
+          button.textContent="相場を確定";
+          button.disabled=stats.count===0;
+        }
+      }
+
+      function setMethod(method) {
+        state.method = method;
+        methodButtons.forEach(button => button.setAttribute("aria-pressed",button.dataset.method===method?"true":"false"));
+        document.getElementById("image-fields").hidden = method !== "image_assisted";
+        document.getElementById("manual-fields").hidden = method === "image_assisted";
+        const badge=document.getElementById("mode-badge");
+        badge.textContent=method==="manual_assisted"?"AI補助":"AI未使用";
+        badge.className=method==="manual_assisted"?"badge ai":"badge";
+        const primary=document.getElementById("input-primary");
+        primary.innerHTML=method==="image_assisted"?'<svg class="icon"><use href="#i-spark"/></svg>AIで画像から候補を作る':method==="manual_assisted"?'<svg class="icon"><use href="#i-spark"/></svg>AIで入力を補助':'<svg class="icon"><use href="#i-search"/></svg>検索条件を確認';
+        document.getElementById("summary-method").textContent=method==="image_assisted"?"写真＋AI補助":method==="manual_assisted"?"手入力＋AI補助":"手入力のみ";
+        configureSticky();
+      }
+
+      function renderFieldReviews() {
+        const direct=state.method==="manual_direct";
+        if(direct) fields.forEach(field=>state.decisions[field.key]="original");
+        const list=document.getElementById("field-review-list");
+        list.innerHTML=fields.map(field=>{
+          const decision=state.decisions[field.key];
+          return `<article class="field-review" data-field="${field.key}">
+            <div class="field-review-head"><strong>${field.label}</strong><span class="decision ${decision?"done":""}">${decision?decision==="suggested"?"提案を採用":decision==="original"?"入力値を使用":"編集して採用":"未確認"}</span></div>
+            <div class="value-pair"><div class="value-box"><span>利用者入力</span><strong>${field.original}</strong></div><div class="value-box"><span>${direct?"確認":"AI補助の提案"}</span><strong>${direct?field.original:field.suggested}</strong></div></div>
+            <div class="review-actions">
+              ${direct?`<button class="button small" type="button" data-decision="original" data-field-key="${field.key}">この値を使う</button>`:`<button class="button small" type="button" data-decision="suggested" data-field-key="${field.key}">提案を採用</button><button class="button small" type="button" data-decision="original" data-field-key="${field.key}">入力値を使う</button><button class="button small" type="button" data-decision="edited" data-field-key="${field.key}">編集して採用</button>`}
+            </div>
+          </article>`;
+        }).join("");
+        list.querySelectorAll("[data-decision]").forEach(button=>button.addEventListener("click",()=>{
+          state.decisions[button.dataset.fieldKey]=button.dataset.decision;
+          renderFieldReviews();
+        }));
+        updatePending();
+      }
+
+      function updatePending() {
+        const pending=fields.filter(field=>!state.decisions[field.key]).length;
+        const badge=document.getElementById("pending-count");
+        badge.textContent=pending?`${pending}件未確認`:"確認済み";
+        badge.className=pending?"badge warning":"badge success";
+        document.getElementById("start-search").disabled=pending>0||state.conditions.size===0;
+        configureSticky();
+      }
+
+      function renderExcludes() {
+        document.getElementById("exclude-chips").innerHTML=state.excludes.map((word,index)=>`<span class="chip">${word}<button type="button" aria-label="${word}を削除" data-remove-exclude="${index}">×</button></span>`).join("");
+        document.querySelectorAll("[data-remove-exclude]").forEach(button=>button.addEventListener("click",()=>{state.excludes.splice(Number(button.dataset.removeExclude),1);renderExcludes();}));
+      }
+
+      function prepareIdentify() {
+        if(state.conditions.size===0){
+          updateConditionUi(true);
+          document.getElementById("condition-fieldset").focus?.();
+          return;
+        }
+        state.decisions={};
+        const direct=state.method==="manual_direct";
+        document.getElementById("proposal-title").textContent=direct?"入力した検索条件":"AI補助による商品候補";
+        document.getElementById("proposal-subtitle").textContent=direct?"外部アクセス前に内容を確認します。":"候補を1つ選び、項目ごとに判断します。";
+        document.getElementById("assist-badge").textContent=direct?"AI未使用":"AI提案";
+        document.getElementById("assist-badge").className=direct?"badge":"badge ai";
+        document.getElementById("product-options").hidden=direct;
+        document.getElementById("identify-origin").textContent=state.method==="image_assisted"?"写真＋補足":state.method==="manual_assisted"?"手入力":"手入力・AI未使用";
+        renderFieldReviews();
+        renderExcludes();
+        setView("identify");
+      }
+
+      function medianOf(values) {
+        const prices=[...values].sort((a,b)=>a-b);
+        if(!prices.length)return null;
+        const mid=Math.floor(prices.length/2);
+        return prices.length%2?prices[mid]:Math.round((prices[mid-1]+prices[mid])/2);
+      }
+
+      function quartiles(values) {
+        const prices=[...values].sort((a,b)=>a-b);
+        const middle=Math.floor(prices.length/2);
+        const lower=prices.slice(0,middle);
+        const upper=prices.slice(Math.ceil(prices.length/2));
+        const q1=medianOf(lower);
+        const q3=medianOf(upper);
+        return {q1,q3,lower:q1==null||q3==null?null:q1-1.5*(q3-q1),upper:q1==null||q3==null?null:q3+1.5*(q3-q1)};
+      }
+
+      function evaluateOutliers() {
+        const groups=new Map();
+        state.candidates.forEach(item=>{
+          item.conditionMatched=state.conditions.has(item.conditionKey);
+          item.baseEligible=!item.hardExcluded&&item.conditionMatched;
+          item.autoOutlier=false;
+          item.groupCount=0;
+          item.groupMedian=null;
+          item.deviationRate=null;
+          item.iqrLower=null;
+          item.iqrUpper=null;
+          if(item.baseEligible){
+            const group=groups.get(item.conditionKey)||[];
+            group.push(item);
+            groups.set(item.conditionKey,group);
+          }
+        });
+        groups.forEach(group=>{
+          const prices=group.map(item=>item.price);
+          const groupMedian=medianOf(prices);
+          const bounds=quartiles(prices);
+          group.forEach(item=>{
+            item.groupCount=group.length;
+            item.groupMedian=groupMedian;
+            item.deviationRate=groupMedian?Math.abs(item.price-groupMedian)/groupMedian:null;
+            if(group.length>=state.outlierPolicy.minimumGroupSize){
+              item.iqrLower=bounds.lower;
+              item.iqrUpper=bounds.upper;
+              const outsideIqr=item.price<bounds.lower||item.price>bounds.upper;
+              item.autoOutlier=state.outlierPolicy.enabled&&item.deviationRate>state.outlierPolicy.thresholdRate&&outsideIqr;
+            }
+          });
+        });
+        state.candidates.forEach(item=>{
+          if(item.manualOverride==="include")item.included=true;
+          else if(item.manualOverride==="exclude")item.included=false;
+          else item.included=item.baseEligible&&!item.autoOutlier;
+        });
+      }
+
+      function calculateStats() {
+        evaluateOutliers();
+        const includedItems=state.candidates.filter(item=>item.included);
+        const includedPrices=includedItems.map(item=>item.price).sort((a,b)=>a-b);
+        const beforeItems=state.candidates.filter(item=>item.manualOverride==="include"||(item.manualOverride!=="exclude"&&item.baseEligible));
+        const exclusions={keyword:0,condition:0,priceOutlier:0,manual:0,restored:0};
+        state.candidates.forEach(item=>{
+          if(item.autoOutlier&&item.manualOverride==="include")exclusions.restored+=1;
+          if(item.included)return;
+          if(item.manualOverride==="exclude")exclusions.manual+=1;
+          else if(item.hardExcluded)exclusions.keyword+=1;
+          else if(!item.conditionMatched)exclusions.condition+=1;
+          else if(item.autoOutlier)exclusions.priceOutlier+=1;
+          else exclusions.manual+=1;
+        });
+        return {
+          count:includedPrices.length,
+          excluded:state.candidates.length-includedPrices.length,
+          min:includedPrices[0]??null,
+          max:includedPrices.at(-1)??null,
+          median:medianOf(includedPrices),
+          medianBefore:medianOf(beforeItems.map(item=>item.price)),
+          exclusions
+        };
+      }
+
+      function outlierLabel(item) {
+        if(item.autoOutlier&&item.manualOverride==="include")return {text:"手動で集計へ復帰",className:"success"};
+        if(item.manualOverride==="exclude")return {text:"手動除外",className:"warning"};
+        if(item.hardExcluded)return {text:"除外キーワード",className:"warning"};
+        if(!item.conditionMatched)return {text:"状態対象外",className:"warning"};
+        if(item.autoOutlier)return {text:"価格外れ値",className:"warning"};
+        if(item.baseEligible&&item.groupCount<state.outlierPolicy.minimumGroupSize)return {text:"外れ値判定不能",className:"warning"};
+        return {text:"判定済み",className:"success"};
+      }
+
+      function outlierDescription(item) {
+        if(!item.baseEligible)return item.hardExcluded?"除外語または商品種別で除外":"選択した商品状態に含まれません";
+        if(item.groupCount<state.outlierPolicy.minimumGroupSize)return `同じ状態が${item.groupCount}件のため自動除外しません`;
+        const deviation=Math.round((item.deviationRate||0)*100);
+        return `同じ状態${item.groupCount}件・中央値${yen(item.groupMedian)}から${deviation}%乖離・IQR ${yen(Math.round(item.iqrLower))}〜${yen(Math.round(item.iqrUpper))}`;
+      }
+
+      function renderCandidates() {
+        evaluateOutliers();
+        const visible=state.candidates.filter(item=>state.filter==="all"||(state.filter==="included"?item.included:!item.included));
+        document.getElementById("candidate-count-text").textContent=`${visible.length}件を表示`;
+        document.getElementById("candidate-tbody").innerHTML=visible.map(item=>{
+          const status=outlierLabel(item);
+          const toggleLabel=item.included?(item.manualOverride==="include"?"集計中（復帰）":"集計する"):(item.autoOutlier?"集計へ戻す":"除外");
+          return `<tr>
+            <td><button class="include-toggle" type="button" aria-label="${item.title}を${item.included?"除外":"集計"}する" aria-pressed="${item.included}" data-toggle="${item.id}">${toggleLabel}</button>${item.manualOverride?`<button class="detail-link" type="button" data-reset-auto="${item.id}">自動判定に戻す</button>`:""}</td>
+            <td class="row-title"><strong>${item.title}</strong><small>${item.condition}・一致${item.match}・${item.reason}</small><small>${outlierDescription(item)}</small></td>
+            <td class="money">${yen(item.price)}</td><td>${item.date}</td><td><span class="badge ${status.className}">${status.text}</span></td>
+            <td><button class="detail-link" type="button" data-detail="${item.id}">詳細</button></td></tr>`;
+        }).join("");
+        document.getElementById("mobile-candidate-list").innerHTML=visible.map(item=>{
+          const status=outlierLabel(item);
+          const toggleLabel=item.included?(item.manualOverride==="include"?"集計中（復帰）":"集計する"):(item.autoOutlier?"集計へ戻す":"除外");
+          return `<article class="candidate-card">
+            <div class="candidate-card-head"><h3>${item.title}</h3><span class="badge ${status.className}">${status.text}</span></div>
+            <strong class="money">${yen(item.price)}</strong>
+            <dl><div><dt>落札日</dt><dd>${item.date}</dd></div><div><dt>状態</dt><dd>${item.condition}</dd></div><div><dt>一致度</dt><dd>${item.match}</dd></div><div><dt>一致理由</dt><dd>${item.reason}</dd></div><div><dt>外れ値判定</dt><dd>${outlierDescription(item)}</dd></div></dl>
+            <div class="review-actions"><button class="include-toggle" type="button" aria-label="${item.title}を${item.included?"除外":"集計"}する" aria-pressed="${item.included}" data-toggle="${item.id}">${toggleLabel}</button>${item.manualOverride?`<button class="detail-link" type="button" data-reset-auto="${item.id}">自動判定に戻す</button>`:""}<button class="detail-link" type="button" data-detail="${item.id}">詳細を見る</button></div>
+          </article>`;
+        }).join("");
+        document.querySelectorAll("[data-toggle]").forEach(button=>button.addEventListener("click",()=>{
+          const item=state.candidates.find(candidate=>candidate.id===button.dataset.toggle);
+          if(item)item.manualOverride=item.included?"exclude":"include";
+          renderCandidates();
+        }));
+        document.querySelectorAll("[data-reset-auto]").forEach(button=>button.addEventListener("click",()=>{
+          const item=state.candidates.find(candidate=>candidate.id===button.dataset.resetAuto);
+          if(item)item.manualOverride=null;
+          renderCandidates();
+        }));
+        document.querySelectorAll("[data-detail]").forEach(button=>button.addEventListener("click",()=>openDetail(button.dataset.detail)));
+        updateStats();
+      }
+
+      function updateStats() {
+        const s=calculateStats();
+        ["candidate-median","result-median","outlier-after-median"].forEach(id=>document.getElementById(id).textContent=yen(s.median));
+        ["candidate-before-median","result-before-median","outlier-before-median"].forEach(id=>document.getElementById(id).textContent=yen(s.medianBefore));
+        ["candidate-min","result-min"].forEach(id=>document.getElementById(id).textContent=yen(s.min));
+        ["candidate-max","result-max"].forEach(id=>document.getElementById(id).textContent=yen(s.max));
+        ["candidate-included","result-included"].forEach(id=>document.getElementById(id).textContent=`${s.count}件`);
+        ["candidate-excluded","result-excluded"].forEach(id=>document.getElementById(id).textContent=`${s.excluded}件`);
+        ["candidate-restored","result-restored"].forEach(id=>document.getElementById(id).textContent=`${s.exclusions.restored}件`);
+        document.getElementById("outlier-auto-count").textContent=`${s.exclusions.priceOutlier}件`;
+        const breakdown=`キーワード ${s.exclusions.keyword}件／状態 ${s.exclusions.condition}件／価格外れ値 ${s.exclusions.priceOutlier}件／手動 ${s.exclusions.manual}件`;
+        document.getElementById("candidate-exclusion-breakdown").textContent=`除外内訳：${breakdown}`;
+        document.getElementById("result-exclusion-breakdown").textContent=breakdown;
+        document.getElementById("result-outlier-policy").textContent=state.outlierPolicy.enabled?`状態別中央値から${Math.round(state.outlierPolicy.thresholdRate*100)}%超＋IQR範囲外（5件以上）`:"自動除外OFF（警告のみ）";
+        document.getElementById("confirm-market").disabled=s.count===0;
+        document.getElementById("result-items").innerHTML=state.candidates.filter(item=>item.included).slice(0,5).map(item=>`<div class="compact-row"><span>${item.title}</span><strong>${yen(item.price)}</strong></div>`).join("");
+        configureSticky();
+      }
+
+      function openDetail(id) {
+        evaluateOutliers();
+        const item=state.candidates.find(candidate=>candidate.id===id); if(!item)return;
+        document.getElementById("dialog-title").textContent=item.title;
+        document.getElementById("dialog-details").innerHTML=`<div><dt>落札価格</dt><dd>${yen(item.price)}</dd></div><div><dt>落札日</dt><dd>${item.date}</dd></div><div><dt>商品状態</dt><dd>${item.condition}</dd></div><div><dt>一致度</dt><dd>${item.match}</dd></div><div><dt>一致理由</dt><dd>${item.reason}</dd></div><div><dt>外れ値判定</dt><dd>${outlierDescription(item)}</dd></div><div><dt>現在の集計</dt><dd>${item.included?"集計対象":"除外"}</dd></div>`;
+        document.getElementById("detail-dialog").showModal();
+      }
+
+      methodButtons.forEach(button=>button.addEventListener("click",()=>setMethod(button.dataset.method)));
+      document.getElementById("product-form").addEventListener("submit",event=>{event.preventDefault();prepareIdentify();});
+      document.querySelectorAll('input[name="condition"]').forEach(input=>input.addEventListener("change",()=>{
+        if(input.checked)state.conditions.add(input.value); else state.conditions.delete(input.value);
+        updateConditionUi(true);
+      }));
+      document.getElementById("condition-select-all").addEventListener("click",()=>{
+        state.conditions=new Set(Object.keys(conditionLabels));
+        updateConditionUi(false);
+      });
+      document.getElementById("condition-clear").addEventListener("click",()=>{
+        state.conditions.clear();
+        updateConditionUi(true);
+        document.querySelector('input[name="condition"]')?.focus();
+      });
+      ["product-name","brand","model"].forEach(id=>document.getElementById(id).addEventListener("input",()=>{
+        document.getElementById(`summary-${id==="product-name"?"product":id}`).textContent=document.getElementById(id).value||"未入力"; configureSticky();
+      }));
+      document.getElementById("product-images").addEventListener("change",event=>{
+        const files=[...event.target.files].slice(0,5);
+        const preview=document.getElementById("upload-preview"); preview.innerHTML="";
+        files.forEach((file,index)=>{
+          const item=document.createElement("div"); item.className="preview-item";
+          const img=document.createElement("img"); img.alt=`選択した商品画像 ${index+1}`; img.src=URL.createObjectURL(file);
+          const name=document.createElement("span"); name.textContent=file.name;
+          const remove=document.createElement("button"); remove.type="button"; remove.textContent="削除"; remove.addEventListener("click",()=>{URL.revokeObjectURL(img.src);item.remove();});
+          item.append(img,name,remove); preview.append(item);
+        });
+        document.getElementById("summary-product").textContent=files.length?`商品画像 ${files.length}枚`:"未選択";
+      });
+      document.getElementById("add-exclude").addEventListener("click",()=>{const input=document.getElementById("new-exclude");const value=input.value.trim();if(value&&!state.excludes.includes(value)){state.excludes.push(value);input.value="";renderExcludes();}});
+      document.querySelectorAll("[data-product-option]").forEach(button=>button.addEventListener("click",()=>document.querySelectorAll("[data-product-option]").forEach(item=>item.setAttribute("aria-pressed",item===button?"true":"false"))));
+      document.querySelectorAll('input[name="strategy"]').forEach(input=>input.addEventListener("change",()=>{document.getElementById("progress-query").textContent=queryText();document.getElementById("result-query").textContent=queryText();}));
+      document.getElementById("start-search").addEventListener("click",()=>{if(state.conditions.size)setView("progress");});
+      document.getElementById("outlier-enabled").addEventListener("change",event=>{
+        state.outlierPolicy.enabled=event.target.checked;
+        renderCandidates();
+      });
+      document.getElementById("outlier-threshold").addEventListener("change",event=>{
+        const value=Math.min(100,Math.max(1,Number(event.target.value)||20));
+        event.target.value=String(value);
+        state.outlierPolicy.thresholdRate=value/100;
+        renderCandidates();
+      });
+      document.getElementById("confirm-market").addEventListener("click",()=>setView("result"));
+      document.getElementById("new-search").addEventListener("click",()=>{state.decisions={};setView("input");});
+      document.getElementById("repeat-search").addEventListener("click",()=>setView("progress"));
+      document.getElementById("history-repeat").addEventListener("click",()=>setView("progress"));
+      document.getElementById("history-search").addEventListener("input",event=>{const q=event.target.value.toLowerCase();document.querySelectorAll("[data-history]").forEach(button=>button.hidden=!button.dataset.history.toLowerCase().includes(q));});
+      document.querySelectorAll("[data-history]").forEach(button=>button.addEventListener("click",()=>setView("result")));
+      document.querySelectorAll("[data-go]").forEach(button=>button.addEventListener("click",event=>{event.preventDefault();setView(button.dataset.go);}));
+      document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{state.filter=button.dataset.filter;document.querySelectorAll("[data-filter]").forEach(item=>item.setAttribute("aria-pressed",item===button?"true":"false"));renderCandidates();}));
+      stepButtons.forEach(button=>button.addEventListener("click",()=>{
+        const target=button.dataset.step;
+        if(target==="identify"&&!document.getElementById("field-review-list").children.length){renderFieldReviews();renderExcludes();}
+        if(target==="candidates")renderCandidates();
+        if(target==="result")updateStats();
+        setView(target);
+      }));
+      document.getElementById("sticky-primary").addEventListener("click",()=>{
+        if(state.view==="input")prepareIdentify();
+        else if(state.view==="identify"&&!document.getElementById("sticky-primary").disabled)setView("progress");
+        else if(state.view==="progress")setView("candidates");
+        else if(state.view==="candidates"&&calculateStats().count)setView("result");
+      });
+      const dialog=document.getElementById("detail-dialog");
+      dialog.querySelector(".dialog-close").addEventListener("click",()=>dialog.close());
+      dialog.addEventListener("click",event=>{if(event.target===dialog)dialog.close();});
+      window.addEventListener("popstate",event=>setView(event.state?.view||"input",{skipHistory:true}));
+
+      setMethod("manual_assisted");
+      updateConditionUi(false);
+      renderExcludes();
+      renderCandidates();
+      const requestedView=new URLSearchParams(location.search).get("view");
+      const initialView=["input","identify","progress","candidates","result","history"].includes(requestedView)?requestedView:"input";
+      if(initialView==="identify")renderFieldReviews();
+      history.replaceState({view:initialView},"",location.href);
+      setView(initialView,{skipHistory:true});
+    })();
+  </script>
+</body>
+</html>

@@ -55,6 +55,9 @@ export async function seedDevelopment(pool: Pool): Promise<void> {
       VALUES($1,'pdf_extract',1,'匿名PDFから指定項目だけを抽出する','{"type":"object"}'::jsonb,'gemini-2.5-flash','approved',now()),
             ($1,'preparation',1,'確定済み抽出値と利用可能なナレッジだけを根拠に訪問前チェックを生成する','{"type":"object"}'::jsonb,'gemini-2.5-flash','approved',now()),
             ($1,'review',1,'確定済み発話だけを根拠に6領域を振り返る','{"type":"object"}'::jsonb,'gemini-2.5-flash','approved',now()) ON CONFLICT DO NOTHING`,[d.organizationId]);
+    const marketPriceSchema=(await client.query("SELECT 1 FROM schema_migrations WHERE version='0053_market_price_search.sql'")).rowCount;
+    if(marketPriceSchema)await client.query(`INSERT INTO prompt_versions(organization_id,purpose,version,system_instruction,output_json_schema,model_name,status,effective_from)
+      VALUES($1,'market_price_search',1,'確定商品と許可済み候補からYahoo検索条件だけを選定する','{"type":"object"}'::jsonb,'gemini-2.5-flash','approved',now()) ON CONFLICT DO NOTHING`,[d.organizationId]);
     await client.query("UPDATE prompt_versions SET status='approved',approved_by_membership_id=COALESCE(approved_by_membership_id,$2),approved_at=COALESCE(approved_at,now()) WHERE organization_id=$1 AND version=1",[d.organizationId,d.managerMembershipId]);
     await client.query(`INSERT INTO review_criteria_versions(organization_id,criteria_key,version,criteria_json,status)
       VALUES($1,'pilot',1,'{"areas":["strength","improvement","talk","compliance","next_action","revisit"]}'::jsonb,'approved') ON CONFLICT DO NOTHING`,[d.organizationId]);
@@ -70,6 +73,8 @@ export async function seedDevelopment(pool: Pool): Promise<void> {
       ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'content_approval',false,$2,'承認フロー停止'),($1,'team_analytics',false,$2,'分析画面停止') ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
+    if(marketPriceSchema)await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
+      VALUES($1,'market_price_search',false,$2,'Yahoo落札相場の外部取得を即時停止') ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'pilot_content_ai',true,$2,'未承認コンテンツのAI利用を即時停止')
       ON CONFLICT(organization_id,flag_key) DO UPDATE SET enabled=true,owner_membership_id=EXCLUDED.owner_membership_id,rollback_note=EXCLUDED.rollback_note,updated_at=now()`,[d.organizationId,d.managerMembershipId]);

@@ -43,6 +43,12 @@ const promptDefinitions=(modelName:string)=>[
     outputJsonSchema:{type:"object",required:["summary","findings"],properties:{summary:{type:"string"},findings:{type:"array"}}},
     modelName,
   },
+  {
+    purpose:"market_price_search",
+    systemInstruction:"確定済みの商品情報と提示されたYahooカテゴリ・ブランド候補から、検索条件候補だけを構造化して返す。URL、価格、未知のIDは生成しない。",
+    outputJsonSchema:{type:"object",required:["selectedKeyword","categoryRegistryKey","brandRegistryKey","suggestedConditions","confidence","warnings"]},
+    modelName,
+  },
 ] as const;
 
 const reviewCriteria={
@@ -85,6 +91,7 @@ const featureFlags=(pilotContentAiEnabled:boolean)=>[
   {key:"content_approval",enabled:true,rollbackNote:"承認フローを無効化"},
   {key:"team_analytics",enabled:false,rollbackNote:"チーム分析を無効化"},
   {key:"pilot_content_ai",enabled:pilotContentAiEnabled,rollbackNote:"未承認コンテンツのAI利用を即時停止"},
+  {key:"market_price_search",enabled:false,rollbackNote:"Yahoo落札相場の外部取得を即時停止"},
 ] as const;
 
 function required(env:NodeJS.ProcessEnv,key:string,max:number):string{

@@ -1,5 +1,5 @@
 import {describe,expect,it} from "vitest";
-import {prepareVertexTranscriptQualityInput,retryableReviewContractError,retryableTranscriptQualityContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt,vertexTranscriptQualityOutputSchema} from "./gcp.js";
+import {prepareVertexTranscriptQualityInput,retryableReviewContractError,retryableTranscriptQualityContractError,retryableYahooParameterPlanContractError,VERTEX_QUALITY_MAX_PROMPT_CHARACTERS,vertexExtractionOutputSchema,vertexReviewGenerationConfig,vertexReviewOutputSchema,vertexReviewPrompt,vertexTranscriptQualityOutputSchema} from "./gcp.js";
 
 describe("Vertex AI extraction contract",()=>{
   it("keeps the model response schema separate from the business form schema",()=>{
@@ -18,6 +18,15 @@ describe("Vertex AI extraction contract",()=>{
         },
       }}},
     });
+  });
+});
+
+describe("Yahoo parameter-planning repair contract",()=>{
+  it("retries structured-output violations once but not quota or configuration errors",()=>{
+    expect(retryableYahooParameterPlanContractError(new Error("PROVIDER_PERMANENT: model returned invalid JSON"))).toBe(true);
+    expect(retryableYahooParameterPlanContractError(new Error("PROVIDER_PERMANENT: market price category key is not registered"))).toBe(true);
+    expect(retryableYahooParameterPlanContractError(new Error("PROVIDER_TEMPORARY: quota"))).toBe(false);
+    expect(retryableYahooParameterPlanContractError(new Error("PROVIDER_PERMANENT: approved prompt model does not match configured model"))).toBe(false);
   });
 });
 
