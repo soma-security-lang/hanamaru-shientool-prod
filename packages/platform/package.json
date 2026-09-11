@@ -17,12 +17,12 @@
   "dependencies": {
     "@hanamaru/contracts": "workspace:*",
     "@hanamaru/market-price": "workspace:*",
-    "@google-cloud/speech": "^7.2.1",
-    "@google-cloud/storage": "^7.17.3",
-    "@google-cloud/tasks": "^6.2.1",
-    "@google/genai": "^2.16.0",
-    "googleapis": "^166.0.0",
-    "pdfjs-dist": "5.4.624"
+    "@google-cloud/speech": "^8.1.0",
+    "@google-cloud/storage": "^8.1.0",
+    "@google-cloud/tasks": "^7.1.0",
+    "@google/genai": "^2.21.0",
+    "googleapis": "^178.1.1",
+    "pdfjs-dist": "6.3.289"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
