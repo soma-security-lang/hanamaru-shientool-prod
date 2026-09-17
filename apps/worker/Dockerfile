@@ -15,7 +15,7 @@ RUN pnpm build:packages && pnpm --filter @hanamaru/worker build \
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production WORKER_HOST=0.0.0.0 WORKER_PORT=8080
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libpcre2-8-0 && rm -rf /var/lib/apt/lists/* \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/pnpm \
     /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg \
