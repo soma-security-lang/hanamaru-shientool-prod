@@ -74,7 +74,10 @@ export async function seedDevelopment(pool: Pool): Promise<void> {
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'content_approval',false,$2,'承認フロー停止'),($1,'team_analytics',false,$2,'分析画面停止') ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
     if(marketPriceSchema)await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
-      VALUES($1,'market_price_search',false,$2,'Yahoo落札相場の外部取得を即時停止') ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
+      VALUES($1,'market_price_search',false,$2,'Yahoo落札相場の外部取得を即時停止'),
+            ($1,'market_price_aucfan',false,$2,'オークファン取得だけを停止'),
+            ($1,'market_price_comparison',false,$2,'取得元比較だけを停止')
+      ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'pilot_content_ai',true,$2,'未承認コンテンツのAI利用を即時停止')
       ON CONFLICT(organization_id,flag_key) DO UPDATE SET enabled=true,owner_membership_id=EXCLUDED.owner_membership_id,rollback_note=EXCLUDED.rollback_note,updated_at=now()`,[d.organizationId,d.managerMembershipId]);

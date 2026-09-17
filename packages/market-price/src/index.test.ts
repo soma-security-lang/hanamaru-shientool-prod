@@ -9,6 +9,9 @@ import {
   searchPeriod,
   YahooClosedSearchContractError,
   evaluateMarketPriceCandidates,
+  createAucfanSearchRequest,
+  parseAucfanSearchJson,
+  AucfanSearchContractError,
 } from "./index.js";
 
 describe("Yahoo closed-search URL", () => {
@@ -93,5 +96,36 @@ describe("market search period", () => {
     const period = searchPeriod(new Date("2026-09-09T12:00:00Z"));
     expect(period.periodEnd.toISOString()).toBe("2026-09-09T12:00:00.000Z");
     expect(period.periodStart.toISOString()).toBe("2026-06-11T12:00:00.000Z");
+  });
+});
+
+describe("Aucfan API adapter contract",()=>{
+  it("creates a bounded request without inventing granular condition parameters",()=>{
+    expect(createAucfanSearchRequest({keyword:" Ｃａｎｏｎ  EOS R6 ",period:"new",page:1,conditions:["good","fair"]})).toEqual({keyword:"Canon EOS R6",period:"new",page:1,pageSize:100,itemStatus:"used"});
+    expect(createAucfanSearchRequest({keyword:"Canon EOS R6",period:"3",page:2,conditions:["unused","good"]})).toEqual({keyword:"Canon EOS R6",period:"3",page:2,pageSize:100});
+  });
+
+  it("parses date-precision Yahoo results and marks their source",()=>{
+    const parsed=parseAucfanSearchJson(JSON.stringify({hit_count:2,max_page_number:1,items:[
+      {auction_id:"a-2",title:"Canon EOS R6 ボディ",price:120000,time:"20260909",sitecode:"yahoo",siteurl:"https://example.invalid/a-2",item_status:"used"},
+      {auction_id:"a-1",title:"Canon EOS R6 未使用",price:140000,time:"20260908",sitecode:"yahoo",siteurl:"https://example.invalid/a-1",item_status:"new"},
+    ]}));
+    expect(parsed.items).toHaveLength(2);
+    expect(parsed.items[0]).toMatchObject({sourceProvider:"aucfan_api",endedAtPrecision:"date",sourceCondition:"used",normalizedCondition:"unspecified"});
+    expect(parsed.items[1]).toMatchObject({sourceCondition:"new",normalizedCondition:"unused"});
+  });
+
+  it("fails closed when item order or the API contract drifts",()=>{
+    expect(()=>parseAucfanSearchJson(JSON.stringify({hit_count:2,max_page_number:1,items:[
+      {auction_id:"old",title:"商品",price:1,time:"20260908",sitecode:"yahoo"},
+      {auction_id:"new",title:"商品",price:2,time:"20260909",sitecode:"yahoo"},
+    ]}))).toThrow(AucfanSearchContractError);
+    expect(()=>createAucfanSearchRequest({keyword:"",period:"new",page:1,conditions:["unspecified"]})).toThrow(AucfanSearchContractError);
+  });
+
+  it("accepts broad used results without claiming a granular source condition",()=>{
+    const item=parseAucfanSearchJson(JSON.stringify({hit_count:1,max_page_number:1,items:[{auction_id:"used-1",title:"Canon EOS R6 ボディ",price:120000,time:"20260909",sitecode:"yahoo",item_status:"used"}]})).items[0]!;
+    const result=evaluateMarketPriceCandidates({items:[item],selectedKeyword:"Canon EOS R6",periodStart:new Date("2026-06-11T00:00:00Z"),periodEnd:new Date("2026-09-10T00:00:00Z"),selectedConditions:["good","fair"],excludeKeywords:[],outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5}});
+    expect(result.candidates[0]).toMatchObject({conditionMatched:true,normalizedCondition:"unspecified",included:true});
   });
 });

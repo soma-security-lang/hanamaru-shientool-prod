@@ -104,6 +104,7 @@ NODE_ENV=development DATABASE_CONTEXT_ROLE= pnpm --filter @hanamaru/database see
 NODE_ENV=development DATABASE_CONTEXT_ROLE= pnpm --filter @hanamaru/database content:import >"$HANAMARU_LOG_DIR/content-import.log" 2>&1
 "$pg_bin/psql" -h "$HANAMARU_PG_SOCKET" -p "$postgres_port" -d "$database_name" -v ON_ERROR_STOP=1 \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key IN ('market_price_aucfan','market_price_comparison')" \
   >"$HANAMARU_LOG_DIR/market-price-feature.log" 2>&1
 
 api_database_url="postgresql://hanamaru_local_api:$api_database_password@127.0.0.1:$postgres_port/$database_name"

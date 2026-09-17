@@ -1,6 +1,6 @@
 import type { AudioMetadata,VideoMetadata } from "./media.js";
 import type { Readable } from "node:stream";
-import type { MarketPriceProductCandidate,MarketPriceSearchQuery,ProductCondition, YahooSearchParameterSuggestion } from "@hanamaru/contracts";
+import type { AucfanSearchRequest,MarketPriceProductCandidate,MarketPriceSearchQuery,ProductCondition, YahooSearchParameterSuggestion } from "@hanamaru/contracts";
 
 export interface UploadDeclaration {
   organizationId: string; objectName: string; mimeType: string; sizeBytes: number; sha256: string; expiresAt: Date;
@@ -120,6 +120,7 @@ export interface AiProvider {
 }
 export interface MarketPriceSourceProvider {
   fetchPage(url:string):Promise<{status:number;body:string;retryAfterSeconds:number|null;fetchedAt:string}>;
+  fetchAucfanPage?(request:AucfanSearchRequest):Promise<{status:number;body:string;retryAfterSeconds:number|null;fetchedAt:string}>;
 }
 export const reviewDimensions=["strength","improvement","talk","compliance","next_action","revisit"] as const;
 export type ReviewDimension=typeof reviewDimensions[number];

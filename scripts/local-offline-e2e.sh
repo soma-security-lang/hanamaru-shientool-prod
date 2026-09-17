@@ -73,6 +73,7 @@ pnpm --filter @hanamaru/database seed:dev >"$evidence_dir/seed.log" 2>&1
 pnpm --filter @hanamaru/database content:import >"$evidence_dir/content-import.log" 2>&1
 "$pg_bin/psql" -h "$pg_socket" -p "$postgres_port" -d hanamaru_offline_e2e -v ON_ERROR_STOP=1 \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key IN ('market_price_aucfan','market_price_comparison')" \
   >"$evidence_dir/market-price-feature.log" 2>&1
 
 hanamaru_info "API、Worker、Webを最新sourceからbuildします。"

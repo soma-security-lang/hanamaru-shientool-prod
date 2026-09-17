@@ -35,6 +35,7 @@
 | 操作デモHTML | PC／Mobileの主要操作を確認する独立デモ | `prototypes/market-price-demo.html` |
 | バックエンド詳細設計 | URL、AI候補、Registry、API、DB、Worker、監視 | `2026-09-09-yahoo-url-generator-and-ai-parameter-assistance.md` |
 | ローカル実装記録 | Next.js、API、Worker、DB、実行方式、Trace | `2026-09-09-scr-021-local-full-implementation.md` |
+| Yahoo維持・Aucfan比較導入計画 | 既存取得を維持した取得元別API・DB・UI・評価・段階公開。ローカルfixture版の実装結果を含む | [2026-09-17-yahoo-aucfan-comparison-implementation-plan.md](./2026-09-17-yahoo-aucfan-comparison-implementation-plan.md) |
 | 既存モバイル仕様 | 既存20画面との共通レスポンシブ契約 | `../2026-08-25-mobile-responsive-redesign-plan.md` |
 
 ## 3. 必要ページ一覧

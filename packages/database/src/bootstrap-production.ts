@@ -92,6 +92,8 @@ const featureFlags=(pilotContentAiEnabled:boolean)=>[
   {key:"team_analytics",enabled:false,rollbackNote:"チーム分析を無効化"},
   {key:"pilot_content_ai",enabled:pilotContentAiEnabled,rollbackNote:"未承認コンテンツのAI利用を即時停止"},
   {key:"market_price_search",enabled:false,rollbackNote:"Yahoo落札相場の外部取得を即時停止"},
+  {key:"market_price_aucfan",enabled:false,rollbackNote:"オークファン取得だけを停止"},
+  {key:"market_price_comparison",enabled:false,rollbackNote:"取得元比較だけを停止"},
 ] as const;
 
 function required(env:NodeJS.ProcessEnv,key:string,max:number):string{

@@ -145,6 +145,26 @@
 .filterPanel input[type="checkbox"],
 .filterPanel input[type="radio"] { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; }
 
+.sourcePicker { margin-top: 1.25rem; padding-top: 1rem; border: 0; border-top: 1px solid var(--color-border); display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .75rem; }
+.sourcePicker legend { padding: 0 .25rem; font-size: 1rem; font-weight: 700; }
+.sourcePicker label { min-height: 5.5rem; padding: .875rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); display: grid; grid-template-columns: 1.5rem minmax(0,1fr); gap: .75rem; align-items: start; background: var(--color-surface); cursor: pointer; }
+.sourcePicker label[data-selected="true"] { border: 2px solid var(--color-accent); padding: calc(.875rem - 1px); background: var(--dads-color-key-50); }
+.sourcePicker label[data-disabled="true"] { color: var(--color-ink-secondary); background: var(--dads-color-neutral-50); cursor: not-allowed; }
+.sourcePicker input { width: 1.25rem; height: 1.25rem; margin-top: .125rem; accent-color: var(--color-accent); }
+.sourcePicker span { display: grid; gap: .125rem; }
+.sourcePicker strong { font-size: 1rem; line-height: 1.5; }
+.sourcePicker small { color: var(--color-ink-secondary); font-size: .875rem; line-height: 1.55; }
+.sourceLimitation { margin: .5rem 0 0; padding: .625rem .75rem; border-left: .25rem solid var(--color-warning); display: flex; gap: .5rem; align-items: flex-start; color: var(--color-ink); background: var(--color-warning-soft); font-size: .875rem; line-height: 1.6; }
+.sourceLimitation svg { flex: 0 0 auto; margin-top: .2rem; }
+.sourceComparison { width: min(52rem,100%); display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.sourceComparison article { padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); display: grid; gap: .5rem; text-align: left; background: var(--color-surface); }
+.sourceComparison article > span { color: var(--color-ink-secondary); font-size: .875rem; }
+.sourceComparison article > strong { font-size: 1.125rem; }
+.sourceComparison article > small { color: var(--color-ink-secondary); font-size: .875rem; line-height: 1.6; }
+.sourceSwitcher { grid-column: 1 / -1; padding: .75rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center; gap: 1rem; background: var(--dads-color-key-50); }
+.sourceSwitcher span { font-size: .9375rem; }
+.sourceSwitcher button { min-height: 2.75rem; padding: .5rem .875rem; border: 1px solid var(--color-accent); border-radius: var(--radius-sm); color: var(--color-accent-strong); background: var(--color-surface); font-weight: 700; }
+
 .stickyAction { position: static; min-height: 4.5rem; padding: 1rem 0 0; border: 0; border-top: 1px solid var(--color-border); border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; }
 .stickyAction > span { font-size: .9375rem; line-height: 1.6; }
 
@@ -247,6 +267,9 @@
   .formStack input,
   .editQuery input { font-size: 1rem; }
   .conditionsPanel fieldset { grid-template-columns: 1fr; }
+  .sourcePicker,
+  .sourceComparison { grid-template-columns: 1fr; }
+  .sourceSwitcher { align-items: stretch; flex-direction: column; }
   .conditionsPanel fieldset label,
   .compactConditions label { font-size: 1rem; }
   .stickyAction { position: fixed; z-index: 35; inset: auto 0 calc(4.5rem + env(safe-area-inset-bottom)); min-height: 4.75rem; padding: .75rem 1rem; border-top: 1px solid var(--color-border); background: var(--color-surface); box-shadow: 0 -4px 12px rgba(0,0,0,.08); }

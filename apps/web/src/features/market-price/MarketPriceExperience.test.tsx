@@ -4,7 +4,7 @@ import Link from "next/link";
 import {afterEach,beforeEach,describe,expect,it,vi} from "vitest";
 import {MarketPriceExperience} from "./MarketPriceExperience";
 
-const state=vi.hoisted(()=>({view:"input",searchId:"",push:vi.fn(),replace:vi.fn()}));
+const state=vi.hoisted(()=>({view:"input",searchId:"",compareSearchId:"",push:vi.fn(),replace:vi.fn()}));
 const api=vi.hoisted(()=>({
   marketPriceOptions:vi.fn(),createMarketPriceIdentification:vi.fn(),uploadMarketPriceImage:vi.fn(),analyzeMarketPriceIdentification:vi.fn(),marketPriceIdentification:vi.fn(),updateMarketPriceIdentification:vi.fn(),confirmMarketPriceIdentification:vi.fn(),createMarketPriceSearch:vi.fn(),
   marketPriceSearch:vi.fn(),marketPriceSearches:vi.fn(),overrideMarketPriceCandidate:vi.fn(),updateMarketPriceOutlierPolicy:vi.fn(),confirmMarketPriceSearch:vi.fn(),retryMarketPriceSearch:vi.fn(),cancelMarketPriceSearch:vi.fn(),repeatMarketPriceSearch:vi.fn(),
@@ -13,17 +13,21 @@ const api=vi.hoisted(()=>({
 vi.mock("next/navigation",()=>({
   usePathname:()=>"/market-price",
   useRouter:()=>({push:state.push,replace:state.replace}),
-  useSearchParams:()=>new URLSearchParams({view:state.view,...(state.searchId?{searchId:state.searchId}:{})}),
+  useSearchParams:()=>new URLSearchParams({view:state.view,...(state.searchId?{searchId:state.searchId}:{}),...(state.compareSearchId?{compareSearchId:state.compareSearchId}:{})}),
 }));
 vi.mock("@/lib/api/resources",()=>({resources:api}));
 
 const options={conditions:[
   {value:"unused" as const,label:"未使用"},{value:"near_unused" as const,label:"未使用に近い"},{value:"good" as const,label:"目立った傷や汚れなし"},{value:"fair" as const,label:"やや傷や汚れあり"},{value:"poor" as const,label:"傷や汚れあり"},{value:"very_poor" as const,label:"全体的に状態が悪い"},{value:"unspecified" as const,label:"指定しない"},
-],categories:[],brands:[],limits:{imageCount:5 as const,imageBytes:10_485_760,totalImageBytes:52_428_800}};
+],categories:[],brands:[],sources:[
+  {value:"yahoo" as const,label:"ヤフオク",description:"現行の落札相場を検索します",enabled:true,limitations:[]},
+  {value:"aucfan" as const,label:"オークファン",description:"オークファンAPIの落札データを検索します",enabled:true,limitations:["過去分には提供上限があります"]},
+  {value:"compare" as const,label:"両方を比較",description:"取得元ごとに比較します",enabled:true,limitations:["中央値は混ぜません"]},
+],limits:{imageCount:5 as const,imageBytes:10_485_760,totalImageBytes:52_428_800}};
 
 afterEach(()=>cleanup());
 beforeEach(()=>{
-  state.view="input";state.searchId="";state.push.mockReset();state.replace.mockReset();
+  state.view="input";state.searchId="";state.compareSearchId="";state.push.mockReset();state.replace.mockReset();
   Object.values(api).forEach(mock=>mock.mockReset());
   api.marketPriceOptions.mockResolvedValue(options);
 });
@@ -97,11 +101,29 @@ describe("SCR-021 market price workflow",()=>{
     await userEvent.click(screen.getByRole("button",{name:"採用して編集"}));
     expect(screen.getByText(/確度 94%・採用済み/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio",{name:/Canon EOS R6 ボディ/}));
-    await userEvent.click(screen.getByRole("button",{name:/直近90日を検索/}));
+    await userEvent.click(screen.getByRole("button",{name:/選択した取得元で検索/}));
     await waitFor(()=>expect(api.updateMarketPriceIdentification).toHaveBeenCalledWith("identification-2",2,expect.objectContaining({productName:"Canon EOS R6 ボディ",searchQueries:[expect.objectContaining({id:"query-1",decision:"accepted"})]}),[expect.objectContaining({id:"product-1",decision:"accepted"})]));
     expect(api.confirmMarketPriceIdentification).toHaveBeenCalledWith("identification-2",3);
-    expect(api.createMarketPriceSearch).toHaveBeenCalledWith(expect.objectContaining({identificationId:"identification-2",selectedSearchQueryId:"query-1",conditions:["good"]}));
+    expect(api.createMarketPriceSearch).toHaveBeenCalledWith(expect.objectContaining({identificationId:"identification-2",selectedSearchQueryId:"query-1",conditions:["good"],sourceProvider:"yahoo_scrape"}));
     expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=search-1",{scroll:false});
+  });
+
+  it("starts Yahoo and Aucfan as independent searches in comparison mode",async()=>{
+    state.view="identify";state.searchId="identification-compare";
+    api.marketPriceIdentification.mockResolvedValue({
+      id:"identification-compare",inputMode:"manual_direct",status:"confirmation_required",input:{productName:"Canon EOS R6",category:null,brand:"Canon",modelNumber:"EOS R6",attributes:{},searchQueries:[{id:"query-compare",keyword:"Canon EOS R6 ボディ",breadth:"standard",source:"user",decision:"accepted"}],excludeKeywords:[],conditions:["good"]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]},confirmedFields:null,imageCount:0,jobId:null,failureClass:null,lockVersion:2,expiresAt:new Date(Date.now()+86_400_000).toISOString(),confirmedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
+    });
+    api.updateMarketPriceIdentification.mockResolvedValue({id:"identification-compare",status:"confirmation_required",lockVersion:3});
+    api.confirmMarketPriceIdentification.mockResolvedValue({id:"identification-compare",status:"confirmed",lockVersion:4,confirmedAt:new Date().toISOString()});
+    api.createMarketPriceSearch.mockImplementation(({sourceProvider}:{sourceProvider:string})=>Promise.resolve({searchId:sourceProvider==="yahoo_scrape"?"search-yahoo":"search-aucfan",jobId:`job-${sourceProvider}`,status:"queued",cacheHit:false}));
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/両方を比較/}));
+    await userEvent.click(screen.getByRole("button",{name:/選択した取得元で検索/}));
+    await waitFor(()=>expect(api.createMarketPriceSearch).toHaveBeenCalledTimes(2));
+    expect(api.createMarketPriceSearch).toHaveBeenCalledWith(expect.objectContaining({sourceProvider:"yahoo_scrape"}));
+    expect(api.createMarketPriceSearch).toHaveBeenCalledWith(expect.objectContaining({sourceProvider:"aucfan_api"}));
+    expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=search-yahoo&compareSearchId=search-aucfan",{scroll:false});
   });
 
   it("renders auction candidates as a desktop table with mobile article equivalents",async()=>{

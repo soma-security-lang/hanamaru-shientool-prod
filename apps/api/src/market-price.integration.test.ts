@@ -17,11 +17,15 @@ describe.skipIf(!databaseUrl)("market price API and worker",()=>{
     const now=Date.now();const prices=[10_000,10_500,11_000,11_500,12_000,100_000];
     const items=prices.map((price,index)=>({auctionId:`market-${index}`,title:"Canon EOS R6 ボディ",price,endTime:new Date(now-index*60_000).toISOString(),itemCondition:"USED20",taxFlag:0,isFleamarketItem:false,category:{id:23632},brandId:100614}));
     fetchMarketPage=async()=>({status:200,body:pageHtml(items),retryAfterSeconds:null,fetchedAt:new Date().toISOString()});
-    const providers=createLocalProviders();providers.marketPriceSource={fetchPage:(url)=>fetchMarketPage(url)};
+    const providers=createLocalProviders();providers.marketPriceSource={fetchPage:(url)=>fetchMarketPage(url),fetchAucfanPage:async request=>{
+      const offset=request.period==="new"?1:35;const values=request.period==="new"?[117000,121000,125000]:[112000,119000,132000];
+      const items=request.page===1?values.map((price,index)=>({auction_id:`aucfan-${request.period}-${index}`,title:"Canon EOS R6 ボディ",price,time:new Date(Date.now()-(offset+index)*86_400_000).toISOString().slice(0,10).replaceAll("-",""),sitecode:"yahoo",siteurl:`https://example.invalid/${request.period}/${index}`,item_status:"used"})):[];
+      return{status:200,body:JSON.stringify({hit_count:items.length,max_page_number:1,items}),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};
+    }};
     repository=new HanamaruRepository(createPool(databaseUrl));app=await buildApp({repository:new HanamaruRepository(createPool(databaseUrl)),providers,config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});worker=new WorkerProcessor(repository,providers,"market-price-integration");
-    await repository.system("UPDATE feature_flags SET enabled=true WHERE organization_id=$1 AND flag_key='market_price_search'",[developmentIds.organizationId]);
+    await repository.system("UPDATE feature_flags SET enabled=true WHERE organization_id=$1 AND flag_key IN ('market_price_search','market_price_aucfan','market_price_comparison')",[developmentIds.organizationId]);
   });
-  afterAll(async()=>{await repository.system("UPDATE feature_flags SET enabled=false WHERE organization_id=$1 AND flag_key='market_price_search'",[developmentIds.organizationId]);await app.close();await repository.close();});
+  afterAll(async()=>{await repository.system("UPDATE feature_flags SET enabled=false WHERE organization_id=$1 AND flag_key IN ('market_price_search','market_price_aucfan','market_price_comparison')",[developmentIds.organizationId]);await app.close();await repository.close();});
 
   async function createConfirmedIdentification(payload:Record<string,unknown>){
     const created=await app.inject({method:"POST",url:"/api/v1/market-price/identifications",headers:idem(),payload:{inputMode:"manual_direct",conditions:["good"],...payload}});
@@ -83,9 +87,23 @@ describe.skipIf(!databaseUrl)("market price API and worker",()=>{
     const restored=await app.inject({method:"PATCH",url:`/api/v1/market-price/searches/${accepted.json().searchId}/candidates/${firstIncluded.id}`,headers:idem(),payload:{decision:"automatic"}});expect(restored.json().statistics).toMatchObject({includedCount:5});
     const recalculated=await app.inject({method:"PATCH",url:`/api/v1/market-price/searches/${accepted.json().searchId}/outlier-policy`,headers:idem(),payload:{enabled:true,deviationThreshold:.25,minimumGroupSize:5}});expect(recalculated.statusCode).toBe(200);expect(recalculated.json().statistics).toMatchObject({candidateCount:6,includedCount:5,medianPrice:11000});
     const fresh=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"manager"}});
-    const confirmed=await app.inject({method:"POST",url:`/api/v1/market-price/searches/${accepted.json().searchId}/confirm`,headers:idem(),payload:{expectedLockVersion:fresh.json().lockVersion}});expect(confirmed.statusCode).toBe(201);expect(confirmed.json()).toMatchObject({snapshotVersion:1,medianPriceBeforeOutlierExclusion:11250,medianPrice:11000,includedCount:5});
+    const confirmed=await app.inject({method:"POST",url:`/api/v1/market-price/searches/${accepted.json().searchId}/confirm`,headers:idem(),payload:{expectedLockVersion:fresh.json().lockVersion}});expect(confirmed.statusCode,confirmed.body).toBe(201);expect(confirmed.json()).toMatchObject({snapshotVersion:1,medianPriceBeforeOutlierExclusion:11250,medianPrice:11000,includedCount:5});
     await expect(repository.system("UPDATE market_price_results SET median_price=1 WHERE id=$1",[confirmed.json().id])).rejects.toThrow(/immutable/);
     const systemAdmin=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"system_admin"}});expect(systemAdmin.statusCode).toBe(403);
+  });
+
+  it("runs an independent Aucfan source search without merging Yahoo statistics",async()=>{
+    const identification=await createConfirmedIdentification({productName:"Canon EOS R6",category:null,brand:null,searchQueries:[{id:"aucfan-standard",keyword:"Canon EOS R6 ボディ",breadth:"standard",source:"user",decision:"accepted"}],conditions:["unspecified"]});
+    const accepted=await app.inject({method:"POST",url:"/api/v1/market-price/searches",headers:idem(),payload:{identificationId:identification.json().id,selectedSearchQueryId:"aucfan-standard",conditions:["unspecified"],outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5},sourceProvider:"aucfan_api"}});
+    expect(accepted.statusCode).toBe(202);
+    const outcome=await worker.process(accepted.json().jobId);
+    const jobFailure=await repository.system<{error_detail_redacted:string|null}>("SELECT error_detail_redacted FROM jobs WHERE id=$1",[accepted.json().jobId]);
+    expect(outcome,jobFailure.rows[0]?.error_detail_redacted??"Aucfan market price job failed without a diagnostic").toBe("succeeded");
+    const response=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"manager"}});
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({sourceProvider:"aucfan_api",status:"partial",coverageStatus:"partial",candidateCount:6,includedCount:6,sourceLimitations:expect.arrayContaining([expect.stringContaining("日単位")])});
+    expect(response.json().candidates[0]).toMatchObject({sourceProvider:"aucfan_api",endedAt:null,endedAtPrecision:"date"});
+    expect(response.json().candidates[0].endedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
   });
 
   it("resumes from the first unfinished 100-item page after a temporary fetch failure",async()=>{

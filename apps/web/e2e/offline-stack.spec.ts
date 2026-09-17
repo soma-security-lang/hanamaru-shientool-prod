@@ -126,6 +126,9 @@ test("operations exposes aggregate health and per-visit retention without body d
 
 test("market price completes image-assisted, manual-assisted, and manual-direct workflows",async({page,browserName})=>{
   test.setTimeout(180_000);
+  const browserErrors:string[]=[];
+  page.on("pageerror",error=>browserErrors.push(error.message));
+  page.on("console",message=>{if(message.type()==="error")browserErrors.push(message.text());});
   async function start(mode:"画像＋AI補助"|"手入力＋AI補助"|"手入力のみ",suffix:string){
     await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
     await page.getByRole("radio",{name:new RegExp(mode)}).check();
@@ -145,7 +148,7 @@ test("market price completes image-assisted, manual-assisted, and manual-direct 
       await page.getByRole("button",{name:"採用して編集"}).first().click({timeout:30_000});
       await page.getByRole("radio",{name:/Canon EOS R6/}).first().check();
     }
-    await page.getByRole("button",{name:/直近90日を検索/}).click();
+    await page.getByRole("button",{name:/選択した取得元で検索/}).click();
     await expect(page.getByRole("heading",{name:"落札候補を確認"})).toBeVisible({timeout:60_000});
   }
 
@@ -161,6 +164,22 @@ test("market price completes image-assisted, manual-assisted, and manual-direct 
 
   await start("手入力＋AI補助",`${browserName}-assisted`);
   await start("手入力のみ",`${browserName}-direct`);
+
+  await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+  await page.getByRole("radio",{name:/手入力のみ/}).check();
+  await page.getByLabel(/商品名/).fill(`Canon EOS R6 比較 ${browserName}`);
+  await page.getByLabel(/検索キーワード/).fill(`Canon EOS R6 比較 ${browserName}`);
+  await page.getByRole("button",{name:/検索条件を確認/}).click();
+  await page.getByRole("radio",{name:/両方を比較/}).check();
+  await page.getByRole("button",{name:/選択した取得元で検索/}).click();
+  await expect(page.getByText("取得元を比較中")).toBeVisible({timeout:30_000});
+  await expect(page.getByRole("button",{name:/結果を確認/})).toHaveCount(2,{timeout:60_000});
+  await page.getByRole("button",{name:/結果を確認/}).first().click();
+  await expect(page.getByRole("heading",{name:"落札候補を確認"})).toBeVisible();
+  await expect(page.getByRole("button",{name:/オークファンの結果へ切替|ヤフオクの結果へ切替/})).toBeVisible();
+  const accessibility=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa","wcag22aa"]).analyze();
+  expect(accessibility.violations.filter(item=>item.impact==="serious"||item.impact==="critical")).toEqual([]);
+  expect(browserErrors,"browser console and page errors").toEqual([]);
 });
 
 test("mobile navigation and progressive panes preserve URL-addressable state",async({page})=>{

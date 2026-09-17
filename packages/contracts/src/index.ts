@@ -178,11 +178,24 @@ export interface MarketPriceOutlierPolicy {
   deviationThreshold:number;
   minimumGroupSize:number;
 }
+export const marketPriceSourceProviders = ["yahoo_scrape", "aucfan_api"] as const;
+export type MarketPriceSourceProvider = (typeof marketPriceSourceProviders)[number];
+export const marketPriceSearchModes = ["yahoo", "aucfan", "compare"] as const;
+export type MarketPriceSearchMode = (typeof marketPriceSearchModes)[number];
+export type AucfanSearchPeriod = "new" | "3";
+export interface AucfanSearchRequest {
+  keyword: string;
+  period: AucfanSearchPeriod;
+  page: number;
+  pageSize: 100;
+  itemStatus?: "new" | "used";
+}
 export interface CreateMarketPriceSearchRequest {
   identificationId:string|null;
   selectedSearchQueryId:string;
   conditions:ProductCondition[];
   outlierPolicy:MarketPriceOutlierPolicy;
+  sourceProvider?:MarketPriceSourceProvider;
 }
 
 export const marketPriceInputModes = [
@@ -285,10 +298,13 @@ export interface MarketPriceCandidateDto {
   id: Identifier;
   sourceItemId: string;
   sourceType: "auction" | "fleamarket";
-  canonicalUrl: string;
+  sourceProvider: MarketPriceSourceProvider;
+  canonicalUrl: string | null;
   title: string;
   closingPrice: number;
-  endedAt: Timestamp;
+  endedAt: Timestamp | null;
+  endedOn: string | null;
+  endedAtPrecision: "timestamp" | "date";
   normalizedCondition: ProductCondition;
   matchScore: number;
   matchReasons: string[];
@@ -319,6 +335,8 @@ export interface MarketPriceSearchDto extends MarketPriceStatisticsDto {
   id: Identifier;
   identificationId: Identifier;
   jobId: Identifier | null;
+  sourceProvider: MarketPriceSourceProvider;
+  sourceLimitations: string[];
   status: MarketPriceSearchStatus;
   coverageStatus: "pending" | "complete" | "partial" | "blocked";
   periodStart: Timestamp;
@@ -339,6 +357,8 @@ export interface MarketPriceSearchDto extends MarketPriceStatisticsDto {
 export interface MarketPriceResultDto extends MarketPriceStatisticsDto {
   id: Identifier;
   searchId: Identifier;
+  sourceProvider: MarketPriceSourceProvider;
+  sourceLimitations: string[];
   snapshotVersion: number;
   snapshotHash: string;
   conditions: ProductCondition[];
@@ -354,6 +374,13 @@ export interface MarketPriceOptionsDto {
   conditions: Array<{ value: ProductCondition; label: string }>;
   categories: Array<{ key: string; label: string }>;
   brands: Array<{ key: string; label: string }>;
+  sources: Array<{
+    value: MarketPriceSearchMode;
+    label: string;
+    description: string;
+    enabled: boolean;
+    limitations: string[];
+  }>;
   limits: { imageCount: 5; imageBytes: number; totalImageBytes: number };
 }
 

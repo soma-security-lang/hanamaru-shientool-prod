@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import type {
   GeneratedYahooSearchUrl,
+  AucfanSearchPeriod,
+  AucfanSearchRequest,
   MarketPriceOutlierPolicy,
+  MarketPriceSourceProvider,
   ProductCondition,
   YahooClosedSearchSpec,
 } from "@hanamaru/contracts";
@@ -19,6 +22,8 @@ export const MARKET_PRICE_POLICY = {
 export const YAHOO_URL_GENERATOR_VERSION = "1.0.0";
 export const YAHOO_RESULT_PARSER_VERSION = "1.0.0";
 export const YAHOO_PARAMETER_REGISTRY_VERSION = "2026-09-09";
+export const AUCFAN_API_PARSER_VERSION = "1.0.0";
+export const AUCFAN_QUERY_PLAN_VERSION = "1.0.0";
 
 const allowedParameters = ["p", "auccat", "brand_id", "istatus", "select", "n", "b"] as const;
 const conditionIdByProductCondition: Readonly<Partial<Record<ProductCondition, 1 | 3 | 4 | 5 | 6 | 7>>> = {
@@ -42,18 +47,100 @@ export interface YahooDimensionMapping {
 }
 
 export interface YahooClosedSearchItem {
+  sourceProvider?: MarketPriceSourceProvider;
   sourceItemId: string;
   sourceType: "auction" | "fleamarket";
   canonicalUrl: string;
   title: string;
   closingPrice: number;
   endedAt: string;
+  endedOn?: string;
+  endedAtPrecision?: "timestamp" | "date";
   sourceCondition: string | null;
   normalizedCondition: ProductCondition;
   taxDisplay: "included" | "not_included" | "unknown";
   categoryId: string | null;
   brandId: string | null;
   contentHash: string;
+}
+
+export type { AucfanSearchPeriod, AucfanSearchRequest } from "@hanamaru/contracts";
+
+export interface ParsedAucfanSearchPage {
+  parserVersion: string;
+  items: YahooClosedSearchItem[];
+  sourceItemCount: number;
+  parseFailureCount: number;
+  totalResultsAvailable: number;
+  maxPageNumber: number;
+  pageSize: 100;
+  newestEndedAt: string | null;
+  oldestEndedAt: string | null;
+  responseHash: string;
+}
+
+export class AucfanSearchContractError extends Error {
+  constructor(public readonly code:string,message:string){super(message);this.name="AucfanSearchContractError";}
+}
+
+export function aucfanItemStatus(conditions:readonly ProductCondition[]):"new"|"used"|undefined{
+  if(!conditions.length)throw new AucfanSearchContractError("PARAMETER_INVALID","at least one product condition is required");
+  if(conditions.includes("unspecified"))return undefined;
+  const hasNew=conditions.includes("unused");
+  const hasUsed=conditions.some(condition=>condition!=="unused");
+  return hasNew&&!hasUsed?"new":!hasNew&&hasUsed?"used":undefined;
+}
+
+export function createAucfanSearchRequest(input:{keyword:string;period:AucfanSearchPeriod;page:number;conditions:readonly ProductCondition[]}):AucfanSearchRequest{
+  const keyword=normalizeSearchKeyword(input.keyword);
+  if(!keyword||keyword.length>200)throw new AucfanSearchContractError("PARAMETER_INVALID","keyword is required and must be 200 characters or fewer");
+  if(!Number.isSafeInteger(input.page)||input.page<1||input.page>20)throw new AucfanSearchContractError("PARAMETER_INVALID","page is invalid");
+  const itemStatus=aucfanItemStatus(input.conditions);
+  return{keyword,period:input.period,page:input.page,pageSize:100,...(itemStatus?{itemStatus}:{})};
+}
+
+function aucfanObject(value:unknown,field:string):Record<string,unknown>{
+  if(!value||typeof value!=="object"||Array.isArray(value))throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH",`${field} is invalid`);
+  return value as Record<string,unknown>;
+}
+
+function aucfanInteger(value:unknown,field:string,minimum=0):number{
+  const parsed=Number(value);
+  if(!Number.isSafeInteger(parsed)||parsed<minimum)throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH",`${field} is invalid`);
+  return parsed;
+}
+
+function aucfanEndedAt(value:unknown):{date:string;at:string}{
+  const compact=String(value??"");
+  if(!/^\d{8}$/u.test(compact))throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","item.time is invalid");
+  const date=`${compact.slice(0,4)}-${compact.slice(4,6)}-${compact.slice(6,8)}`;
+  const at=new Date(`${date}T12:00:00+09:00`);
+  if(!Number.isFinite(at.getTime())||at.toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})!==date)throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","item.time is not a calendar date");
+  return{date,at:at.toISOString()};
+}
+
+export function parseAucfanSearchJson(body:string):ParsedAucfanSearchPage{
+  if(Buffer.byteLength(body)>5*1024*1024)throw new AucfanSearchContractError("RESPONSE_TOO_LARGE","Aucfan response exceeds the parser limit");
+  let root:Record<string,unknown>;
+  try{root=aucfanObject(JSON.parse(body),"response");}catch(error){if(error instanceof AucfanSearchContractError)throw error;throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","Aucfan response is invalid JSON");}
+  if(typeof root.error==="string")throw new AucfanSearchContractError(String(root.error_code??"UPSTREAM_ERROR"),"Aucfan returned an API error");
+  if(!Array.isArray(root.items))throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","Aucfan items are missing");
+  const totalResultsAvailable=aucfanInteger(root.hit_count,"hit_count");
+  const maxPageNumber=aucfanInteger(root.max_page_number,"max_page_number");
+  if(root.items.length>100)throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","Aucfan page exceeds 100 items");
+  const items:YahooClosedSearchItem[]=[];let parseFailureCount=0;
+  for(const raw of root.items){
+    try{
+      const item=aucfanObject(raw,"item");const sourceItemId=String(item.auction_id??"").trim();const title=normalizeSearchKeyword(String(item.title??""));
+      const closingPrice=aucfanInteger(item.price,"item.price",1);const ended=aucfanEndedAt(item.time);
+      if(!sourceItemId||!title||String(item.sitecode??"").toLowerCase()!=="yahoo")throw new AucfanSearchContractError("PARSER_CONTRACT_MISMATCH","Aucfan item identity is invalid");
+      const itemStatus=item.item_status==="new"?"new":item.item_status==="used"?"used":null;
+      items.push({sourceProvider:"aucfan_api",sourceItemId,sourceType:"auction",canonicalUrl:typeof item.siteurl==="string"&&/^https:\/\//u.test(item.siteurl)?item.siteurl:"",title,closingPrice,endedAt:ended.at,endedOn:ended.date,endedAtPrecision:"date",sourceCondition:itemStatus,normalizedCondition:itemStatus==="new"?"unused":"unspecified",taxDisplay:"unknown",categoryId:null,brandId:null,contentHash:sha256(JSON.stringify({sourceItemId,title,closingPrice,endedDate:ended.date,itemStatus}))});
+    }catch(error){if(!(error instanceof AucfanSearchContractError))throw error;parseFailureCount+=1;}
+  }
+  if(root.items.length>0&&(!items.length||parseFailureCount/root.items.length>.05))throw new AucfanSearchContractError("PRICE_PARSE_FAILURE_RATE","Aucfan item parsing failure rate exceeded the safety threshold");
+  for(let index=1;index<items.length;index+=1)if(Date.parse(items[index-1]!.endedAt)<Date.parse(items[index]!.endedAt))throw new AucfanSearchContractError("SORT_CONTRACT_MISMATCH","Aucfan items are not newest first");
+  return{parserVersion:AUCFAN_API_PARSER_VERSION,items,sourceItemCount:root.items.length,parseFailureCount,totalResultsAvailable,maxPageNumber,pageSize:100,newestEndedAt:items[0]?.endedAt??null,oldestEndedAt:items.at(-1)?.endedAt??null,responseHash:sha256(body)};
 }
 
 export interface ParsedYahooClosedSearchPage {
@@ -360,7 +447,8 @@ export function evaluateMarketPriceCandidates(input:{
     const matchScore=Math.max(0,Math.min(1,coverage*(missingModel?.35:1)*(accessoryOnly?.4:1)));
     const matchReasons=[`keyword_coverage:${matchedTokens.length}/${queryTokens.length}`,...(missingModel?["model_token_missing"]:[]),...(accessoryOnly?["accessory_signal"]:[])];
     if(matchScore<.75)reasons.push("product_mismatch");
-    const conditionMatched=omitConditionFilter||conditions.has(item.normalizedCondition);
+    const aucfanBroadUsed=item.sourceProvider==="aucfan_api"&&item.sourceCondition==="used"&&["near_unused","good","fair","poor","very_poor"].some(condition=>conditions.has(condition as ProductCondition));
+    const conditionMatched=omitConditionFilter||conditions.has(item.normalizedCondition)||aucfanBroadUsed;
     if(item.sourceType!=="auction")reasons.push("source_type");
     if(endedAt<input.periodStart.getTime()||endedAt>input.periodEnd.getTime())reasons.push("period");
     if(!conditionMatched)reasons.push("condition");

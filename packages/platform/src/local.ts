@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable,Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import {reviewDimensions,type AiProvider,type DriveProvider,type PlatformProviders,type ReviewDimension,type SpeechProvider,type StorageProvider,type TaskProvider,type UploadDeclaration } from "./types.js";
+import {reviewDimensions,type AiProvider,type DriveProvider,type MarketPriceSourceProvider,type PlatformProviders,type ReviewDimension,type SpeechProvider,type StorageProvider,type TaskProvider,type UploadDeclaration } from "./types.js";
 import { probeAudioStream,probeVideoStream } from "./media.js";
 
 const storageRoot=()=>process.env.LOCAL_STORAGE_DIR??join(tmpdir(),"hanamaru-local-storage");
@@ -198,4 +198,10 @@ function localMarketPriceHtml(url:string){
   const items=keyword.includes("fixture empty")||offset>1?[]:prices.map((price,index)=>({auctionId:`fixture-${String(index+1).padStart(3,"0")}`,title:index===7?`${keyword} ジャンク`:`${keyword} ボディ ${index+1}`,price,endTime:new Date(now-(index+1)*86_400_000).toISOString(),itemCondition:"USED20",taxFlag:1,isFleamarketItem:false,category:{id:"23632"},brandId:"100614"}));
   return`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({props:{pageProps:{initialState:{search:{items:{listing:{metadata:{sort:"-END_TIME",limit:100},items,totalResultsAvailable:items.length}}}}}}})}</script></html>`;
 }
-export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),marketPriceSource:{async fetchPage(url){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Yahoo相場取得にはPROVIDER_MODE=local-connectedが必要です");return{status:200,body:localMarketPriceHtml(url),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};}},mode:"local"}; }
+function localAucfanMarketPriceJson(request:Parameters<NonNullable<MarketPriceSourceProvider["fetchAucfanPage"]>>[0]){
+  const prices=request.period==="new"?[117000,120000,123000,127000,131000,134000]:[110000,114000,119000,125000,138000,305000];
+  const offset=request.period==="new"?0:35;
+  const items=request.page>1||request.keyword.includes("fixture empty")?[]:prices.map((price,index)=>({title:index===prices.length-1?`${request.keyword} ジャンク`:`${request.keyword} ボディ ${index+1}`,time:new Date(Date.now()-(offset+index+1)*86_400_000).toISOString().slice(0,10).replaceAll("-",""),bid:index+1,price,start_price:1000,thumbnail:"",siteurl:`https://aucfan.com/intro/q-${request.period}-${index+1}`,auction_id:`fixture-${request.period}-${String(index+1).padStart(3,"0")}`,sitecode:"yahoo",seller_id:"fixture",seller_type:"general",item_status:index%3===0?"new":"used"}));
+  return JSON.stringify({hit_count:items.length,items,max_page_number:1});
+}
+export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),marketPriceSource:{async fetchPage(url){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Yahoo相場取得にはPROVIDER_MODE=local-connectedが必要です");return{status:200,body:localMarketPriceHtml(url),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};},async fetchAucfanPage(request){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: オークファンAPIにはローカルfixtureまたは正式な接続設定が必要です");return{status:200,body:localAucfanMarketPriceJson(request),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};}},mode:"local"}; }
