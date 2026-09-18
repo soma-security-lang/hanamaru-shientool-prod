@@ -77,7 +77,7 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
 function Login() {
   const router=useRouter();
   const [error,setError]=useState("");
-  const success=useMemo(()=>()=>{router.replace("/");router.refresh();},[router]);
+  const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/");router.refresh();},[router]);
   const failed=useMemo(()=>(message:string)=>setError(message),[]);
   return (
     <section className={styles.loginPage} aria-labelledby="login-title">

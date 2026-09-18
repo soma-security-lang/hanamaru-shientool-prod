@@ -1,25 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import {usePathname,useRouter} from "next/navigation";
-import {useEffect,useMemo,useState} from "react";
+import {usePathname} from "next/navigation";
+import {useMemo} from "react";
 import {LoaderCircle,LockKeyhole} from "lucide-react";
+import {useViewer,type Viewer} from "@/components/auth/ViewerProvider";
 import {AppShell} from "@/components/shell/AppShell";
 import {WebExperience} from "@/features/web/Experience";
 import {allScreens,findScreen} from "@/lib/prototype/registry";
 import type {Role,ScreenSpec} from "@/lib/prototype/types";
-import {ApiClientError,apiClient} from "@/lib/api/client";
 import styles from "./ScreenHost.module.css";
-
-interface Viewer{
-  id:string;
-  displayName:string;
-  organizationName?:string;
-  branchName?:string;
-  roles:Role[];
-  capabilities:string[];
-  featureFlags:Record<string,boolean>;
-}
 
 const rolePriority:Role[]=["system_admin","content_approver","manager","educator","assessor"];
 const prototypeEnabled=process.env.NODE_ENV!=="production"&&process.env.NEXT_PUBLIC_PROTOTYPE_MODE==="enabled";
@@ -28,31 +18,15 @@ function primaryRole(viewer:Viewer){return rolePriority.find(role=>viewer.roles.
 
 export function ScreenHost(){
   const pathname=usePathname();
-  const router=useRouter();
-  const [viewer,setViewer]=useState<Viewer|null>(null);
-  const [authState,setAuthState]=useState<"loading"|"ready"|"required"|"failed">(pathname==="/login"?"ready":"loading");
+  const {viewer,authState,retryViewer}=useViewer();
   const screen=useMemo(()=>findScreen(pathname),[pathname]);
-
-  useEffect(()=>{const expired=()=>{setViewer(null);setAuthState("required");};window.addEventListener("hanamaru:auth-required",expired);return()=>window.removeEventListener("hanamaru:auth-required",expired);},[]);
-
-  useEffect(()=>{
-    if(pathname==="/login"||pathname==="/__prototype")return;
-    if(viewer)return;
-    let active=true;
-    void apiClient.request<Viewer>("/me").then(result=>{if(active){setViewer(result);setAuthState("ready");}}).catch(error=>{
-      if(!active)return;
-      setViewer(null);
-      setAuthState(error instanceof ApiClientError&&error.status===401?"required":"failed");
-    });
-    return()=>{active=false;};
-  },[pathname,viewer]);
 
   if(pathname==="/__prototype")return prototypeEnabled?<PrototypeIndex/>:<NotFound/>;
   if(!screen)return <NotFound/>;
   if(screen.kind==="auth")return <main className={styles.authPage}><WebExperience kind="auth"/></main>;
   if(authState==="loading"||(!viewer&&authState==="ready"))return <main className={styles.authPage}><AccessState loading title="利用者情報を確認しています" body="少しお待ちください。"/></main>;
   if(authState==="required")return <main className={styles.authPage}><AccessState title="ログインが必要です" body="業務用Googleアカウントでログインしてください。" action={<Link className={styles.primaryButton} href="/login">ログインへ進む</Link>}/></main>;
-  if(authState==="failed")return <main className={styles.authPage}><AccessState title="利用者情報を確認できません" body="APIの接続状態を確認して、もう一度お試しください。" action={<button className={styles.secondaryButton} onClick={()=>router.refresh()}>再読み込み</button>}/></main>;
+  if(authState==="failed")return <main className={styles.authPage}><AccessState title="利用者情報を確認できません" body="APIの接続状態を確認して、もう一度お試しください。" action={<button className={styles.secondaryButton} onClick={retryViewer}>再読み込み</button>}/></main>;
   if(!viewer)return null;
 
   const systemAdminAccount=viewer.roles.includes("system_admin");

@@ -88,7 +88,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
       ...(featureFlags.market_price_search?[{href:"/market-price",label:"買取相場",icon:Scale}]:[]),
       {href:"/reviews",label:"振り返り",icon:MessageSquareText},
     ];
-  async function leave(){try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}router.replace("/login");router.refresh();}
+  async function leave(){try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/login");router.refresh();}
   return (
     <div className={styles.frame}>
       <a className={styles.skip} href="#main-content">本文へ移動</a>
