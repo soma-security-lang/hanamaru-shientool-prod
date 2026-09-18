@@ -159,6 +159,7 @@ pnpm local:down
 | AI提案の明示採否 | Identification suggestion decision | Component／DB integration |
 | 画像制約・24時間削除 | Upload API、Worker normalization、retention scan | API／DB／Worker |
 | Yahoo決定的URL | `@hanamaru/market-price` | Unit round trip |
+| キーワード／型番優先の切替 | `searchBasis`、Identification UI、Candidate Evaluator | Component／Unit／DB integration |
 | 100件・最新順・90日 | Worker／Page checkpoint | Unit／DB integration |
 | 手動除外・復帰 | Candidate override API | UI／DB integration／Playwright |
 | 外れ値再適用 | Outlier policy API | Unit／DB integration／Playwright |

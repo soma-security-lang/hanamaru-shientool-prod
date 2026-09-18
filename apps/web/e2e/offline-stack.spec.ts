@@ -167,6 +167,18 @@ test("market price completes image-assisted, manual-assisted, and manual-direct 
 
   await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
   await page.getByRole("radio",{name:/手入力のみ/}).check();
+  await page.getByLabel(/商品名/).fill(`PlayStation 5 Slim ${browserName}`);
+  await page.getByLabel(/型番/).fill("CFI-2000A01");
+  await page.getByRole("button",{name:/検索条件を確認/}).click();
+  await page.getByRole("radio",{name:/型番を優先して検索/}).check();
+  await expect(page.getByText(/「CFI-2000A01」が一致する商品だけを集計/)).toBeVisible();
+  await page.getByRole("button",{name:/選択した取得元で検索/}).click();
+  await expect(page.getByRole("heading",{name:"落札候補を確認"})).toBeVisible({timeout:60_000});
+  await expect(page.getByText("型番一致").first()).toBeVisible();
+  await expect(page.getByText(/CFI-2000A01 ボディ/).first()).toBeVisible();
+
+  await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+  await page.getByRole("radio",{name:/手入力のみ/}).check();
   await page.getByLabel(/商品名/).fill(`Canon EOS R6 比較 ${browserName}`);
   await page.getByLabel(/検索キーワード/).fill(`Canon EOS R6 比較 ${browserName}`);
   await page.getByRole("button",{name:/検索条件を確認/}).click();

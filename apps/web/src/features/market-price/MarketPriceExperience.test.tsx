@@ -108,6 +108,25 @@ describe("SCR-021 market price workflow",()=>{
     expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=search-1",{scroll:false});
   });
 
+  it("starts an exact model-number search without selecting a keyword",async()=>{
+    state.view="identify";state.searchId="identification-model";
+    api.marketPriceIdentification.mockResolvedValue({
+      id:"identification-model",inputMode:"manual_direct",status:"confirmation_required",input:{productName:"PlayStation 5",category:"ゲーム機",brand:"Sony",modelNumber:"CFI-2000A01",attributes:{},searchQueries:[],excludeKeywords:[],conditions:["good"]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]},confirmedFields:null,imageCount:0,jobId:null,failureClass:null,lockVersion:2,expiresAt:new Date(Date.now()+86_400_000).toISOString(),confirmedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
+    });
+    api.updateMarketPriceIdentification.mockResolvedValue({id:"identification-model",status:"confirmation_required",lockVersion:3});
+    api.confirmMarketPriceIdentification.mockResolvedValue({id:"identification-model",status:"confirmed",lockVersion:4,confirmedAt:new Date().toISOString()});
+    api.createMarketPriceSearch.mockResolvedValue({searchId:"search-model",jobId:"job-model",status:"queued",cacheHit:false});
+    render(<MarketPriceExperience/>);
+    const modelSearch=await screen.findByRole("radio",{name:/型番を優先して検索/});
+    expect(modelSearch).toBeEnabled();
+    await userEvent.click(modelSearch);
+    expect(screen.getByText("CFI-2000A01",{selector:"small"})).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button",{name:/選択した取得元で検索/}));
+    await waitFor(()=>expect(api.createMarketPriceSearch).toHaveBeenCalledWith(expect.objectContaining({identificationId:"identification-model",selectedSearchQueryId:null,searchBasis:"model_number",conditions:["good"],sourceProvider:"yahoo_scrape"})));
+    expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=search-model",{scroll:false});
+  });
+
   it("starts Yahoo and Aucfan as independent searches in comparison mode",async()=>{
     state.view="identify";state.searchId="identification-compare";
     api.marketPriceIdentification.mockResolvedValue({

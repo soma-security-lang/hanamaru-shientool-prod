@@ -145,6 +145,21 @@
 .filterPanel input[type="checkbox"],
 .filterPanel input[type="radio"] { width: 1.5rem; height: 1.5rem; flex: 0 0 auto; }
 
+.searchBasisPicker { margin: 1.25rem 0 0; padding: 0; border: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+.searchBasisPicker legend { grid-column: 1 / -1; margin-bottom: .125rem; font-size: 1rem; font-weight: 700; }
+.searchBasisPicker label { min-height: 6rem; padding: .875rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); display: grid; grid-template-columns: 1.5rem minmax(0,1fr); gap: .75rem; align-items: start; background: var(--color-surface); cursor: pointer; }
+.searchBasisPicker label[data-selected="true"] { border: 2px solid var(--color-accent); padding: calc(.875rem - 1px); background: var(--dads-color-key-50); }
+.searchBasisPicker label[data-disabled="true"] { color: var(--color-ink-secondary); background: var(--dads-color-neutral-50); cursor: not-allowed; }
+.searchBasisPicker input { width: 1.25rem; height: 1.25rem; margin-top: .125rem; accent-color: var(--color-accent); }
+.searchBasisPicker span { min-width: 0; display: grid; gap: .125rem; }
+.searchBasisPicker strong { font-size: 1rem; line-height: 1.5; }
+.searchBasisPicker small { color: var(--color-ink-secondary); font-size: .875rem; line-height: 1.55; overflow-wrap: anywhere; }
+.modelNumberNotice { margin-top: 1rem; padding: .875rem 1rem; border-left: .25rem solid var(--color-accent); display: grid; grid-template-columns: auto 1fr; gap: .75rem; align-items: start; background: var(--dads-color-key-50); }
+.modelNumberNotice svg { margin-top: .125rem; color: var(--color-accent-strong); }
+.modelNumberNotice strong,.modelNumberNotice small { display: block; }
+.modelNumberNotice strong { font-size: .875rem; }
+.modelNumberNotice small { margin-top: .125rem; color: var(--color-ink); font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+
 .sourcePicker { margin-top: 1.25rem; padding-top: 1rem; border: 0; border-top: 1px solid var(--color-border); display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .75rem; }
 .sourcePicker legend { padding: 0 .25rem; font-size: 1rem; font-weight: 700; }
 .sourcePicker label { min-height: 5.5rem; padding: .875rem; border: 1px solid var(--color-border-strong); border-radius: var(--radius-md); display: grid; grid-template-columns: 1.5rem minmax(0,1fr); gap: .75rem; align-items: start; background: var(--color-surface); cursor: pointer; }
@@ -268,6 +283,7 @@
   .editQuery input { font-size: 1rem; }
   .conditionsPanel fieldset { grid-template-columns: 1fr; }
   .sourcePicker,
+  .searchBasisPicker,
   .sourceComparison { grid-template-columns: 1fr; }
   .sourceSwitcher { align-items: stretch; flex-direction: column; }
   .conditionsPanel fieldset label,

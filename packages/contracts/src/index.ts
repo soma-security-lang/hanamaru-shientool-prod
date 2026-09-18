@@ -182,6 +182,8 @@ export const marketPriceSourceProviders = ["yahoo_scrape", "aucfan_api"] as cons
 export type MarketPriceSourceProvider = (typeof marketPriceSourceProviders)[number];
 export const marketPriceSearchModes = ["yahoo", "aucfan", "compare"] as const;
 export type MarketPriceSearchMode = (typeof marketPriceSearchModes)[number];
+export const marketPriceSearchBases = ["keyword", "model_number"] as const;
+export type MarketPriceSearchBasis = (typeof marketPriceSearchBases)[number];
 export type AucfanSearchPeriod = "new" | "3";
 export interface AucfanSearchRequest {
   keyword: string;
@@ -192,7 +194,8 @@ export interface AucfanSearchRequest {
 }
 export interface CreateMarketPriceSearchRequest {
   identificationId:string|null;
-  selectedSearchQueryId:string;
+  selectedSearchQueryId?:string|null;
+  searchBasis?:MarketPriceSearchBasis;
   conditions:ProductCondition[];
   outlierPolicy:MarketPriceOutlierPolicy;
   sourceProvider?:MarketPriceSourceProvider;

@@ -4,6 +4,7 @@ import type {
   AucfanSearchPeriod,
   AucfanSearchRequest,
   MarketPriceOutlierPolicy,
+  MarketPriceSearchBasis,
   MarketPriceSourceProvider,
   ProductCondition,
   YahooClosedSearchSpec,
@@ -169,6 +170,23 @@ export function normalizeSearchKeyword(value: string): string {
 
 export function normalizeRegistryLabel(value: string): string {
   return normalizeSearchKeyword(value).toLocaleLowerCase("ja-JP");
+}
+
+export function normalizeModelNumber(value:string):string{
+  return value.normalize("NFKC").toLocaleLowerCase("ja-JP").replace(/[^\p{L}\p{N}]/gu,"");
+}
+
+export function titleMatchesModelNumber(title:string,modelNumber:string):boolean{
+  const normalizedModel=normalizeModelNumber(modelNumber);
+  if(normalizedModel.length<2)return false;
+  const normalizedTitle=normalizeModelNumber(title);
+  let position=normalizedTitle.indexOf(normalizedModel);
+  while(position>=0){
+    const following=normalizedTitle.at(position+normalizedModel.length)??"";
+    if(!/[a-z0-9]/iu.test(following))return true;
+    position=normalizedTitle.indexOf(normalizedModel,position+1);
+  }
+  return false;
 }
 
 function sha256(value: string): string {
@@ -426,6 +444,8 @@ function quantile(values:readonly number[],quantileValue:number):number|null{
 export function evaluateMarketPriceCandidates(input:{
   items:readonly YahooClosedSearchItem[];
   selectedKeyword:string;
+  searchBasis?:MarketPriceSearchBasis;
+  modelNumber?:string|null;
   periodStart:Date;
   periodEnd:Date;
   selectedConditions:readonly ProductCondition[];
@@ -435,6 +455,9 @@ export function evaluateMarketPriceCandidates(input:{
   const conditions=new Set(input.selectedConditions);const omitConditionFilter=conditions.has("unspecified");
   const exclusions=input.excludeKeywords.map(normalizeSearchKeyword).filter(Boolean).map(value=>value.toLocaleLowerCase("ja-JP"));
   const keyword=normalizeSearchKeyword(input.selectedKeyword).toLocaleLowerCase("ja-JP");
+  const searchBasis=input.searchBasis??"keyword";
+  const modelNumber=normalizeSearchKeyword(input.modelNumber??"");
+  if(searchBasis==="model_number"&&!normalizeModelNumber(modelNumber))throw new Error("model number is required for model-number evaluation");
   const queryTokens=[...new Set(keyword.split(/[\s\p{P}\p{S}]+/u).filter(token=>token.length>=2))];
   const modelTokens=queryTokens.filter(token=>/[a-z]*\d[\da-z-]*/iu.test(token));
   const accessorySignals=["ケース","カバー","バッテリー","充電器","ストラップ","箱のみ","空箱","部品取り","ジャンク","取扱説明書"];
@@ -442,10 +465,14 @@ export function evaluateMarketPriceCandidates(input:{
     const reasons:string[]=[];const endedAt=Date.parse(item.endedAt);const title=item.title.toLocaleLowerCase("ja-JP");
     const matchedTokens=queryTokens.filter(token=>title.includes(token));
     const coverage=queryTokens.length?matchedTokens.length/queryTokens.length:(title.includes(keyword)?1:0);
-    const missingModel=modelTokens.some(token=>!title.includes(token));
+    const exactModelMatch=searchBasis==="model_number"?titleMatchesModelNumber(item.title,modelNumber):null;
+    const missingModel=searchBasis==="model_number"?!exactModelMatch:modelTokens.some(token=>!title.includes(token));
     const accessoryOnly=accessorySignals.some(signal=>title.includes(signal)&&!keyword.includes(signal));
-    const matchScore=Math.max(0,Math.min(1,coverage*(missingModel?.35:1)*(accessoryOnly?.4:1)));
-    const matchReasons=[`keyword_coverage:${matchedTokens.length}/${queryTokens.length}`,...(missingModel?["model_token_missing"]:[]),...(accessoryOnly?["accessory_signal"]:[])];
+    const baseScore=searchBasis==="model_number"?(exactModelMatch?1:0):coverage*(missingModel?.35:1);
+    const matchScore=Math.max(0,Math.min(1,baseScore*(accessoryOnly?.4:1)));
+    const matchReasons=searchBasis==="model_number"
+      ?[exactModelMatch?"model_number_exact":"model_number_missing",...(accessoryOnly?["accessory_signal"]:[])]
+      :[`keyword_coverage:${matchedTokens.length}/${queryTokens.length}`,...(missingModel?["model_token_missing"]:[]),...(accessoryOnly?["accessory_signal"]:[])];
     if(matchScore<.75)reasons.push("product_mismatch");
     const aucfanBroadUsed=item.sourceProvider==="aucfan_api"&&item.sourceCondition==="used"&&["near_unused","good","fair","poor","very_poor"].some(condition=>conditions.has(condition as ProductCondition));
     const conditionMatched=omitConditionFilter||conditions.has(item.normalizedCondition)||aucfanBroadUsed;

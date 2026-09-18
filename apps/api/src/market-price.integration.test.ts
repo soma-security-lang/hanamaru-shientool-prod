@@ -92,6 +92,24 @@ describe.skipIf(!databaseUrl)("market price API and worker",()=>{
     const systemAdmin=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"system_admin"}});expect(systemAdmin.statusCode).toBe(403);
   });
 
+  it("runs a model-number search without requiring a keyword candidate",async()=>{
+    const originalFetch=fetchMarketPage;
+    fetchMarketPage=async()=>({status:200,body:pageHtml([
+      {auctionId:"model-exact",title:"PlayStation 5 CFI-2000A01 本体",price:62_000,endTime:new Date(Date.now()-60_000).toISOString(),itemCondition:"USED20",taxFlag:0,isFleamarketItem:false},
+      {auctionId:"model-other",title:"PlayStation 5 CFI-1200A01 本体",price:48_000,endTime:new Date(Date.now()-120_000).toISOString(),itemCondition:"USED20",taxFlag:0,isFleamarketItem:false},
+    ]),retryAfterSeconds:null,fetchedAt:new Date().toISOString()});
+    try{
+      const identification=await createConfirmedIdentification({productName:"PlayStation 5",modelNumber:"CFI-2000A01",searchQueries:[]});
+      const accepted=await app.inject({method:"POST",url:"/api/v1/market-price/searches",headers:idem(),payload:{identificationId:identification.json().id,selectedSearchQueryId:null,searchBasis:"model_number",conditions:["good"],outlierPolicy:{enabled:false,deviationThreshold:.2,minimumGroupSize:5}}});
+      expect(accepted.statusCode,accepted.body).toBe(202);
+      expect(await worker.process(accepted.json().jobId)).toBe("succeeded");
+      const response=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"manager"}});
+      expect(response.json()).toMatchObject({query:{searchBasis:"model_number",selectedSearchQueryId:null,keyword:"CFI-2000A01",modelNumber:"CFI-2000A01"},candidateCount:2,includedCount:1});
+      expect(response.json().candidates.find((candidate:{sourceItemId:string})=>candidate.sourceItemId==="model-exact")).toMatchObject({included:true,matchReasons:["model_number_exact"]});
+      expect(response.json().candidates.find((candidate:{sourceItemId:string})=>candidate.sourceItemId==="model-other")).toMatchObject({included:false,exclusionReasons:["product_mismatch"]});
+    }finally{fetchMarketPage=originalFetch;}
+  });
+
   it("runs an independent Aucfan source search without merging Yahoo statistics",async()=>{
     const identification=await createConfirmedIdentification({productName:"Canon EOS R6",category:null,brand:null,searchQueries:[{id:"aucfan-standard",keyword:"Canon EOS R6 ボディ",breadth:"standard",source:"user",decision:"accepted"}],conditions:["unspecified"]});
     const accepted=await app.inject({method:"POST",url:"/api/v1/market-price/searches",headers:idem(),payload:{identificationId:identification.json().id,selectedSearchQueryId:"aucfan-standard",conditions:["unspecified"],outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5},sourceProvider:"aucfan_api"}});

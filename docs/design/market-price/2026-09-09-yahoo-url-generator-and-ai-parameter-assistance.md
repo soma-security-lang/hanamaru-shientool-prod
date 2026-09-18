@@ -73,13 +73,16 @@ GeminiはURL、Yahoo ID、価格、未確認状態を生成しない。検索語
 ```ts
 interface CreateMarketPriceSearchRequest {
   identificationId: string | null;
-  selectedSearchQueryId: string;
+  selectedSearchQueryId?: string | null;
+  searchBasis?: "keyword" | "model_number";
   conditions: ProductCondition[];
   outlierPolicy: MarketPriceOutlierPolicy;
 }
 ```
 
-`identificationId=null`の場合も、呼出利用者が参照できる有効な確認レコードから`selectedSearchQueryId`を一意に解決する。0件または複数件なら409で停止する。検索語をリクエスト本文から直接受け取らない。
+`searchBasis`未指定時は`keyword`として扱う。`keyword`では`selectedSearchQueryId`を必須とし、`identificationId=null`の場合も、呼出利用者が参照できる有効な確認レコードからIDを一意に解決する。0件または複数件なら409で停止する。
+
+`model_number`では`identificationId`を必須とし、確認レコードの`modelNumber`を決定的な外部検索語として使用する。型番をリクエスト本文から直接受け取らず、空欄または未確認の場合は検索を開始しない。検索方法、正規化前の確認済み型番、実検索語は`query_json`へ保存し、キャッシュhashへ含める。
 
 同一semantic条件の`ready`結果は24時間再利用する。対象期間、並び順、ページ件数、最大ページ数は利用者入力にせず、90日／最新順／100件／20ページへ固定する。
 
@@ -109,7 +112,7 @@ interface CreateMarketPriceSearchRequest {
 
 ## 7. 候補・外れ値判定
 
-同一商品判定は価格と分離する。検索語tokenのtitle内カバレッジを基本とし、型番token欠落と、検索語に含まれない付属品単体シグナルを減点する。`matchScore < 0.75`は`product_mismatch`として自動除外し、scoreと理由を保存する。
+同一商品判定は価格と分離する。`keyword`は検索語tokenのtitle内カバレッジを基本とし、型番token欠落と、検索語に含まれない付属品単体シグナルを減点する。`model_number`はNFKC正規化後に空白・区切り文字を除去して照合し、確認済み型番の一致を必須とする。型番直後に英数字が連続する派生型番は一致としない。いずれも`matchScore < 0.75`は`product_mismatch`として自動除外し、scoreと理由を保存する。
 
 外れ値は状態別グループで5件以上ある場合だけ判定する。
 

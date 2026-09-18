@@ -194,7 +194,7 @@
     {
       "id": "SCR-021",
       "filename": "docs/design/market-price/2026-09-09-market-price-detailed-screen-design.md",
-      "sha256": "90811e6df2ec44df3bad4818407e3a43b4a377c74f9fd7077c397fc9e90a1456",
+      "sha256": "7eba54413420510afacf2181b26292eba7637474e95549911cdcbc7d21d7af79",
       "routes": [
         "/market-price"
       ]

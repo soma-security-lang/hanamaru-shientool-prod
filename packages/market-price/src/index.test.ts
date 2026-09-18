@@ -12,6 +12,8 @@ import {
   createAucfanSearchRequest,
   parseAucfanSearchJson,
   AucfanSearchContractError,
+  normalizeModelNumber,
+  titleMatchesModelNumber,
 } from "./index.js";
 
 describe("Yahoo closed-search URL", () => {
@@ -62,6 +64,17 @@ describe("market candidate evaluation",()=>{
     expect(result.candidates.find(item=>item.sourceItemId==="g")?.exclusionReasons).toContain("exclude_keyword");
     expect(result.candidates.find(item=>item.sourceItemId==="h")?.exclusionReasons).toContain("product_mismatch");
     expect(result.statistics).toMatchObject({candidateCount:8,includedCount:5,minimumPrice:10000,medianPrice:11000,maximumPrice:12000});
+  });
+
+  it("requires an exact normalized model number in model-number mode",()=>{
+    const make=(id:string,title:string)=>({sourceItemId:id,sourceType:"auction" as const,canonicalUrl:`https://auctions.yahoo.co.jp/jp/auction/${id}`,title,closingPrice:60_000,endedAt:"2026-09-01T00:00:00.000Z",sourceCondition:"USED20",normalizedCondition:"good" as const,taxDisplay:"unknown" as const,categoryId:null,brandId:null,contentHash:id.padEnd(64,"0")});
+    const result=evaluateMarketPriceCandidates({items:[make("exact","PlayStation 5 CFI-2000A01 本体"),make("fullwidth","PlayStation 5 ＣＦＩ－２０００Ａ０１ 本体"),make("different","PlayStation 5 CFI-1200A01 本体"),make("suffix","PlayStation 5 CFI-2000A01B 本体")],selectedKeyword:"CFI-2000A01",searchBasis:"model_number",modelNumber:"CFI-2000A01",periodStart:new Date("2026-06-01T00:00:00Z"),periodEnd:new Date("2026-09-09T00:00:00Z"),selectedConditions:["good"],excludeKeywords:[],outlierPolicy:{enabled:false,deviationThreshold:.2,minimumGroupSize:5}});
+    expect(normalizeModelNumber("ＣＦＩ－２０００Ａ０１")).toBe("cfi2000a01");
+    expect(titleMatchesModelNumber("PlayStation 5 CFI-2000A01 本体","CFI-2000A01")).toBe(true);
+    expect(titleMatchesModelNumber("PlayStation 5 CFI-2000A01B 本体","CFI-2000A01")).toBe(false);
+    expect(result.candidates.filter(candidate=>candidate.included).map(candidate=>candidate.sourceItemId)).toEqual(["exact","fullwidth"]);
+    expect(result.candidates.find(candidate=>candidate.sourceItemId==="different")?.matchReasons).toContain("model_number_missing");
+    expect(result.statistics.includedCount).toBe(2);
   });
 });
 
