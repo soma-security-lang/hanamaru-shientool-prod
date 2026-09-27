@@ -17,6 +17,7 @@ export interface ApiConfig {
   identityJwksUrl: string;
   ssoIssuer?: string;
   ssoInternalSecret?: string;
+  ssoApprovalSecret?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -38,6 +39,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     );
   const ssoIssuer = env.SSO_ISSUER;
   const ssoInternalSecret = env.SSO_INTERNAL_SECRET;
+  const ssoApprovalSecret = env.SSO_APPROVAL_SECRET;
+  if (ssoApprovalSecret && ssoApprovalSecret.length < 32)
+    throw new Error("SSO_APPROVAL_SECRET must be at least 32 characters");
   if (Boolean(ssoIssuer) !== Boolean(ssoInternalSecret))
     throw new Error("SSO_ISSUER and SSO_INTERNAL_SECRET must be configured together");
   if (ssoIssuer) {
@@ -63,5 +67,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     identityAudience: identityPlatformAudience,
     identityJwksUrl: identityPlatformJwksUrl,
     ...(ssoIssuer && ssoInternalSecret ? { ssoIssuer, ssoInternalSecret } : {}),
+    ...(ssoApprovalSecret ? { ssoApprovalSecret } : {}),
   };
 }
