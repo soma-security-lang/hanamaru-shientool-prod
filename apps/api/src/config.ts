@@ -15,6 +15,8 @@ export interface ApiConfig {
   identityIssuer: string;
   identityAudience: string;
   identityJwksUrl: string;
+  ssoIssuer?: string;
+  ssoInternalSecret?: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -34,6 +36,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error(
       `IDENTITY_PLATFORM_PROJECT_ID must be ${identityPlatformProjectId}`,
     );
+  const ssoIssuer = env.SSO_ISSUER;
+  const ssoInternalSecret = env.SSO_INTERNAL_SECRET;
+  if (Boolean(ssoIssuer) !== Boolean(ssoInternalSecret))
+    throw new Error("SSO_ISSUER and SSO_INTERNAL_SECRET must be configured together");
+  if (ssoIssuer) {
+    const url = new URL(ssoIssuer);
+    if ((url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1")) ||
+        !ssoInternalSecret || ssoInternalSecret.length < 32)
+      throw new Error("Invalid SSO configuration");
+  }
   return {
     host: env.API_HOST ?? "127.0.0.1",
     port: Number(env.API_PORT ?? 3200),
@@ -50,5 +62,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     identityIssuer: identityPlatformIssuer,
     identityAudience: identityPlatformAudience,
     identityJwksUrl: identityPlatformJwksUrl,
+    ...(ssoIssuer && ssoInternalSecret ? { ssoIssuer, ssoInternalSecret } : {}),
   };
 }

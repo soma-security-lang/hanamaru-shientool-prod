@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {recordingConsentNotice} from "@hanamaru/contracts";
 import {GoogleSignInButton} from "@/components/auth/GoogleSignInButton";
+import {beginCommonLogin,commonLoginConfigured,safeReturnTo} from "@/lib/auth/sso";
 import {DrivePickerButton} from "@/components/drive/DrivePickerButton";
 import {TechnicalDetails} from "@/components/technical-details/TechnicalDetails";
 import {ApiClientError} from "@/lib/api/client";
@@ -76,16 +77,22 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
 
 function Login() {
   const router=useRouter();
+  const params=useSearchParams();
   const [error,setError]=useState("");
-  const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/");router.refresh();},[router]);
+  const returnTo=safeReturnTo(params.get("returnTo")??"/");
+  const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace(returnTo);router.refresh();},[router,returnTo]);
   const failed=useMemo(()=>(message:string)=>setError(message),[]);
   return (
     <section className={styles.loginPage} aria-labelledby="login-title">
       <div className={styles.loginCard}>
         <div className={styles.loginBrand} aria-hidden="true">華</div>
         <h1 id="login-title">買取支援ツール</h1>
-        <p>業務用Googleアカウントでログインしてください。</p>
+        <p>業務用Googleアカウント、または共通IDでログインしてください。</p>
         <div className={styles.googleButton}><GoogleSignInButton onSuccess={success} onError={failed}/></div>
+        {commonLoginConfigured() ? <button type="button" className={styles.helpLink}
+          onClick={() => void beginCommonLogin(returnTo).catch(() => failed("共通ログインに接続できませんでした"))}>
+          共通IDでログイン
+        </button> : null}
         {error?<p role="alert">{error}</p>:null}
         <a className={styles.helpLink} href="mailto:support@example.invalid">ログインできない場合</a>
       </div>

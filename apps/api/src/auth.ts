@@ -56,10 +56,11 @@ function requestIds(request: FastifyRequest) {
 }
 
 export interface AuthenticatedContext extends RequestContext {
-  authMode: "development" | "identity_platform";
+  authMode: "development" | "identity_platform" | "oidc";
 }
 export type IdentityTokenVerifier = (token: string) => Promise<JWTPayload>;
 interface MembershipRow {
+  user_id: string;
   organization_id: string;
   membership_id: string;
   branch_id: string;
@@ -78,7 +79,7 @@ async function membershipContext(
       ? request.headers["x-organization-id"]
       : null;
   const result = await repository.system<MembershipRow>(
-    `SELECT m.organization_id,m.id membership_id,m.branch_id,array_remove(array_agg(DISTINCT r.role_code),NULL) roles,COALESCE(array_agg(DISTINCT capability) FILTER(WHERE capability IS NOT NULL),'{}') capabilities,COALESCE(jsonb_agg(DISTINCT jsonb_build_object('role',r.role_code,'scopeType',ra.scope_type,'scopeId',ra.scope_id,'capabilities',r.capabilities)) FILTER(WHERE r.role_code IS NOT NULL),'[]'::jsonb) authorization_scopes FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN role_assignments ra ON ra.membership_id=m.id AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now()) LEFT JOIN roles r ON r.id=ra.role_id LEFT JOIN LATERAL unnest(r.capabilities) capability ON true WHERE ${where} AND m.status='active' AND u.status='active' AND ($2::uuid IS NULL OR m.organization_id=$2::uuid) GROUP BY m.organization_id,m.id ORDER BY m.created_at`,
+    `SELECT m.user_id,m.organization_id,m.id membership_id,m.branch_id,array_remove(array_agg(DISTINCT r.role_code),NULL) roles,COALESCE(array_agg(DISTINCT capability) FILTER(WHERE capability IS NOT NULL),'{}') capabilities,COALESCE(jsonb_agg(DISTINCT jsonb_build_object('role',r.role_code,'scopeType',ra.scope_type,'scopeId',ra.scope_id,'capabilities',r.capabilities)) FILTER(WHERE r.role_code IS NOT NULL),'[]'::jsonb) authorization_scopes FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN role_assignments ra ON ra.membership_id=m.id AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now()) LEFT JOIN roles r ON r.id=ra.role_id LEFT JOIN LATERAL unnest(r.capabilities) capability ON true WHERE ${where} AND m.status='active' AND u.status='active' AND ($2::uuid IS NULL OR m.organization_id=$2::uuid) GROUP BY m.user_id,m.organization_id,m.id ORDER BY m.created_at`,
     [value, requestedOrganization],
   );
   if (!result.rows.length)
@@ -168,7 +169,47 @@ export function validateIdentityPlatformClaims(
     throw new Error("sub must be a non-empty Firebase uid");
   if (!email || payload.email_verified !== true)
     throw new Error("a verified email is required");
-  return { subject, email };
+  return { subject, email, authTime };
+}
+
+async function ssoPost(config: ApiConfig, path: string, input: Record<string, string>): Promise<unknown> {
+  if (!config.ssoIssuer || !config.ssoInternalSecret) throw new Error("SSO is not configured");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(new URL(path, config.ssoIssuer), {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded",
+        "x-sso-internal-secret": config.ssoInternalSecret },
+      body: new URLSearchParams(input), cache: "no-store", signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("SSO is unavailable");
+    return response.json();
+  } finally { clearTimeout(timeout); }
+}
+
+async function ssoContext(token: string, base: { requestId: string; traceId: string },
+  request: FastifyRequest, config: ApiConfig, repository: HanamaruRepository): Promise<AuthenticatedContext> {
+  const validated = await ssoPost(config, "/internal/token", { token }) as {
+    active?: unknown; subject?: unknown;
+  };
+  if (validated.active !== true || typeof validated.subject !== "string")
+    throw new ApiProblem("AUTH_INVALID", 401, "認証情報を確認できませんでした");
+  const resolved = await ssoPost(config, "/internal/resolve", {
+    subject: validated.subject, product: "hanamaru",
+  }) as { links?: { productUserId: unknown; organizationId: unknown }[] };
+  const links = Array.isArray(resolved.links) ? resolved.links : [];
+  const requestedOrganization = request.headers["x-organization-id"];
+  const matching = links.filter((link) => !requestedOrganization || link.organizationId === requestedOrganization);
+  if (matching.length > 1 && !requestedOrganization)
+    throw new ApiProblem("ORGANIZATION_REQUIRED", 409, "利用する組織を選択してください");
+  if (matching.length !== 1 || typeof matching[0]?.productUserId !== "string" ||
+      typeof matching[0]?.organizationId !== "string")
+    throw new ApiProblem("AUTH_INVALID", 401, "認証情報を確認できませんでした");
+  const link = matching[0];
+  const row = await membershipContext(repository, request, "u.id=$1", link.productUserId as string);
+  if (row.user_id !== link.productUserId || row.organization_id !== link.organizationId)
+    throw new ApiProblem("SCOPE_DENIED", 403, "利用可能な権限がありません");
+  return normalizeContext(base, row, "oidc");
 }
 async function verifyIdentityPlatformTokenWithKey(
   token: string,
@@ -247,8 +288,13 @@ export async function authenticate(
   if (!bearer)
     throw new ApiProblem("AUTH_REQUIRED", 401, "再ログインが必要です");
   try {
-    const payload = await verifyToken(bearer);
-    const { subject, email } = validateIdentityPlatformClaims(payload);
+    let payload: JWTPayload;
+    try { payload = await verifyToken(bearer); }
+    catch {
+      if (!config.ssoIssuer) throw new ApiProblem("AUTH_INVALID", 401, "認証情報を確認できませんでした");
+      return await ssoContext(bearer, base, request, config, repository);
+    }
+    const { subject, email, authTime } = validateIdentityPlatformClaims(payload);
     const subjectHash = sha(subject),
       emailHash = sha(email);
     let membership: MembershipRow;
@@ -287,6 +333,14 @@ export async function authenticate(
       "UPDATE users SET last_login_at=now() WHERE provider_subject_hash=$1 AND last_login_at<now()-interval '1 minute'",
       [subjectHash],
     );
+    if (config.ssoIssuer) {
+      const status = await ssoPost(config, "/internal/user-status", {
+        product: "hanamaru", productUserId: membership.user_id,
+        organizationId: membership.organization_id, authTime: String(authTime),
+      }) as { managed?: unknown; active?: unknown };
+      if (status.managed !== false && status.active !== true)
+        throw new ApiProblem("AUTH_INVALID", 401, "認証情報を確認できませんでした");
+    }
     return normalizeContext(base, membership, "identity_platform");
   } catch (error) {
     if (error instanceof ApiProblem) throw error;

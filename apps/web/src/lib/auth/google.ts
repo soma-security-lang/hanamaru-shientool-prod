@@ -16,12 +16,14 @@ import {
   type Auth,
   type UserCredential,
 } from "firebase/auth";
+import {getCommonAccessToken} from "./sso";
 
 export const driveScope="https://www.googleapis.com/auth/drive.file";
 const accessTokenLifetimeMs=45*60_000;
 
 let authInstance:Auth|null|undefined;
 let googleAccessToken:{value:string;expiresAt:number}|null=null;
+let driveVerifiedSsoToken:string|null=null;
 
 function identityConfig(){
   const apiKey=process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY;
@@ -104,17 +106,35 @@ export async function getIdentityToken(forceRefresh=false){
 }
 
 export async function getDriveAccessToken(){
-  if(googleAccessToken&&googleAccessToken.expiresAt>Date.now())return googleAccessToken.value;
+  const commonToken=getCommonAccessToken();
+  if(googleAccessToken&&googleAccessToken.expiresAt>Date.now()&&(!commonToken||driveVerifiedSsoToken===commonToken))return googleAccessToken.value;
   const auth=await readyAuth();
-  if(!auth?.currentUser)throw new Error("Googleへログインしてください");
-  const result=await reauthenticateWithPopup(auth.currentUser,driveProvider());
+  if(!auth)throw new Error("Google Driveの認証設定がありません");
+  const result=auth.currentUser
+    ? await reauthenticateWithPopup(auth.currentUser,driveProvider())
+    : await signInWithPopup(auth,driveProvider());
   rememberGoogleAccessToken(result);
   if(!googleAccessToken)throw new Error("Google Driveの認可を確認できませんでした");
+  if(commonToken){
+    const googleIdToken=await result.user.getIdToken(true);
+    const base=process.env.NEXT_PUBLIC_API_BASE_URL??"/api/v1";
+    const me=async(token:string)=>{
+      const response=await fetch(`${base}/me`,{headers:{authorization:`Bearer ${token}`},credentials:"omit",cache:"no-store"});
+      if(!response.ok)throw new Error("Googleアカウントの利用者確認に失敗しました");
+      return response.json() as Promise<{id?:unknown}>;
+    };
+    try{
+      const [common,google]=await Promise.all([me(commonToken),me(googleIdToken)]);
+      if(typeof common.id!=="string"||common.id!==google.id)throw new Error("共通IDとGoogle Driveの利用者が一致しません");
+      driveVerifiedSsoToken=commonToken;
+    }catch(error){googleAccessToken=null;driveVerifiedSsoToken=null;await signOut(auth);throw error;}
+  }
   return googleAccessToken.value;
 }
 
 export async function logout(){
   googleAccessToken=null;
+  driveVerifiedSsoToken=null;
   const auth=await readyAuth();
   if(auth)await signOut(auth);
 }

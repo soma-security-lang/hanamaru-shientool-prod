@@ -5,7 +5,7 @@ import {
   generateKeyPair,
   type JWTPayload,
 } from "jose";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   authenticate,
   createIdentityPlatformTokenVerifier,
@@ -110,5 +110,81 @@ describe("Identity Platform ID token verification", () => {
       ),
     ).rejects.toMatchObject({ code: "AUTH_INVALID", statusCode: 401 });
     expect(system.mock.calls.some(([sql]) => String(sql).startsWith("UPDATE users"))).toBe(false);
+  });
+});
+
+describe("shared OIDC and Google coexistence", () => {
+  const ssoConfig = loadConfig({ NODE_ENV: "test", SSO_ISSUER: "http://127.0.0.1:3300",
+    SSO_INTERNAL_SECRET: "synthetic-hanamaru-internal-secret-at-least-32" });
+  const userId = "00000000-0000-4000-8000-000000000101";
+  const organizationId = "00000000-0000-4000-8000-000000000202";
+  const membership = {
+    user_id: userId, organization_id: organizationId,
+    membership_id: "00000000-0000-4000-8000-000000000303", branch_id: "00000000-0000-4000-8000-000000000404",
+    roles: ["assessor"], capabilities: ["visit:self"], authorization_scopes: [],
+  };
+  const request = { id: "synthetic-request", headers: { authorization: "Bearer opaque-token",
+    "x-organization-id": organizationId } } as never;
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("resolves a preapproved OIDC link to the existing membership without granting another role", async () => {
+    const fetchMock = vi.fn(async (url: URL) => new Response(JSON.stringify(
+      url.pathname === "/internal/token"
+        ? { active: true, subject: "00000000-0000-4000-8000-000000000505" }
+        : { links: [{ productUserId: userId, organizationId }] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const system = vi.fn(async (sql: string) => {
+      expect(sql).toContain('u.id=$1');
+      return { rows: [membership], rowCount: 1 };
+    });
+    const actor = await authenticate(request, ssoConfig, { system } as never, async () => { throw new Error("not Firebase"); });
+    expect(actor).toMatchObject({ authMode: "oidc", organizationId, roles: ["assessor"], capabilities: ["visit:self"] });
+    expect(system.mock.calls[0]?.[0]).toContain("u.id=$1");
+  });
+
+  it("rejects an OIDC link whose organization does not match the product membership", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: URL) => new Response(JSON.stringify(
+      url.pathname === "/internal/token"
+        ? { active: true, subject: "00000000-0000-4000-8000-000000000505" }
+        : { links: [{ productUserId: userId, organizationId: "other-org" }] }), { status: 200 })));
+    await expect(authenticate(
+      { id: "synthetic-request", headers: { authorization: "Bearer opaque-token" } } as never,
+      ssoConfig, { system: vi.fn(async () => ({ rows: [membership], rowCount: 1 })) } as never,
+      async () => { throw new Error("not Firebase"); },
+    )).rejects.toMatchObject({ code: "SCOPE_DENIED", statusCode: 403 });
+  });
+
+  it("requires an explicit organization for a shared subject with multiple approved memberships", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: URL) => new Response(JSON.stringify(
+      url.pathname === "/internal/token"
+        ? { active: true, subject: "00000000-0000-4000-8000-000000000505" }
+        : { links: [
+          { productUserId: userId, organizationId },
+          { productUserId: userId, organizationId: "00000000-0000-4000-8000-000000000909" },
+        ] }), { status: 200 })));
+    const system = vi.fn(async () => ({ rows: [membership], rowCount: 1 }));
+    await expect(authenticate(
+      { id: "synthetic-request", headers: { authorization: "Bearer opaque-token" } } as never,
+      ssoConfig, { system } as never, async () => { throw new Error("not Firebase"); },
+    )).rejects.toMatchObject({ code: "ORGANIZATION_REQUIRED", statusCode: 409 });
+    expect(system).not.toHaveBeenCalled();
+    const selected = await authenticate(request, ssoConfig, { system } as never,
+      async () => { throw new Error("not Firebase"); });
+    expect(selected.organizationId).toBe(organizationId);
+    expect(selected.roles).toEqual(["assessor"]);
+  });
+
+  it("fails closed when the common session service is unavailable", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("synthetic outage"); }));
+    await expect(authenticate(request, ssoConfig, { system: vi.fn() } as never,
+      async () => { throw new Error("not Firebase"); }))
+      .rejects.toMatchObject({ code: "AUTH_INVALID", statusCode: 401 });
+  });
+
+  it("rejects an old Google token after common logout for a mapped user", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ managed: true, active: false }), { status: 200 })));
+    const system = vi.fn(async () => ({ rows: [membership], rowCount: 1 }));
+    await expect(authenticate(request, ssoConfig, { system } as never, async () => validClaims()))
+      .rejects.toMatchObject({ code: "AUTH_INVALID", statusCode: 401 });
   });
 });
