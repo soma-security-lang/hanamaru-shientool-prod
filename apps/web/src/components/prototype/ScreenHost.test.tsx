@@ -9,7 +9,7 @@ import {ScreenHost} from "./ScreenHost";
 let pathname="/";
 const router={push:vi.fn(),replace:vi.fn(),refresh:vi.fn()};
 
-vi.mock("next/navigation",()=>({usePathname:()=>pathname,useRouter:()=>router}));
+vi.mock("next/navigation",()=>({usePathname:()=>pathname,useSearchParams:()=>new URLSearchParams(),useRouter:()=>router}));
 vi.mock("@/features/web/Experience",()=>({WebExperience:({kind}:{kind:string})=><section><h1>{kind}</h1></section>}));
 vi.mock("@/components/shell/AppShell",()=>({AppShell:({children,organizationName,branchName}:{children:React.ReactNode;organizationName?:string;branchName?:string})=><main><span>{organizationName}</span><span>{branchName}</span>{children}</main>}));
 
@@ -82,7 +82,7 @@ describe("authenticated production routes",()=>{
     vi.spyOn(apiClient,"request").mockRejectedValue(new ApiClientError(401,"AUTH_REQUIRED","expired"));
     renderHost();
     expect(await screen.findByRole("heading",{name:"ログインが必要です"})).toBeInTheDocument();
-    await waitFor(()=>expect(screen.getByRole("link",{name:"ログインへ進む"})).toHaveAttribute("href","/login"));
+    await waitFor(()=>expect(screen.getByRole("link",{name:"ログインへ進む"})).toHaveAttribute("href","/login?returnTo=%2Fvisits"));
   });
 
   it("keeps the authenticated viewer while route pages remount",async()=>{

@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {recordingConsentNotice} from "@hanamaru/contracts";
 import {GoogleSignInButton} from "@/components/auth/GoogleSignInButton";
+import {beginCommonLogin,commonLoginConfigured,safeReturnTo} from "@/lib/auth/sso";
 import {DrivePickerButton} from "@/components/drive/DrivePickerButton";
 import {TechnicalDetails} from "@/components/technical-details/TechnicalDetails";
 import {ApiClientError} from "@/lib/api/client";
@@ -76,16 +77,22 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
 
 function Login() {
   const router=useRouter();
+  const params=useSearchParams();
   const [error,setError]=useState("");
-  const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/");router.refresh();},[router]);
+  const returnTo=safeReturnTo(params.get("returnTo")??"/");
+  const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace(returnTo);router.refresh();},[router,returnTo]);
   const failed=useMemo(()=>(message:string)=>setError(message),[]);
   return (
     <section className={styles.loginPage} aria-labelledby="login-title">
       <div className={styles.loginCard}>
         <div className={styles.loginBrand} aria-hidden="true">華</div>
         <h1 id="login-title">買取支援ツール</h1>
-        <p>業務用Googleアカウントでログインしてください。</p>
+        <p>業務用Googleアカウント、または共通IDでログインしてください。</p>
         <div className={styles.googleButton}><GoogleSignInButton onSuccess={success} onError={failed}/></div>
+        {commonLoginConfigured() ? <button type="button" className={styles.helpLink}
+          onClick={() => void beginCommonLogin(returnTo).catch(() => failed("共通ログインに接続できませんでした"))}>
+          共通IDでログイン
+        </button> : null}
         {error?<p role="alert">{error}</p>:null}
         <a className={styles.helpLink} href="mailto:support@example.invalid">ログインできない場合</a>
       </div>
@@ -95,6 +102,13 @@ function Login() {
 
 function PageTitle({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return <header className={styles.pageTitle}><div><h1>{title}</h1>{description ? <p>{description}</p> : null}</div>{action}</header>;
+}
+
+function revealAboveMobileNavigation(field: HTMLElement) {
+  const navigation = document.querySelector<HTMLElement>('[aria-label="モバイルナビゲーション"]');
+  if (!navigation || getComputedStyle(navigation).display === "none") return;
+  const overlap = field.getBoundingClientRect().bottom - navigation.getBoundingClientRect().top + 12;
+  if (overlap > 0) window.scrollBy(0, overlap);
 }
 
 function useMobileView<T extends string>(allowed:readonly T[],fallback:T){
@@ -183,6 +197,12 @@ const reviewDimensionOptions:ReadonlyArray<{id:ReviewDimension;label:string}>=[
 function qualityRequiresAcknowledgement(assessment:TranscriptQualityAssessmentDto|null|undefined){return Boolean(assessment&&(assessment.status==="assessment_unavailable"||assessment.flags.length>0)&&assessment.continuationDecision!=="continue");}
 
 function AiHome({pilotContentAi}:{pilotContentAi:boolean}) {
+  const composerRef=useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{
+    const reveal=()=>{const field=composerRef.current;if(field&&document.activeElement===field)revealAboveMobileNavigation(field);};
+    window.visualViewport?.addEventListener("resize",reveal);
+    return()=>window.visualViewport?.removeEventListener("resize",reveal);
+  },[]);
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [answer,setAnswer]=useState<Awaited<ReturnType<typeof resources.assistAnswer>>|null>(null);
@@ -204,7 +224,7 @@ function AiHome({pilotContentAi}:{pilotContentAi:boolean}) {
       <section className={styles.chatWorkspace} aria-labelledby="answer-title">
         {submitted?<div className={styles.question}><UserRound size={20} aria-hidden="true" /><p>{submitted}</p></div>:null}
         <div className={styles.answer}><Sparkles size={20} aria-hidden="true" /><div><h2 id="answer-title">{working?"根拠を確認しています":answer?"回答":"何を確認しますか？"}</h2><p>{working?(pilotContentAi?"公開済み情報と限定運用の要確認コンテンツを区別して、回答根拠を確認しています。":"承認・公開済みの現場知識だけを根拠に回答を作成しています。"):answer?.answer??"接客中の迷いや、訪問前に確認したいことを入力してください。"}</p>{error?<p role="alert">{error}</p>:null}{answer?.suggestedQuestions.length?<div className={styles.suggestedQuestions}>{answer.suggestedQuestions.map(question=><button key={question} onClick={()=>void ask(question)}>{question}</button>)}</div>:null}{answer?<button className={styles.mobileContinueButton} onClick={()=>setMobileView("evidence")}>回答の根拠を確認<ArrowRight size={17}/></button>:null}</div></div>
-        <form className={styles.composer} onSubmit={submit}><label><span className={styles.srOnly}>質問</span><textarea rows={2} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="例：査定額が安いと言われたら？" /></label><button aria-label="質問を送る" disabled={!query.trim()||working}><Send size={19} /></button></form>
+        <form className={styles.composer} onSubmit={submit}><label><span className={styles.srOnly}>質問</span><textarea ref={composerRef} rows={2} value={query} onChange={(event) => setQuery(event.target.value)} onFocus={(event)=>{const field=event.currentTarget;revealAboveMobileNavigation(field);requestAnimationFrame(()=>revealAboveMobileNavigation(field));}} placeholder="例：査定額が安いと言われたら？" /></label><button aria-label="質問を送る" disabled={!query.trim()||working}><Send size={19} /></button></form>
       </section>
       <aside className={styles.homeAside}>
         <section data-home-pane="evidence"><MobilePaneBack onClick={()=>setMobileView("assistant")}>AI相談へ戻る</MobilePaneBack><h2>根拠となる現場知識</h2><p className={styles.resultCount}>{answer?`${answer.citations.length}件を回答根拠として確認済み`:submitted?`${total.toLocaleString()}件から関連候補を表示`:"回答すると根拠を表示します"}</p><div className={styles.compactList}>{evidence.slice(0, 8).map((item) => <button data-selected={selectedId === item.id} key={item.id} onClick={() => setSelected(item.id)}><span>{typeLabel(item.type as ContentType)}{detail?.id===item.id?`・${detail.category}`:""}{"requiresReview" in item&&item.requiresReview?"・要確認":""}</span><strong>{item.title}</strong></button>)}</div>{detail?<Link className={styles.textButton} href={contentRoute(detail.type)}>選択した根拠を開く<ArrowRight size={16}/></Link>:null}</section>

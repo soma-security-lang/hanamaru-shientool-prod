@@ -9,6 +9,8 @@ const main=read("infra/terraform/main.tf");
 const variables=read("infra/terraform/variables.tf");
 const tfvars=read("infra/terraform/terraform.tfvars.example");
 const webDockerfile=read("apps/web/Dockerfile");
+const cloudbuild=read("cloudbuild.yaml");
+const deployWorkflow=read(".github/workflows/deploy.yml");
 const gcpPlatform=read("packages/platform/src/gcp.ts");
 
 const failures=[];
@@ -79,9 +81,11 @@ for(const replicaContract of [
   'cloudsql.googleapis.com/database/replication/replica_lag',
 ])if(!main.includes(replicaContract))failures.push(`read replica contract missing: ${replicaContract}`);
 
-for(const buildArg of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER","NEXT_PUBLIC_GOOGLE_CLIENT_ID"]){
+for(const buildArg of ["NEXT_PUBLIC_API_BASE_URL","NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY","NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN","NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID","NEXT_PUBLIC_GOOGLE_PICKER_API_KEY","NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER","NEXT_PUBLIC_GOOGLE_CLIENT_ID","NEXT_PUBLIC_SSO_ISSUER"]){
   if(!webDockerfile.includes(`ARG ${buildArg}`))failures.push(`Web build ARG missing: ${buildArg}`);
 }
+if(!cloudbuild.includes('NEXT_PUBLIC_SSO_ISSUER=${_SSO_ISSUER}'))failures.push("SSO issuer missing from Cloud Build Web image");
+if(!deployWorkflow.includes('_SSO_ISSUER=${SSO_ISSUER}'))failures.push("SSO issuer missing from release workflow");
 
 if(!main.includes('name  = "DATABASE_SYSTEM_ROLE"\n        value = "hanamaru_api_system"'))failures.push("API system role mismatch");
 if(!main.includes('name  = "DATABASE_SYSTEM_ROLE"\n        value = "hanamaru_worker_system"'))failures.push("Worker system role mismatch");

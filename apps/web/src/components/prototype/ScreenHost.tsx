@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {usePathname} from "next/navigation";
+import {usePathname,useSearchParams} from "next/navigation";
 import {useMemo} from "react";
 import {LoaderCircle,LockKeyhole} from "lucide-react";
 import {useViewer,type Viewer} from "@/components/auth/ViewerProvider";
@@ -18,6 +18,7 @@ function primaryRole(viewer:Viewer){return rolePriority.find(role=>viewer.roles.
 
 export function ScreenHost(){
   const pathname=usePathname();
+  const searchParams=useSearchParams();
   const {viewer,authState,retryViewer}=useViewer();
   const screen=useMemo(()=>findScreen(pathname),[pathname]);
 
@@ -25,7 +26,7 @@ export function ScreenHost(){
   if(!screen)return <NotFound/>;
   if(screen.kind==="auth")return <main className={styles.authPage}><WebExperience kind="auth"/></main>;
   if(authState==="loading"||(!viewer&&authState==="ready"))return <main className={styles.authPage}><AccessState loading title="利用者情報を確認しています" body="少しお待ちください。"/></main>;
-  if(authState==="required")return <main className={styles.authPage}><AccessState title="ログインが必要です" body="業務用Googleアカウントでログインしてください。" action={<Link className={styles.primaryButton} href="/login">ログインへ進む</Link>}/></main>;
+  if(authState==="required")return <main className={styles.authPage}><AccessState title="ログインが必要です" body="業務用Googleアカウント、または共通IDでログインしてください。" action={<Link className={styles.primaryButton} href={`/login?returnTo=${encodeURIComponent(`${pathname}${searchParams.size?`?${searchParams.toString()}`:""}`)}`}>ログインへ進む</Link>}/></main>;
   if(authState==="failed")return <main className={styles.authPage}><AccessState title="利用者情報を確認できません" body="APIの接続状態を確認して、もう一度お試しください。" action={<button className={styles.secondaryButton} onClick={retryViewer}>再読み込み</button>}/></main>;
   if(!viewer)return null;
 

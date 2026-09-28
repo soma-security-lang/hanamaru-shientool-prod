@@ -217,7 +217,7 @@
   .mobileStickyAction > * { width: 100%; }
   .homeGrid,.listDetail,.split57,.split39,.split84,.prepGrid,.referenceGrid,.videoGrid,.roleplayGrid,.adminTriple,.operationsGrid,.approvalGrid,.analyticsGrid { display: block; }
   .homeGrid > *, .listDetail > *, .split57 > *, .split39 > *, .split84 > *, .prepGrid > *, .referenceGrid > *, .videoGrid > *, .roleplayGrid > *, .adminTriple > *, .operationsGrid > *, .approvalGrid > *, .analyticsGrid > * { margin-bottom: .8rem; }
-  .chatWorkspace { min-height: 30rem; }.question { max-width: 90%; }
+  .chatWorkspace { min-height: clamp(20rem, calc(100dvh - 12rem), 30rem); }.question { max-width: 90%; }
   .homeGrid[data-mobile-view="assistant"] > .homeAside,.homeGrid[data-mobile-view="evidence"] > .chatWorkspace,.homeGrid[data-mobile-view="actions"] > .chatWorkspace { display: none; }
   .homeGrid[data-mobile-view="evidence"] .homeAside > [data-home-pane="actions"],.homeGrid[data-mobile-view="actions"] .homeAside > [data-home-pane="evidence"] { display: none; }
   .homeGrid[data-mobile-view="evidence"] > .homeAside,.homeGrid[data-mobile-view="actions"] > .homeAside { display: block; }

@@ -58,6 +58,8 @@ beforeEach(()=>{
 
 afterEach(async()=>{
   await logout();
+  sessionStorage.removeItem("hanamaru.sso.access");
+  vi.unstubAllGlobals();
   if(originalEnv.apiKey===undefined)delete process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY;else process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY=originalEnv.apiKey;
   if(originalEnv.authDomain===undefined)delete process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN;else process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN=originalEnv.authDomain;
   if(originalEnv.projectId===undefined)delete process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID;else process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID=originalEnv.projectId;
@@ -82,5 +84,29 @@ describe("Identity Platform browser authentication",()=>{
     expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1);
     expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2);
     expect(mocks.signInWithCredential).toHaveBeenCalledWith(mocks.auth,{googleIdToken:"google-id-token"});
+  });
+});
+
+describe("OIDC user and Google Drive identity binding",()=>{
+  it("allows Drive only when Google resolves to the same existing membership",async()=>{
+    sessionStorage.setItem("hanamaru.sso.access",JSON.stringify({token:"synthetic-sso-token",expiresAt:Date.now()+60_000}));
+    const fetchMock=vi.fn(async(url:string,init?:RequestInit)=>{
+      expect(url).toContain("/me");
+      expect(init?.credentials).toBe("omit");
+      return new Response(JSON.stringify({id:"synthetic-membership"}),{status:200});
+    });
+    vi.stubGlobal("fetch",fetchMock);
+    await expect(getDriveAccessToken()).resolves.toBe("memory-only-drive-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({authorization:"Bearer synthetic-sso-token"});
+  });
+
+  it("rejects a different Google account and discards its Drive token",async()=>{
+    sessionStorage.setItem("hanamaru.sso.access",JSON.stringify({token:"synthetic-sso-token",expiresAt:Date.now()+60_000}));
+    vi.stubGlobal("fetch",vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({id:"membership-A"}),{status:200}))
+      .mockResolvedValueOnce(new Response(JSON.stringify({id:"membership-B"}),{status:200})));
+    await expect(getDriveAccessToken()).rejects.toThrow("一致しません");
+    expect(mocks.signOut).toHaveBeenCalled();
   });
 });

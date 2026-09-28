@@ -6,6 +6,7 @@ const noStoreHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  distDir: process.env.HANAMARU_E2E_NEXT_DIST_DIR ?? ".next",
   devIndicators: false,
   output: "standalone",
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),

@@ -4,6 +4,7 @@ import type { ContentDetail, ContentQuery, ContentRepository, ContentSummary, Co
 
 type IndexedContent = ContentSummary & { searchText: string };
 const index = searchIndex as IndexedContent[];
+const indexById = new Map(index.map((item) => [item.id, item]));
 
 const chunkLoaders: Record<ContentType, () => Promise<unknown>> = {
   talk: () => import("@/generated/poc-content/talk.json"),
@@ -15,6 +16,20 @@ const chunkLoaders: Record<ContentType, () => Promise<unknown>> = {
   video: () => import("@/generated/poc-content/video.json"),
   roleplay: () => import("@/generated/poc-content/roleplay.json"),
 };
+const detailChunks = new Map<ContentType, Promise<Map<string, ContentDetail>>>();
+
+function detailChunk(type: ContentType): Promise<Map<string, ContentDetail>> {
+  const cached = detailChunks.get(type);
+  if (cached) return cached;
+  const loading = chunkLoaders[type]().then((chunk) =>
+    new Map((chunk as { default: ContentDetail[] }).default.map((item) => [item.id, item])),
+  );
+  detailChunks.set(type, loading);
+  void loading.catch(() => {
+    if (detailChunks.get(type) === loading) detailChunks.delete(type);
+  });
+  return loading;
+}
 
 function normalize(value: string) {
   return value.normalize("NFKC").toLocaleLowerCase("ja-JP").trim();
@@ -48,10 +63,9 @@ export class StaticContentRepository implements ContentRepository {
   }
 
   async get(id: string) {
-    const hit = index.find((item) => item.id === id);
+    const hit = indexById.get(id);
     if (!hit) return null;
-    const chunk = await chunkLoaders[hit.type]() as { default: ContentDetail[] };
-    return chunk.default.find((item) => item.id === id) ?? null;
+    return (await detailChunk(hit.type)).get(id) ?? null;
   }
 
   async related(id: string, limit: number) {

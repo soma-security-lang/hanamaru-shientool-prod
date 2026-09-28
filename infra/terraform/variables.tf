@@ -14,6 +14,25 @@ variable "environment" {
     error_message = "environment must be dev, staging, pilot, or prod"
   }
 }
+variable "enable_sso_secrets" {
+  type        = bool
+  default     = false
+  description = "Create empty API-only SSO Secret Manager containers. Does not enable the runtime or change traffic."
+}
+variable "enable_sso_runtime" {
+  type        = bool
+  default     = false
+  description = "Inject OIDC issuer and API-only SSO secrets after approved Secret versions exist."
+}
+variable "sso_issuer" {
+  type        = string
+  default     = ""
+  description = "Exact HTTPS origin of the common OIDC provider."
+  validation {
+    condition     = var.sso_issuer == "" || can(regex("^https://[^/?#]+/?$", var.sso_issuer))
+    error_message = "sso_issuer must be an HTTPS origin without path, query, or fragment"
+  }
+}
 variable "web_image" {
   type = string
   validation {

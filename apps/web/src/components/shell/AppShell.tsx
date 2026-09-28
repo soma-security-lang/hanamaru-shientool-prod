@@ -4,6 +4,7 @@ import {useRouter} from "next/navigation";
 import { BookOpen, BriefcaseBusiness, ChevronLeft, GraduationCap, Home, LogOut, Menu, MessageSquareText, Scale, ShieldCheck, UserRound, X } from "lucide-react";
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type { Role } from "@/lib/prototype/types";
+import {clearCommonAccessToken,commonAppsUrl} from "@/lib/auth/sso";
 import styles from "./AppShell.module.css";
 
 const baseNavigation = [
@@ -56,7 +57,7 @@ function mobileParentHref(pathname:string,homeHref:string){
   return null;
 }
 
-function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,displayName,role}:{open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role}){
+function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,displayName,role,appSwitchUrl}:{open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role;appSwitchUrl:string|null}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{const dialog=ref.current;if(open&&dialog&&!dialog.open){if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");}if(!open&&dialog?.open){if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");}},[open]);
   return <dialog className={styles.moreDialog} ref={ref} aria-labelledby="mobile-more-title" onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
@@ -65,6 +66,7 @@ function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,
       <nav aria-label="その他の機能">
         {showBusiness?<><Link href="/knowledge/talks" onClick={onClose}><BookOpen size={20}/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" onClick={onClose}><GraduationCap size={20}/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
         {showAdmin?<Link href={adminHref} onClick={onClose}><ShieldCheck size={20}/><span><strong>管理</strong><small>権限に応じた管理機能</small></span></Link>:null}
+        {appSwitchUrl?<a href={appSwitchUrl} onClick={onClose}><Home size={20}/><span><strong>アプリ切替</strong><small>利用できるアプリを選ぶ</small></span></a>:null}
       </nav>
       <footer><div><UserRound size={20}/><span><strong>{displayName??roleLabels[role]}</strong><small>{roleLabels[role]}</small></span></div><button type="button" onClick={onLogout}><LogOut size={19}/>ログアウト</button></footer>
     </section>
@@ -80,6 +82,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
   const homeHref=systemAdminAccount?adminHref:"/";
   const navigation = systemAdminAccount||roles.every(value=>value==="content_approver")?[]:baseNavigation.filter(item=>!item.featureFlag||featureFlags[item.featureFlag]);
   const mobileParent=mobileParentHref(pathname,homeHref);
+  const appSwitchUrl=commonAppsUrl();
   const mobileNavigation=systemAdminAccount||roles.every(value=>value==="content_approver")
     ?[{href:adminHref,label:systemAdminAccount?"運用":"承認",icon:ShieldCheck}]
     :[
@@ -88,7 +91,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
       ...(featureFlags.market_price_search?[{href:"/market-price",label:"買取相場",icon:Scale}]:[]),
       {href:"/reviews",label:"振り返り",icon:MessageSquareText},
     ];
-  async function leave(){try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/login");router.refresh();}
+  async function leave(){clearCommonAccessToken();try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/login");router.refresh();}
   return (
     <div className={styles.frame}>
       <a className={styles.skip} href="#main-content">本文へ移動</a>
@@ -113,6 +116,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
           <div className={styles.mobileContext}>{mobileParent?<button type="button" aria-label="前の画面へ戻る" onClick={()=>{if(window.history.length>1)router.back();else router.push(mobileParent);}}><ChevronLeft size={22}/></button>:null}<strong>{mobilePageTitle(pathname)}</strong></div>
           <div className={styles.desktopContext}><span className={styles.org}>{organizationName||"買取支援ツール"}</span>{branchName?<small>{branchName}</small>:null}</div>
           <div className={styles.actions}>
+            {appSwitchUrl?<a href={appSwitchUrl} className={styles.profile}>アプリ切替</a>:null}
             <button className={styles.profile} onClick={leave} title="ログアウト"><span><strong>{displayName??roleLabels[role]}</strong></span><UserRound size={20} aria-hidden="true" /></button>
           </div>
         </header>
@@ -122,7 +126,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
         {mobileNavigation.map(({ href, label, icon: Icon }) => <Link data-active={isActive(pathname, href)} href={href} key={href}><Icon size={21} aria-hidden="true" /><span>{label}</span></Link>)}
         <button type="button" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={()=>setMoreOpen(true)}><Menu size={21} aria-hidden="true"/><span>その他</span></button>
       </nav>
-      <MobileMoreMenu open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role}/>
+      <MobileMoreMenu open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role} appSwitchUrl={appSwitchUrl}/>
     </div>
   );
 }
