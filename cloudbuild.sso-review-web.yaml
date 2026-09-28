@@ -34,6 +34,6 @@ steps:
   - name: anchore/syft:v1.29.0
     args: ["asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/web-review:${_GIT_SHA}", -o, "spdx-json=/workspace/output/sbom-web-review.spdx.json"]
   - name: aquasec/trivy:0.67.2
-    args: [image, --exit-code, "1", --severity, HIGH,CRITICAL, --ignore-unfixed, "asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/web-review:${_GIT_SHA}"]
+    args: [image, --exit-code, "1", --severity, "HIGH,CRITICAL", --ignore-unfixed, "asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/web-review:${_GIT_SHA}"]
 images:
   - "asia-northeast1-docker.pkg.dev/$PROJECT_ID/hanamaru-pilot/web-review:${_GIT_SHA}"
