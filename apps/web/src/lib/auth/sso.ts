@@ -1,6 +1,7 @@
 "use client";
 
 import * as oidc from "openid-client";
+import { runtimeSsoIssuer } from "@/lib/runtime-config";
 
 const FLOW_KEY = "hanamaru.sso.flow";
 const TOKEN_KEY = "hanamaru.sso.access";
@@ -9,7 +10,7 @@ type Flow = { state: string; verifier: string; nonce: string; returnTo: string }
 type Access = { token: string; expiresAt: number };
 
 function issuer(): URL {
-  const raw = process.env.NEXT_PUBLIC_SSO_ISSUER;
+  const raw = runtimeSsoIssuer();
   if (!raw) throw new Error("共通ログインの設定がありません");
   const url = new URL(raw);
   if (url.protocol !== "https:" && !(url.protocol === "http:" && url.hostname === "127.0.0.1"))
@@ -38,7 +39,7 @@ function client(): Promise<oidc.Configuration> {
 }
 
 export function commonLoginConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SSO_ISSUER);
+  return Boolean(runtimeSsoIssuer());
 }
 
 export async function beginCommonLogin(returnTo = "/"): Promise<void> {

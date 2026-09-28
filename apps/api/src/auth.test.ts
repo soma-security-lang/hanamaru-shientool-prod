@@ -187,4 +187,26 @@ describe("shared OIDC and Google coexistence", () => {
     await expect(authenticate(request, ssoConfig, { system } as never, async () => validClaims()))
       .rejects.toMatchObject({ code: "AUTH_INVALID", statusCode: 401 });
   });
+
+  it("keeps an unmigrated Google user signed in during an issuer outage after reconciliation", async () => {
+    const ready = loadConfig({ NODE_ENV: "test", SSO_ISSUER: "http://127.0.0.1:3300",
+      SSO_INTERNAL_SECRET: "synthetic-hanamaru-internal-secret-at-least-32",
+      SSO_LOCAL_ENROLLMENT_READY: "true" });
+    const fetchMock = vi.fn(async () => { throw new Error("synthetic outage"); });
+    vi.stubGlobal("fetch", fetchMock);
+    const system = vi.fn(async () => ({ rows: [{ ...membership, sso_enrollment_state: "legacy" }], rowCount: 1 }));
+    await expect(authenticate(request, ready, { system } as never, async () => validClaims()))
+      .resolves.toMatchObject({ authMode: "identity_platform", organizationId });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a prepared Google user when the issuer cannot confirm status", async () => {
+    const ready = loadConfig({ NODE_ENV: "test", SSO_ISSUER: "http://127.0.0.1:3300",
+      SSO_INTERNAL_SECRET: "synthetic-hanamaru-internal-secret-at-least-32",
+      SSO_LOCAL_ENROLLMENT_READY: "true" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("synthetic outage"); }));
+    const system = vi.fn(async () => ({ rows: [{ ...membership, sso_enrollment_state: "pending" }], rowCount: 1 }));
+    await expect(authenticate(request, ready, { system } as never, async () => validClaims()))
+      .rejects.toMatchObject({ code: "AUTH_INVALID", statusCode: 401 });
+  });
 });

@@ -57,6 +57,38 @@ export async function buildApp(options:AppOptions={}){
     return reply.header("cache-control","no-store").send({productUserId,organizationId,
       active:result.rowCount===1,approver:result.rowCount===1&&result.rows[0]?.approver===true});
   });
+  app.post<{Body:{requestId?:unknown;productUserId?:unknown;organizationId?:unknown}}>("/internal/sso/enrollment",{config:{public:true}},async(request,reply)=>{
+    const expected=config.ssoApprovalSecret;
+    const supplied=request.headers["x-sso-approval-secret"];
+    if(!expected||typeof supplied!=="string"||supplied.length!==expected.length||
+      !timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return reply.code(403).send({error:"Forbidden"});
+    const {requestId,productUserId,organizationId}=request.body??{};
+    const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if(typeof requestId!=="string"||!uuid.test(requestId)||typeof productUserId!=="string"||
+      !uuid.test(productUserId)||typeof organizationId!=="string"||!uuid.test(organizationId))
+      return reply.code(400).send({error:"Invalid request"});
+    const prepared=await repository.system<{id:string}>(
+      `WITH updated AS (
+         UPDATE memberships m SET sso_enrollment_state='pending',sso_enrollment_request_id=$3,updated_at=now()
+         WHERE m.user_id=$1 AND m.organization_id=$2 AND m.status='active'
+           AND m.sso_enrollment_state='legacy'
+           AND EXISTS(SELECT 1 FROM users u WHERE u.id=m.user_id AND u.status='active')
+         RETURNING m.id,m.user_id,m.organization_id
+       ) INSERT INTO sso_enrollment_events(organization_id,user_id,request_id,action)
+         SELECT organization_id,user_id,$3,'prepared' FROM updated RETURNING id`,
+      [productUserId,organizationId,requestId],
+    );
+    if(prepared.rowCount===1)return reply.header("cache-control","no-store").send({state:"pending"});
+    const existing=await repository.system<{sso_enrollment_state:string;sso_enrollment_request_id:string|null}>(
+      `SELECT m.sso_enrollment_state,m.sso_enrollment_request_id FROM memberships m JOIN users u ON u.id=m.user_id
+       WHERE m.user_id=$1 AND m.organization_id=$2 AND m.status='active' AND u.status='active'`,
+      [productUserId,organizationId],
+    );
+    if(existing.rowCount!==1)return reply.code(403).send({error:"Ineligible user"});
+    if(existing.rows[0]?.sso_enrollment_state==='pending'&&existing.rows[0]?.sso_enrollment_request_id===requestId)
+      return reply.header("cache-control","no-store").send({state:"pending"});
+    return reply.code(409).send({error:"Enrollment conflict"});
+  });
   await registerRoutes(app,new BackendService(repository,providers));
   app.addHook("onClose",async()=>repository.close());
   return app;

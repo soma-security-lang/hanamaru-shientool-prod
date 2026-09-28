@@ -12,6 +12,12 @@ pg_socket="$pg_tmp/socket"
 pg_port="${TEST_POSTGRES_PORT:-55432}"
 api_pid=""
 worker_pid=""
+free_port() {
+  node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { process.stdout.write(String(server.address().port)); server.close(); });'
+}
+api_port="${TEST_API_PORT:-$(free_port)}"
+worker_port="${TEST_WORKER_PORT:-$(free_port)}"
+if [[ "$api_port" == "$worker_port" ]]; then echo "API and worker ports must differ" >&2; exit 1; fi
 
 cleanup() {
   if [[ -n "$api_pid" ]]; then kill "$api_pid" >/dev/null 2>&1 || true; wait "$api_pid" 2>/dev/null || true; fi
@@ -42,14 +48,14 @@ pnpm --filter @hanamaru/api test
 pnpm --filter @hanamaru/api build
 pnpm --filter @hanamaru/worker build
 
-LOG_LEVEL=silent API_PORT=53200 node apps/api/dist/server.js >"$pg_tmp/api.log" 2>&1 &
+LOG_LEVEL=silent API_PORT="$api_port" node apps/api/dist/server.js >"$pg_tmp/api.log" 2>&1 &
 api_pid=$!
-LOG_LEVEL=silent WORKER_PORT=53300 node apps/worker/dist/server.js >"$pg_tmp/worker.log" 2>&1 &
+LOG_LEVEL=silent WORKER_PORT="$worker_port" node apps/worker/dist/server.js >"$pg_tmp/worker.log" 2>&1 &
 worker_pid=$!
 for _ in {1..40}; do
-  if curl --fail --silent http://127.0.0.1:53200/health/ready >/dev/null && curl --fail --silent http://127.0.0.1:53300/health/ready >/dev/null; then break; fi
+  if curl --fail --silent "http://127.0.0.1:$api_port/health/ready" >/dev/null && curl --fail --silent "http://127.0.0.1:$worker_port/health/ready" >/dev/null; then break; fi
   sleep 0.25
 done
-curl --fail --silent http://127.0.0.1:53200/health/ready | grep -q '"database":"ok"'
-curl --fail --silent -H 'x-dev-role: assessor' http://127.0.0.1:53200/api/v1/me | grep -q '"displayName":"佐藤 花子"'
-curl --fail --silent http://127.0.0.1:53300/health/ready | grep -q '"database":"ok"'
+curl --fail --silent "http://127.0.0.1:$api_port/health/ready" | grep -q '"database":"ok"'
+curl --fail --silent -H 'x-dev-role: assessor' "http://127.0.0.1:$api_port/api/v1/me" | grep -q '"displayName":"佐藤 花子"'
+curl --fail --silent "http://127.0.0.1:$worker_port/health/ready" | grep -q '"database":"ok"'

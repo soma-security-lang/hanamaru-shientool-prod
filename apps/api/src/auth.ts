@@ -67,6 +67,7 @@ interface MembershipRow {
   roles: string[];
   capabilities: string[];
   authorization_scopes: unknown;
+  sso_enrollment_state?: "legacy" | "pending" | "managed";
 }
 async function membershipContext(
   repository: HanamaruRepository,
@@ -79,7 +80,7 @@ async function membershipContext(
       ? request.headers["x-organization-id"]
       : null;
   const result = await repository.system<MembershipRow>(
-    `SELECT m.user_id,m.organization_id,m.id membership_id,m.branch_id,array_remove(array_agg(DISTINCT r.role_code),NULL) roles,COALESCE(array_agg(DISTINCT capability) FILTER(WHERE capability IS NOT NULL),'{}') capabilities,COALESCE(jsonb_agg(DISTINCT jsonb_build_object('role',r.role_code,'scopeType',ra.scope_type,'scopeId',ra.scope_id,'capabilities',r.capabilities)) FILTER(WHERE r.role_code IS NOT NULL),'[]'::jsonb) authorization_scopes FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN role_assignments ra ON ra.membership_id=m.id AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now()) LEFT JOIN roles r ON r.id=ra.role_id LEFT JOIN LATERAL unnest(r.capabilities) capability ON true WHERE ${where} AND m.status='active' AND u.status='active' AND ($2::uuid IS NULL OR m.organization_id=$2::uuid) GROUP BY m.user_id,m.organization_id,m.id ORDER BY m.created_at`,
+    `SELECT m.user_id,m.organization_id,m.id membership_id,m.branch_id,m.sso_enrollment_state,array_remove(array_agg(DISTINCT r.role_code),NULL) roles,COALESCE(array_agg(DISTINCT capability) FILTER(WHERE capability IS NOT NULL),'{}') capabilities,COALESCE(jsonb_agg(DISTINCT jsonb_build_object('role',r.role_code,'scopeType',ra.scope_type,'scopeId',ra.scope_id,'capabilities',r.capabilities)) FILTER(WHERE r.role_code IS NOT NULL),'[]'::jsonb) authorization_scopes FROM memberships m JOIN users u ON u.id=m.user_id LEFT JOIN role_assignments ra ON ra.membership_id=m.id AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now()) LEFT JOIN roles r ON r.id=ra.role_id LEFT JOIN LATERAL unnest(r.capabilities) capability ON true WHERE ${where} AND m.status='active' AND u.status='active' AND ($2::uuid IS NULL OR m.organization_id=$2::uuid) GROUP BY m.user_id,m.organization_id,m.id ORDER BY m.created_at`,
     [value, requestedOrganization],
   );
   if (!result.rows.length)
@@ -333,7 +334,7 @@ export async function authenticate(
       "UPDATE users SET last_login_at=now() WHERE provider_subject_hash=$1 AND last_login_at<now()-interval '1 minute'",
       [subjectHash],
     );
-    if (config.ssoIssuer) {
+    if (config.ssoIssuer && !(config.ssoLocalEnrollmentReady && membership.sso_enrollment_state === "legacy")) {
       const status = await ssoPost(config, "/internal/user-status", {
         product: "hanamaru", productUserId: membership.user_id,
         organizationId: membership.organization_id, authTime: String(authTime),

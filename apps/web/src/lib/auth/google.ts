@@ -17,6 +17,7 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import {getCommonAccessToken} from "./sso";
+import {runtimeApiBaseUrl} from "@/lib/runtime-config";
 
 export const driveScope="https://www.googleapis.com/auth/drive.file";
 const accessTokenLifetimeMs=45*60_000;
@@ -117,7 +118,7 @@ export async function getDriveAccessToken(){
   if(!googleAccessToken)throw new Error("Google Driveの認可を確認できませんでした");
   if(commonToken){
     const googleIdToken=await result.user.getIdToken(true);
-    const base=process.env.NEXT_PUBLIC_API_BASE_URL??"/api/v1";
+    const base=runtimeApiBaseUrl();
     const me=async(token:string)=>{
       const response=await fetch(`${base}/me`,{headers:{authorization:`Bearer ${token}`},credentials:"omit",cache:"no-store"});
       if(!response.ok)throw new Error("Googleアカウントの利用者確認に失敗しました");
