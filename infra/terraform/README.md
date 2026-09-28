@@ -33,7 +33,7 @@
 
 `../..` のローカル実装基準では、OIDCアダプターと既存membership再認可が追加されている一方、GCP runtimeへの接続は未完了である。Googleログインは削除されておらず、OIDCと併存する。Google Drive OAuthはDrive APIのユーザー委任認可であり、ログイン方式とは別に維持する。
 
-- Terraformにはフラグ付きで`SSO_INTERNAL_SECRET`と`SSO_APPROVAL_SECRET`用の空Secret容器とAPI SAのAccessorを追加済み。Secret versionの投入とAPI Cloud Runへの`SSO_ISSUER`・Secret参照供給は未実施。
+- Terraformにはフラグ付きで`SSO_INTERNAL_SECRET`と`SSO_APPROVAL_SECRET`用の空Secret容器とAPI SAのAccessorを追加済み。`enable_sso_runtime`は既定OFFで、`enable_sso_secrets=true`、HTTPSの`sso_issuer`、両Secretの有効versionを準備した候補だけでAPIへruntime設定を注入する。Secret versionの投入とフラグ有効化・配備は未実施。
 - Web imageの`NEXT_PUBLIC_SSO_ISSUER`はbuild-time設定で、Cloud Build／GitHub workflowの受渡しを追加済み。Cloud Run runtime envだけで切り替えない。OIDC callback、client ID/secret、flow secret、許可originの本番値をリリース前に固定する。
 - Soumuの承認APIからのeligibility照会だけを許可し、API側は既存organization・membership・manager権限を読戻す。Soumu roleをHanamaru roleへコピーしない。
 - 現在のTerraform app-release workflowはSSOのIAM/Secret/Cloud Run新設を適用しない。GCP側の依存資源が別の承認Gateで準備されるまで、OIDC経路を本番有効化しない。

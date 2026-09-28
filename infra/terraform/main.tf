@@ -459,6 +459,28 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "TOKEN_ENCRYPTION_KEY_VERSION"
         value = var.token_encryption_key_version
       }
+      dynamic "env" {
+        for_each = var.enable_sso_runtime ? [1] : []
+        content {
+          name  = "SSO_ISSUER"
+          value = var.sso_issuer
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_sso_runtime ? {
+          SSO_INTERNAL_SECRET = "${local.prefix}-sso-internal-secret"
+          SSO_APPROVAL_SECRET = "${local.prefix}-sso-approval-secret"
+        } : {}
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.api_sso[env.value].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
       env {
         name = "DATABASE_URL"
         value_source {
@@ -498,8 +520,12 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
   }
-  depends_on = [google_project_service.required]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.api_sso]
   lifecycle {
+    precondition {
+      condition     = !var.enable_sso_runtime || (var.enable_sso_secrets && var.sso_issuer != "")
+      error_message = "enable_sso_runtime requires enable_sso_secrets and sso_issuer."
+    }
     # Release traffic is managed by the audited Blue/Green script. Terraform
     # owns service configuration but must never bypass staged image promotion.
     # Cloud Run also stamps the gcloud client, revision name, and immutable
