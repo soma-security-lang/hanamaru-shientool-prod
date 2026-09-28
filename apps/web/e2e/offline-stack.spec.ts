@@ -291,13 +291,15 @@ test("200 percent reflow and a reduced keyboard viewport keep focused input abov
   await page.setViewportSize({width:390,height:568});
   await page.goto(`${webBase}/`);await waitForResolvedScreen(page,"/");
   const composer=page.locator("main textarea");await composer.focus();await composer.fill("訪問前に確認したい内容");await composer.scrollIntoViewIfNeeded();
-  const geometry=await page.evaluate(()=>{
+  const geometry=async()=>page.evaluate(()=>{
     const input=document.querySelector<HTMLElement>("main textarea")?.getBoundingClientRect();
     const navigation=document.querySelector<HTMLElement>('[aria-label="モバイルナビゲーション"]')?.getBoundingClientRect();
-    return {inputBottom:input?.bottom??Number.POSITIVE_INFINITY,navigationTop:navigation?.top??0,scrollWidth:document.body.scrollWidth,viewport:window.innerWidth};
+    return {inputBottom:input?.bottom??Number.POSITIVE_INFINITY,navigationTop:navigation?.top??0,scrollWidth:document.body.scrollWidth,viewport:window.innerWidth,scrollY:window.scrollY,scrollHeight:document.documentElement.scrollHeight};
   });
-  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.viewport);
-  expect(geometry.inputBottom).toBeLessThanOrEqual(geometry.navigationTop);
+  await expect.poll(async()=>{const bounds=await geometry();return bounds.inputBottom-bounds.navigationTop;}).toBeLessThanOrEqual(0);
+  const bounds=await geometry();
+  expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewport);
+  expect(bounds.inputBottom).toBeLessThanOrEqual(bounds.navigationTop);
 });
 
 test("all 21 screens remain horizontally bounded at all eight responsive widths",async({page})=>{
