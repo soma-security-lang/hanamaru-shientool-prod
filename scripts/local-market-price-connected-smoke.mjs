@@ -5,11 +5,13 @@ import {fileURLToPath} from "node:url";
 import {createGoogleAiProvider,createYahooMarketPriceSourceProvider} from "../packages/platform/dist/index.js";
 import {generateYahooClosedSearchUrl,parseYahooClosedSearchHtml,YAHOO_RESULT_PARSER_VERSION} from "../packages/market-price/dist/index.js";
 
+/** @param {string} name */
 const required=name=>{
   const value=process.env[name]?.trim();
   if(!value)throw new Error(`CONFIG_MISSING:${name}`);
   return value;
 };
+/** @param {unknown} error */
 const classify=error=>{
   const message=error instanceof Error?error.message:String(error);
   for(const failureClass of ["YAHOO_ACCESS_BLOCKED","YAHOO_RATE_LIMITED","CAPTCHA_DETECTED","PARSER_CONTRACT_MISMATCH","SORT_CONTRACT_MISMATCH","PRICE_PARSE_FAILURE_RATE","RESPONSE_TOO_LARGE"]){
@@ -21,6 +23,7 @@ const classify=error=>{
   return "UNCLASSIFIED_PROVIDER_ERROR";
 };
 const artifactDirectory=resolve(dirname(fileURLToPath(import.meta.url)),"../.artifacts/local-connected-market-price",new Date().toISOString().replace(/[-:.]/gu,"").replace("Z","Z"));
+/** @param {Record<string, unknown>} result @param {number} [exitCode] */
 const emit=async(result,exitCode=0)=>{
   await mkdir(artifactDirectory,{recursive:true});
   const evidencePath=resolve(artifactDirectory,"result.json");
