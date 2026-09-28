@@ -212,7 +212,9 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await expect(page).toHaveURL(/view=list/);
 
   await page.goto(`${webBase}/knowledge/talks`);
-  await page.getByRole("button",{name:/検索結果を見る/}).click();
+  const searchResults=page.getByRole("button",{name:/検索結果を見る/});
+  await expect(searchResults).toContainText("60件");
+  await searchResults.click();
   await expect(page).toHaveURL(/view=list/);
   await page.getByRole("region",{name:"検索結果一覧"}).locator("button[data-selected]").first().click();
   await expect(page).toHaveURL(/view=detail/);
