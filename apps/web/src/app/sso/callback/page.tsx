@@ -15,7 +15,7 @@ export default function CommonLoginCallback() {
     if (!started.current) {
       started.current = true;
       void completeCommonLogin(new URL(window.location.href))
-        .then((returnTo) => { if (active.current) { router.replace(returnTo); router.refresh(); } })
+        .then((returnTo) => { if (active.current) { window.dispatchEvent(new Event("hanamaru:auth-changed")); router.replace(returnTo); router.refresh(); } })
         .catch(() => { if (active.current) setError("共通ログインに失敗しました。もう一度お試しください。"); });
     }
     return () => { active.current = false; };
