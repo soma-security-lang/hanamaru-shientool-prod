@@ -18,6 +18,7 @@ export interface ApiConfig {
   ssoIssuer?: string;
   ssoInternalSecret?: string;
   ssoApprovalSecret?: string;
+  ssoLocalEnrollmentReady: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -68,5 +69,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     identityJwksUrl: identityPlatformJwksUrl,
     ...(ssoIssuer && ssoInternalSecret ? { ssoIssuer, ssoInternalSecret } : {}),
     ...(ssoApprovalSecret ? { ssoApprovalSecret } : {}),
+    ssoLocalEnrollmentReady: env.SSO_LOCAL_ENROLLMENT_READY === "true",
   };
 }
