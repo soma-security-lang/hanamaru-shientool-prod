@@ -45,12 +45,17 @@ jobs:
           API_BASE_URL: ${{ vars.API_BASE_URL }}
           IDENTITY_AUTH_DOMAIN: ${{ vars.IDENTITY_PLATFORM_AUTH_DOMAIN }}
           PROJECT_NUMBER: ${{ vars.GOOGLE_CLOUD_PROJECT_NUMBER }}
+          SSO_ISSUER: ${{ vars.SSO_ISSUER }}
         run: |
+          if [[ -n "$SSO_ISSUER" && ! "$SSO_ISSUER" =~ ^https://[a-z0-9.-]+$ ]]; then
+            echo 'SSO_ISSUER must be an HTTPS origin without a path' >&2
+            exit 1
+          fi
           gcloud builds submit \
             --project="$PROJECT_ID" \
             --region="$REGION" \
             --config=cloudbuild.yaml \
-            --substitutions="_GIT_SHA=${GITHUB_SHA},_API_BASE_URL=${API_BASE_URL},_IDENTITY_AUTH_DOMAIN=${IDENTITY_AUTH_DOMAIN},_PROJECT_NUMBER=${PROJECT_NUMBER}"
+            --substitutions="_GIT_SHA=${GITHUB_SHA},_API_BASE_URL=${API_BASE_URL},_IDENTITY_AUTH_DOMAIN=${IDENTITY_AUTH_DOMAIN},_PROJECT_NUMBER=${PROJECT_NUMBER},_SSO_ISSUER=${SSO_ISSUER}"
       - name: Resolve immutable image digests
         id: images
         shell: bash

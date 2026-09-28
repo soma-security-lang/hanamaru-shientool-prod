@@ -14,6 +14,11 @@ variable "environment" {
     error_message = "environment must be dev, staging, pilot, or prod"
   }
 }
+variable "enable_sso_secrets" {
+  type        = bool
+  default     = false
+  description = "Create empty API-only SSO Secret Manager containers. Does not enable the runtime or change traffic."
+}
 variable "web_image" {
   type = string
   validation {

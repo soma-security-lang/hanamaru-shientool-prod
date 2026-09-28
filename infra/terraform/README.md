@@ -29,6 +29,18 @@
 7. public Web/API、custom domain/LB、Cloud Run ingress/IAMの境界をHITLで承認する。既定値は非公開。
 8. `terraform plan`のproject ID、destroy、IAM拡張、public binding、Cloud SQL変更を二者確認する。
 
+## 総務共通OIDC
+
+`../..` のローカル実装基準では、OIDCアダプターと既存membership再認可が追加されている一方、GCP runtimeへの接続は未完了である。Googleログインは削除されておらず、OIDCと併存する。Google Drive OAuthはDrive APIのユーザー委任認可であり、ログイン方式とは別に維持する。
+
+- Terraformにはフラグ付きで`SSO_INTERNAL_SECRET`と`SSO_APPROVAL_SECRET`用の空Secret容器とAPI SAのAccessorを追加済み。Secret versionの投入とAPI Cloud Runへの`SSO_ISSUER`・Secret参照供給は未実施。
+- Web imageの`NEXT_PUBLIC_SSO_ISSUER`はbuild-time設定で、Cloud Build／GitHub workflowの受渡しを追加済み。Cloud Run runtime envだけで切り替えない。OIDC callback、client ID/secret、flow secret、許可originの本番値をリリース前に固定する。
+- Soumuの承認APIからのeligibility照会だけを許可し、API側は既存organization・membership・manager権限を読戻す。Soumu roleをHanamaru roleへコピーしない。
+- 現在のTerraform app-release workflowはSSOのIAM/Secret/Cloud Run新設を適用しない。GCP側の依存資源が別の承認Gateで準備されるまで、OIDC経路を本番有効化しない。
+- 固定ローカルcommit、image digest、migration、秘密値のprovisioning、no-traffic E2E、実Google再認証経路の回帰、利用者承認を別状態として証跡化する。
+
+詳しい現状、contract、停止条件は[買取支援SSO接続仕様](../../docs/architecture/CROSS_PRODUCT_SSO.md)を参照する。
+
 ## GitHub Environment契約
 
 `deploy.yml`は、`pilot`／`prod`のbuild-plan Environmentと、人間承認付き`pilot-apply`／`prod-apply` Environmentを使う。WIF用の先頭2 Secretはbuild-plan／apply双方へ、E2E用Secret・Variableはapply側へ登録する。短命ID tokenやrefresh tokenそのものをGitHub Secretへ保存しない。
@@ -83,7 +95,7 @@ pnpm db:bootstrap:production --apply
 bootstrapは以下を1トランザクションで作成する。
 
 - organizationと初期branch
-- Googleログイン時にメールhashで紐付く招待中initial manager membership
+- 初期managerの招待中membership。これは旧Googleログイン経路の既存仕様であり、共通OIDC導入後もGoogleログインとの併存を続ける。メールhashだけで共通`sub`と自動結合しない。
 - organization scopeの`manager`、`educator`、`content_approver`
 - PDF、音声、文字起こし、振り返り、監査の保持ポリシー
 - PDF抽出、訪問前準備、振り返りのprompt versionと育成用review criteria

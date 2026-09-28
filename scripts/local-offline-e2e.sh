@@ -15,6 +15,7 @@ hanamaru_require_command lsof
 hanamaru_require_command jq
 
 web_port="${OFFLINE_E2E_WEB_PORT:-3100}"
+web_dist_dir="${HANAMARU_E2E_NEXT_DIST_DIR:-.next}"
 api_port="${OFFLINE_E2E_API_PORT:-3200}"
 worker_port="${OFFLINE_E2E_WORKER_PORT:-3300}"
 postgres_port="${OFFLINE_E2E_POSTGRES_PORT:-55433}"
@@ -80,6 +81,7 @@ hanamaru_info "API、Worker、Webを最新sourceからbuildします。"
 pnpm --filter @hanamaru/api build >"$evidence_dir/api-build.log" 2>&1
 pnpm --filter @hanamaru/worker build >"$evidence_dir/worker-build.log" 2>&1
 NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
+  HANAMARU_E2E_NEXT_DIST_DIR="$web_dist_dir" \
   NEXT_PUBLIC_OFFLINE_E2E_AUTH=enabled \
   NEXT_PUBLIC_PROTOTYPE_MODE=disabled \
   pnpm --filter @hanamaru/web build >"$evidence_dir/web-build.log" 2>&1
@@ -93,6 +95,7 @@ LOG_LEVEL=warn WORKER_HOST=127.0.0.1 WORKER_PORT="$worker_port" \
 worker_pid=$!
 pushd "$HANAMARU_REPO_DIR/apps/web" >/dev/null
 env -i PATH="$PATH" HOME="$HOME" NODE_ENV=production PORT="$web_port" HOSTNAME=127.0.0.1 \
+  HANAMARU_E2E_NEXT_DIST_DIR="$web_dist_dir" \
   NEXT_PUBLIC_API_BASE_URL="http://127.0.0.1:$api_port/api/v1" \
   NEXT_PUBLIC_OFFLINE_E2E_AUTH=enabled \
   NEXT_PUBLIC_PROTOTYPE_MODE=disabled \

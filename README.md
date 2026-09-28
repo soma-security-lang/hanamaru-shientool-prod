@@ -41,3 +41,7 @@ POC_GIT_SHA=<commit> pnpm poc:extract /absolute/path/to/app.html
 ```
 
 設計正本はmonocle workspaceの`03_project-management/working-docs/hanamaru-shientool/`です。同期scriptは`HANAMARU_DOCS_ROOT`で別pathを明示できます。
+
+# 総務共通ログイン
+
+共通OIDC連携はローカル実装基準`feat/cross-product-sso@b090c75`まで実装されています。Googleログインは現在のコード上で併存しています。GCP runtime secret/IAMとCloud Run配備は未完了です。詳細は[買取支援SSO接続仕様](docs/architecture/CROSS_PRODUCT_SSO.md)を参照してください。Google Drive OAuthは別機能として維持します。
