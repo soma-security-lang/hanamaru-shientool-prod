@@ -33,6 +33,7 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
   afterAll(async()=>{
     await app?.close();
     if(repository){
+      await repository.system("DELETE FROM product_receipt_checks WHERE product_id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM product_offer_responses WHERE offer_id IN(SELECT id FROM product_offers WHERE product_id=ANY($1::uuid[]))",[productIds]);
       await repository.system("DELETE FROM product_offers WHERE product_id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM product_consultation_reassignments WHERE consultation_id IN(SELECT id FROM product_consultations WHERE product_id=ANY($1::uuid[]))",[productIds]);
@@ -106,5 +107,39 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
     const listed=await app.inject({method:"GET",url:offersUrl,headers:headers("assessor")});
     expect(listed.statusCode).toBe(200);
     expect(listed.json().items).toMatchObject([{version:2,terms:"再提示",responses:[]},{version:1,terms:firstPayload.terms,responses:[{response:"counteroffer"}]}]);
+  });
+  it("holds mismatched physical goods and confirms receipt only after customer acceptance",async()=>{
+    const productId=await product();
+    const receiptsUrl=`/api/v1/visits/${visitId}/products/${productId}/receipt-checks`;
+    const offersUrl=`/api/v1/visits/${visitId}/products/${productId}/offers`;
+    const consultation=await app.inject({method:"POST",url:url(productId),headers:headers("assessor",key()),payload:{assignedManagerId:developmentIds.managerMembershipId,proposedPriceYen:10000,reason:"受領前の判断"}});
+    expect(consultation.statusCode).toBe(201);
+    const approved=await app.inject({method:"POST",url:`${url(productId)}/${consultation.json().id}/decision`,headers:headers("manager",key()),payload:{decision:"approved",approvedPriceYen:9000,expectedLockVersion:1}});
+    expect(approved.statusCode).toBe(200);
+    const offer=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:8500,terms:"現物確認後",expectedVersion:0}});
+    expect(offer.statusCode).toBe(201);
+    const premature=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",key()),payload:{result:"confirmed",observedQuantity:1,identityMatched:true,conditionMatched:true,expectedVersion:0}});
+    expect(premature.statusCode).toBe(409);
+    const held=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",key()),payload:{result:"hold",observedQuantity:0,identityMatched:false,conditionMatched:false,holdReason:"数量と状態の照合待ち",expectedVersion:0}});
+    expect(held.statusCode).toBe(201);expect(held.json()).toMatchObject({version:1,result:"hold",monocleTransferStatus:"not_sent"});
+    const stale=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",key()),payload:{result:"hold",observedQuantity:0,identityMatched:false,conditionMatched:false,holdReason:"再確認中",expectedVersion:0}});
+    expect(stale.statusCode).toBe(409);
+    const answer=await app.inject({method:"POST",url:`${offersUrl}/${offer.json().id}/responses`,headers:headers("assessor",key()),payload:{response:"accepted",expectedResponseVersion:0}});
+    expect(answer.statusCode).toBe(201);
+    const mismatch=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",key()),payload:{result:"confirmed",observedQuantity:0,identityMatched:true,conditionMatched:true,expectedVersion:1}});
+    expect(mismatch.statusCode).toBe(409);
+    const confirmationKey=key();const confirmation={result:"confirmed",observedQuantity:1,identityMatched:true,conditionMatched:true,expectedVersion:1};
+    const confirmed=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",confirmationKey),payload:confirmation});
+    expect(confirmed.statusCode).toBe(201);expect(confirmed.json()).toMatchObject({version:2,result:"confirmed",monocleTransferStatus:"not_sent"});
+    const replay=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",confirmationKey),payload:confirmation});
+    expect(replay.statusCode).toBe(201);expect(replay.json().id).toBe(confirmed.json().id);
+    const duplicate=await app.inject({method:"POST",url:receiptsUrl,headers:headers("assessor",key()),payload:{...confirmation,expectedVersion:2}});
+    expect(duplicate.statusCode).toBe(409);
+    const lateOffer=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:8000,terms:"受領後の再提示",expectedVersion:1}});
+    expect(lateOffer.statusCode).toBe(409);
+    const lateAnswer=await app.inject({method:"POST",url:`${offersUrl}/${offer.json().id}/responses`,headers:headers("assessor",key()),payload:{response:"declined",expectedResponseVersion:1}});
+    expect(lateAnswer.statusCode).toBe(409);
+    const listed=await app.inject({method:"GET",url:receiptsUrl,headers:headers("assessor")});
+    expect(listed.statusCode).toBe(200);expect(listed.json().items).toMatchObject([{version:2,result:"confirmed"},{version:1,result:"hold"}]);
   });
 });

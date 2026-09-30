@@ -1617,6 +1617,11 @@ export class BackendService {
       );
       const row=product.rows[0];if(!row)throw notFound();
       if(row.status!=="ready")throw new ApiProblem("JOB_STATE_CONFLICT",409,"上長の判断が完了した商品だけ提示できます");
+      const receipt=await tx.query<{result:string}>(
+        "SELECT result FROM product_receipt_checks WHERE organization_id=$1 AND product_id=$2 ORDER BY version DESC LIMIT 1",
+        [ctx.organizationId,productId],
+      );
+      if(receipt.rows[0]?.result==="confirmed")throw new ApiProblem("JOB_STATE_CONFLICT",409,"受領確認済みの商品は再提示できません");
       const approved=await tx.query<{approved_price_yen:string}>(
         "SELECT approved_price_yen FROM product_consultations WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND status IN ('approved','conditional') ORDER BY responded_at DESC,id DESC LIMIT 1",
         [ctx.organizationId,visitId,productId],
@@ -1651,6 +1656,11 @@ export class BackendService {
       );
       if(!product.rows[0])throw notFound();
       if(product.rows[0].status!=="ready")throw new ApiProblem("JOB_STATE_CONFLICT",409,"判断済みの商品について回答を記録してください");
+      const receipt=await tx.query<{result:string}>(
+        "SELECT result FROM product_receipt_checks WHERE organization_id=$1 AND product_id=$2 ORDER BY version DESC LIMIT 1",
+        [ctx.organizationId,productId],
+      );
+      if(receipt.rows[0]?.result==="confirmed")throw new ApiProblem("JOB_STATE_CONFLICT",409,"受領確認済みの商品への回答は変更できません");
       const offer=await tx.query<{version:number;expires_at:Date|null}>(
         "SELECT version,expires_at FROM product_offers WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND id=$4",
         [ctx.organizationId,visitId,productId,offerId],
@@ -1676,6 +1686,68 @@ export class BackendService {
       );
       const row=created.rows[0];if(!row)throw new Error("PRODUCT_OFFER_RESPONSE_CREATE_FAILED");
       return {status:201,body:camel(row),resourceId:row.id};
+    });
+  }
+  async listProductReceiptChecks(ctx:RequestContext,visitId:string,productId:string){
+    return this.read(ctx,"product.receipt.list","product_receipt_check",async tx=>{
+      await this.assertVisitAccess(tx,ctx,visitId);
+      const product=await tx.query("SELECT 1 FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3",[ctx.organizationId,visitId,productId]);
+      if(!product.rowCount)throw notFound();
+      const checks=await tx.query(
+        `SELECT id,product_id,version,result,observed_quantity,identity_matched,condition_matched,observed_condition,
+          hold_reason,monocle_transfer_status,checked_by_membership_id,checked_at
+         FROM product_receipt_checks WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 ORDER BY version DESC`,
+        [ctx.organizationId,visitId,productId],
+      );
+      return {items:camel(checks.rows)};
+    });
+  }
+  async createProductReceiptCheck(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const result=b.result;
+    if(result!=="hold"&&result!=="confirmed")throw invalid("照合結果を確認してください");
+    const observedQuantity=integer(b.observedQuantity,0,100000,"observedQuantity");
+    if(typeof b.identityMatched!=="boolean"||typeof b.conditionMatched!=="boolean")throw invalid("商品識別と状態の照合結果を確認してください");
+    const identityMatched=b.identityMatched;
+    const conditionMatched=b.conditionMatched;
+    const observedCondition=productNote(b.observedCondition,"observedCondition");
+    const holdReason=result==="hold"?text(b.holdReason,1000,"holdReason"):null;
+    const expected=integer(b.expectedVersion,0,Number.MAX_SAFE_INTEGER,"expectedVersion");
+    if(result==="confirmed"&&(!identityMatched||!conditionMatched||b.holdReason))throw invalid("一致した商品だけ受領確認できます");
+    return this.write(ctx,`product.receipt.create:${productId}`,key,b,"product.receipt.create","product_receipt_check",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const product=await tx.query<{branch_id:string;status:string;quantity:number}>(
+        "SELECT branch_id,status,quantity FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3 FOR UPDATE",
+        [ctx.organizationId,visitId,productId],
+      );
+      const row=product.rows[0];if(!row)throw notFound();
+      if(row.status!=="ready")throw new ApiProblem("JOB_STATE_CONFLICT",409,"判断済みの商品だけ現物照合できます");
+      const latest=await tx.query<{version:number;result:string}>(
+        "SELECT version,result FROM product_receipt_checks WHERE organization_id=$1 AND product_id=$2 ORDER BY version DESC LIMIT 1",
+        [ctx.organizationId,productId],
+      );
+      const version=latest.rows[0]?.version??0;
+      if(version!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"現物照合が更新済みです。再読み込みしてください");
+      if(latest.rows[0]?.result==="confirmed")throw new ApiProblem("JOB_STATE_CONFLICT",409,"受領確認済みの商品を二重に受領できません");
+      if(result==="confirmed"){
+        if(observedQuantity!==row.quantity)throw new ApiProblem("JOB_STATE_CONFLICT",409,"数量が商品カードと一致しません。保留して差異を記録してください");
+        const offer=await tx.query<{response:string|null}>(
+          `SELECT answer.response FROM product_offers o LEFT JOIN LATERAL
+           (SELECT response FROM product_offer_responses r WHERE r.organization_id=o.organization_id AND r.offer_id=o.id ORDER BY r.version DESC LIMIT 1) answer ON true
+           WHERE o.organization_id=$1 AND o.visit_id=$2 AND o.product_id=$3 ORDER BY o.version DESC LIMIT 1`,
+          [ctx.organizationId,visitId,productId],
+        );
+        if(offer.rows[0]?.response!=="accepted")throw new ApiProblem("JOB_STATE_CONFLICT",409,"最新の顧客提示への承諾を確認してください");
+      }
+      const created=await tx.query(
+        `INSERT INTO product_receipt_checks(organization_id,visit_id,product_id,branch_id,version,result,observed_quantity,
+          identity_matched,condition_matched,observed_condition,hold_reason,checked_by_membership_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING id,product_id,version,result,observed_quantity,identity_matched,condition_matched,observed_condition,
+          hold_reason,monocle_transfer_status,checked_by_membership_id,checked_at`,
+        [ctx.organizationId,visitId,productId,row.branch_id,version+1,result,observedQuantity,identityMatched,conditionMatched,observedCondition,holdReason,ctx.membershipId],
+      );
+      const check=created.rows[0];if(!check)throw new Error("PRODUCT_RECEIPT_CREATE_FAILED");
+      return {status:201,body:camel(check),resourceId:check.id,auditMetadata:{result}};
     });
   }
   async startVisitImport(
