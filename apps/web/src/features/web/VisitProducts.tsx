@@ -8,6 +8,12 @@ const empty={productName:"",quantity:"1",conditionNote:"",accessoriesNote:""};
 const consultationStatus:Record<ProductConsultationDto["status"],string>={pending:"回答待ち",approved:"承認",conditional:"条件付き承認",returned:"差戻し",cancelled:"取消"};
 const researchHoldLabels={no_candidates:"相場候補なし",ambiguous:"候補が曖昧",search_failed:"検索失敗"} as const;
 
+async function loadConsultationData(visitId:string,productId:string){
+  const [history,candidates]=await Promise.allSettled([resources.productConsultations(visitId,productId),resources.consultationManagers(visitId)]);
+  if(history.status==="rejected")throw history.reason;
+  return {items:history.value.items,managers:candidates.status==="fulfilled"?candidates.value.items:[],managerLoadError:candidates.status==="rejected"};
+}
+
 function ProductResearchHold({visitId,product,onChanged}:{visitId:string;product:VisitProductDto;onChanged:()=>Promise<void>}){
   const [category,setCategory]=useState<keyof typeof researchHoldLabels>("no_candidates");
   const [reason,setReason]=useState("");
@@ -64,12 +70,13 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
+  const [managerLoadError,setManagerLoadError]=useState(false);
   async function reload(){
-    const [consultations,candidates]=await Promise.all([resources.productConsultations(visitId,product.id),resources.consultationManagers(visitId)]);
-    setItems(consultations.items);setManagers(candidates.items);
+    const result=await loadConsultationData(visitId,product.id);
+    setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);
   }
-  useEffect(()=>{let live=true;void Promise.all([resources.productConsultations(visitId,product.id),resources.consultationManagers(visitId)])
-    .then(([consultations,candidates])=>{if(live){setItems(consultations.items);setManagers(candidates.items);}})
+  useEffect(()=>{let live=true;void loadConsultationData(visitId,product.id)
+    .then(result=>{if(live){setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);}})
     .catch(()=>{if(live)setError("相談履歴を読み込めませんでした。再読込してください。")})
     .finally(()=>{if(live)setLoading(false)});return()=>{live=false};},[visitId,product.id]);
   useEffect(()=>{let live=true;void Promise.all([resources.visit(visitId),resources.marketPriceSearches()])
@@ -102,8 +109,9 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   const lastDecision=items[items.length-1];
   const returned=product.status==="draft"&&lastDecision?.status==="returned"?lastDecision:null;
   return <section className={styles.consultations} aria-label={`${product.productName}の上長相談`}>
-    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} onClick={()=>void reload().catch(()=>setError("再読込できませんでした。"))}>相談を再読込</button></div>
+    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("相談履歴を再読込できませんでした。"))}>相談を再読込</button></div>
     {loading?<p role="status">相談履歴を読み込んでいます。</p>:null}{error?<p className={styles.error} role="alert">{error}</p>:null}
+    {managerLoadError?<p className={styles.error} role="status">相談先の上長を取得できませんでした。相談履歴は確認できます。新規相談・代理変更は再読込後に行ってください。</p>:null}
     {items.map(item=><div key={item.id} className={styles.consultationItem}>
       <p><strong>{consultationStatus[item.status]}</strong> · 相談先: {item.managerName??item.assignedManagerId} · 提示案: {item.proposedPriceYen.toLocaleString()}円</p>
       {item.dueAt?<p>回答期限: {new Date(item.dueAt).toLocaleString("ja-JP")}{item.overdue?"（期限超過・未承認）":""}</p>:null}
@@ -117,7 +125,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
         <div className={styles.actions}><button type="button" className={styles.primary} disabled={busy} onClick={()=>void decide(item,"approved")}>承認</button><button type="button" className={styles.secondary} disabled={busy} onClick={()=>void decide(item,"conditional")}>条件付き承認</button><button type="button" className={styles.secondary} disabled={busy} onClick={()=>void decide(item,"returned")}>差戻し</button></div>
         <label>代理の上長<select value={nextManager} onChange={event=>setNextManager(event.target.value)}><option value="">選択してください</option>{managers.filter(manager=>manager.id!==item.assignedManagerId).map(manager=><option key={manager.id} value={manager.id}>{manager.displayName}</option>)}</select></label>
         <label>代理変更の理由<textarea maxLength={1000} value={reassignReason} onChange={event=>setReassignReason(event.target.value)}/></label>
-        <button type="button" className={styles.secondary} disabled={busy} onClick={()=>void reassign(item)}>代理へ引き継ぐ</button>
+        <button type="button" className={styles.secondary} disabled={busy||managerLoadError||managers.length===0} onClick={()=>void reassign(item)}>代理へ引き継ぐ</button>
       </div>:null}
     </div>)}
     {!loading&&items.length===0?<p>相談履歴はありません。</p>:null}
@@ -132,7 +140,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
       <label>判断が必要な理由<textarea required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)}/></label>
       <label>回答期限（任意）<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label>
       <button type="submit" className={styles.primary} disabled={busy||managers.length===0}>相談を送る</button>
-      {managers.length===0?<p>相談できる上長がいません。所属・権限を管理者に確認してください。</p>:null}
+      {managers.length===0&&!managerLoadError?<p>相談できる上長がいません。所属・権限を管理者に確認してください。</p>:null}
     </form>:null}
   </section>;
 }

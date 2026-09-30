@@ -1,7 +1,7 @@
 import {cleanup,render,screen} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {afterEach,expect,it,vi} from "vitest";
-import {resources,type MarketPriceSearchDto,type ProductOfferDto,type ProductReceiptCheckDto,type VisitDto,type VisitProductDto,type VisitWorkspaceDto} from "@/lib/api/resources";
+import {resources,type MarketPriceSearchDto,type ProductConsultationDto,type ProductOfferDto,type ProductReceiptCheckDto,type VisitDto,type VisitProductDto,type VisitWorkspaceDto} from "@/lib/api/resources";
 import {VisitProducts} from "./VisitProducts";
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
@@ -86,6 +86,58 @@ it("attaches only a confirmed same-branch market result to a manager consultatio
   await user.type(screen.getByRole("textbox",{name:"判断が必要な理由"}),"相場結果と状態を確認するため");
   await user.click(screen.getByRole("button",{name:"相談を送る"}));
   expect(create).toHaveBeenCalledWith("visit-3","product-3",expect.objectContaining({marketPriceResultId:"result-1",proposedPriceYen:9000}));
+});
+
+it("keeps an overdue consultation visible when the manager directory fails, then recovers on retry",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-4",visitId:"visit-4",productName:"確認待ち商品",quantity:1,conditionNote:null,accessoriesNote:null,status:"research_pending",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const consultation:ProductConsultationDto={id:"consultation-4",productId:product.id,requestedByMembershipId:"assessor-1",assignedManagerId:"manager-1",managerName:"担当上長",proposedPriceYen:9000,marketPriceResultId:null,requestReason:"査定額を確認",dueAt:"2026-09-30T01:00:00Z",overdue:true,status:"pending",approvedPriceYen:null,responseNote:null,respondedByMembershipId:null,respondedAt:null,reassignmentReason:null,lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockResolvedValue({items:[consultation],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockRejectedValueOnce(new Error("directory unavailable")).mockResolvedValue({items:[{id:"manager-2",displayName:"代理上長"}]});
+  vi.spyOn(resources,"productOffers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  render(<VisitProducts visitId="visit-4"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  expect(await screen.findByText(/期限超過・未承認/)).toBeInTheDocument();
+  expect(screen.getByText(/相談先の上長を取得できませんでした/)).toBeInTheDocument();
+  expect(screen.queryByText(/相談履歴を読み込めませんでした/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"代理へ引き継ぐ"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"相談を再読込"}));
+  expect(await screen.findByRole("option",{name:"代理上長"})).toBeInTheDocument();
+  expect(screen.queryByText(/相談先の上長を取得できませんでした/)).not.toBeInTheDocument();
+});
+
+it("does not report a saved consultation as failed when only the manager directory refresh fails",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-5",visitId:"visit-5",productName:"相談対象商品",quantity:1,conditionNote:null,accessoriesNote:null,status:"draft",lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  let consultations:ProductConsultationDto[]=[];
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockImplementation(async()=>({items:consultations,reassignments:[]}));
+  vi.spyOn(resources,"consultationManagers").mockResolvedValueOnce({items:[{id:"manager-1",displayName:"上長"}]}).mockRejectedValueOnce(new Error("directory unavailable"));
+  vi.spyOn(resources,"productOffers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  const create=vi.spyOn(resources,"createProductConsultation").mockImplementation(async(_visitId,_productId,body)=>{
+    const consultation:ProductConsultationDto={id:"consultation-5",productId:product.id,requestedByMembershipId:"assessor-1",assignedManagerId:body.assignedManagerId,managerName:"上長",proposedPriceYen:body.proposedPriceYen,marketPriceResultId:null,requestReason:body.reason,dueAt:null,overdue:false,status:"pending",approvedPriceYen:null,responseNote:null,respondedByMembershipId:null,respondedAt:null,reassignmentReason:null,lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+    consultations=[consultation];return consultation;
+  });
+  render(<VisitProducts visitId="visit-5"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  await screen.findByRole("option",{name:"上長"});
+  await user.selectOptions(screen.getByRole("combobox",{name:"相談先の上長"}),"manager-1");
+  await user.type(screen.getByRole("spinbutton",{name:"顧客への提示案（円）"}),"9000");
+  await user.type(screen.getByRole("textbox",{name:"判断が必要な理由"}),"相場と状態の確認");
+  await user.click(screen.getByRole("button",{name:"相談を送る"}));
+  expect(create).toHaveBeenCalledOnce();
+  expect(await screen.findByText("相談理由: 相場と状態の確認")).toBeInTheDocument();
+  expect(screen.queryByText(/相談を登録できませんでした/)).not.toBeInTheDocument();
+  expect(screen.getByText(/相談先の上長を取得できませんでした/)).toBeInTheDocument();
 });
 
 it("keeps the confirmed PDF appraisal text visible while a human creates a sourced product card",async()=>{
