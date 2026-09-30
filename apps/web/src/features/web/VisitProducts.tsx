@@ -208,6 +208,9 @@ function ProductReceiptChecks({visitId,product,onConfirmed}:{visitId:string;prod
 
 export function VisitProducts({visitId}:{visitId:string}){
   const [products,setProducts]=useState<VisitProductDto[]>([]);
+  const [pdfItems,setPdfItems]=useState<{extractionId:string;text:string}|null>(null);
+  const [citePdf,setCitePdf]=useState(false);
+  const [pdfLoadError,setPdfLoadError]=useState(false);
   const [confirmedReceiptProductIds,setConfirmedReceiptProductIds]=useState<string[]>([]);
   const [form,setForm]=useState(empty);
   const [editing,setEditing]=useState<VisitProductDto|null>(null);
@@ -229,9 +232,15 @@ export function VisitProducts({visitId}:{visitId:string}){
       .finally(()=>{if(live)setLoading(false);});
     return()=>{live=false;};
   },[visitId]);
+  useEffect(()=>{
+    let live=true;void resources.workspace(visitId)
+      .then(workspace=>{if(!live)return;const field=workspace.fields.find(item=>item.fieldKey==="appraisalItems"&&item.valueType==="text"&&item.verificationStatus!=="rejected");setPdfItems(workspace.extraction?.status==="confirmed"&&field?.textValue?.trim()?{extractionId:workspace.extraction.id,text:field.textValue.trim()}:null);setPdfLoadError(false)})
+      .catch(()=>{if(live)setPdfLoadError(true)});return()=>{live=false};
+  },[visitId]);
   function edit(product:VisitProductDto){
     pendingOperation.current=null;
     setEditing(product);
+    setCitePdf(false);
     setForm({productName:product.productName,quantity:String(product.quantity),conditionNote:product.conditionNote??"",accessoriesNote:product.accessoriesNote??""});
     setError("");
   }
@@ -241,13 +250,14 @@ export function VisitProducts({visitId}:{visitId:string}){
     if(!form.productName.trim()||!Number.isInteger(quantity)||quantity<1||quantity>100000){setError("品名と数量を確認してください。");return;}
     setSaving(true);setError("");
     const input={productName:form.productName.trim(),quantity,conditionNote:form.conditionNote.trim()||null,accessoriesNote:form.accessoriesNote.trim()||null};
-    const body=JSON.stringify({visitId,productId:editing?.id??null,expectedLockVersion:editing?.lockVersion??null,input});
+    const sourceExtractionId=!editing&&citePdf?pdfItems?.extractionId??null:null;
+    const body=JSON.stringify({visitId,productId:editing?.id??null,expectedLockVersion:editing?.lockVersion??null,input,sourceExtractionId});
     if(pendingOperation.current?.body!==body)pendingOperation.current={body,key:crypto.randomUUID()};
     const operationKey=pendingOperation.current.key;
     try{
       if(editing)await resources.updateVisitProduct(visitId,editing.id,{...input,expectedLockVersion:editing.lockVersion},operationKey);
-      else await resources.createVisitProduct(visitId,input,operationKey);
-      await refresh();setForm(empty);setEditing(null);pendingOperation.current=null;
+      else await resources.createVisitProduct(visitId,{...input,sourceExtractionId},operationKey);
+      await refresh();setForm(empty);setEditing(null);setCitePdf(false);pendingOperation.current=null;
     }catch{setError("保存できませんでした。商品情報を再読み込みし、内容を確認してください。新規登録を再送する前に一覧を確認してください。");await refresh().catch(()=>undefined);}
     finally{setSaving(false);}
   }
@@ -260,6 +270,7 @@ export function VisitProducts({visitId}:{visitId:string}){
         <div className={styles.cardHead}><strong>{index+1}. {product.productName}</strong><span>{product.quantity}点</span></div>
         <dl><div><dt>状態</dt><dd>{product.conditionNote??"未入力"}</dd></div><div><dt>付属品</dt><dd>{product.accessoriesNote??"未入力"}</dd></div></dl>
         <p>進行状態: {product.status==="draft"?"下書き":product.status==="research_pending"?"相談中":product.status==="ready"?"判断済み":product.status}</p>
+        {product.sourceExtractionId?<p>PDFの査定品を原本と照合して登録（抽出ID: {product.sourceExtractionId}）</p>:<p>商品情報は手入力です。</p>}
         <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>setExpandedProductId(current=>current===product.id?null:product.id)} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
         {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptConfirmed={confirmedReceiptProductIds.includes(product.id)}/><ProductReceiptChecks visitId={visitId} product={product} onConfirmed={markReceiptConfirmed}/></>:null}
       </article>)}
@@ -267,6 +278,8 @@ export function VisitProducts({visitId}:{visitId:string}){
     </div>
     <form className={styles.form} onSubmit={event=>void save(event)}>
       <h3>{editing?"商品カードを修正":"商品カードを追加"}</h3>
+      {!editing&&pdfItems?<div className={styles.consultationItem}><p>確定済みPDFの査定品: {pdfItems.text}</p><label><input type="checkbox" checked={citePdf} onChange={event=>setCitePdf(event.target.checked)}/> この査定品欄を原本と照合し、商品カードの出典として記録する</label><p>複数商品は一件ずつ入力してください。PDFの文章を自動で商品に分割しません。</p></div>:null}
+      {!editing&&pdfLoadError?<p role="status">PDFの確認済み項目を取得できませんでした。出典を付ける場合は再読込してください。</p>:null}
       <label>商品名<input required maxLength={300} value={form.productName} onChange={event=>setForm(current=>({...current,productName:event.target.value}))}/></label>
       <label>数量<input required type="number" min={1} max={100000} value={form.quantity} onChange={event=>setForm(current=>({...current,quantity:event.target.value}))}/></label>
       <label>状態・傷など<textarea maxLength={1000} value={form.conditionNote} onChange={event=>setForm(current=>({...current,conditionNote:event.target.value}))}/></label>

@@ -1386,7 +1386,7 @@ export class BackendService {
     return this.read(ctx,"visit.product.list","visit_product",async tx=>{
       await this.assertVisitAccess(tx,ctx,visitId);
       const result=await tx.query(
-        "SELECT id,visit_id,product_name,quantity,condition_note,accessories_note,status,lock_version,created_by_membership_id,updated_by_membership_id,created_at,updated_at FROM visit_products WHERE organization_id=$1 AND visit_id=$2 ORDER BY created_at,id",
+        "SELECT id,visit_id,product_name,quantity,condition_note,accessories_note,source_extraction_id,status,lock_version,created_by_membership_id,updated_by_membership_id,created_at,updated_at FROM visit_products WHERE organization_id=$1 AND visit_id=$2 ORDER BY created_at,id",
         [ctx.organizationId,visitId],
       );
       return {items:result.rows.map(row=>visitProductDto(row))};
@@ -1397,12 +1397,24 @@ export class BackendService {
     const quantity=integer(b.quantity,1,100000,"quantity");
     const conditionNote=productNote(b.conditionNote,"conditionNote");
     const accessoriesNote=productNote(b.accessoriesNote,"accessoriesNote");
+    const sourceExtractionId=b.sourceExtractionId==null?null:uuidId(b.sourceExtractionId,"sourceExtractionId");
     return this.write(ctx,"visit.product.create",key,b,"visit.product.create","visit_product",async tx=>{
       await this.assertVisitMutable(tx,ctx,visitId);
+      if(sourceExtractionId){
+        const source=await tx.query(
+          `SELECT 1 FROM document_extractions e JOIN visit_documents d ON d.id=e.visit_document_id AND d.organization_id=e.organization_id
+           JOIN visit_field_values f ON f.document_extraction_id=e.id AND f.organization_id=e.organization_id
+           WHERE e.organization_id=$1 AND d.visit_id=$2 AND e.id=$3 AND e.status='confirmed' AND d.status<>'deleted'
+             AND f.field_key='appraisalItems' AND f.value_type='text' AND length(trim(f.text_value))>0
+             AND f.verification_status IN ('confirmed','corrected')`,
+          [ctx.organizationId,visitId,sourceExtractionId],
+        );
+        if(!source.rowCount)throw invalid("この訪問で確定したPDFの査定品を確認してください");
+      }
       const result=await tx.query(
-        `INSERT INTO visit_products(organization_id,visit_id,branch_id,product_name,quantity,condition_note,accessories_note,created_by_membership_id,updated_by_membership_id)
-         SELECT $1,v.id,v.branch_id,$3,$4,$5,$6,$7,$7 FROM visits v WHERE v.organization_id=$1 AND v.id=$2 AND v.deleted_at IS NULL RETURNING *`,
-        [ctx.organizationId,visitId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId],
+        `INSERT INTO visit_products(organization_id,visit_id,branch_id,product_name,quantity,condition_note,accessories_note,source_extraction_id,created_by_membership_id,updated_by_membership_id)
+         SELECT $1,v.id,v.branch_id,$3,$4,$5,$6,$8,$7,$7 FROM visits v WHERE v.organization_id=$1 AND v.id=$2 AND v.deleted_at IS NULL RETURNING *`,
+        [ctx.organizationId,visitId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId,sourceExtractionId],
       );
       if(!result.rows[0])throw notFound();
       return {status:201,body:visitProductDto(result.rows[0]),resourceId:result.rows[0].id};

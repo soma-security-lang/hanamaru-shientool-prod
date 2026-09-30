@@ -2085,7 +2085,7 @@ export class WorkerProcessor {
         [job.organization_id, prepared.visitId],
       );
       await tx.query(
-        "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
+        "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,source_extraction_id=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
         [job.organization_id, prepared.visitId],
       );
       await tx.query(
@@ -2231,6 +2231,10 @@ export class WorkerProcessor {
           await tx.query(
             "UPDATE visit_documents SET status='deleted',deleted_at=now() WHERE storage_object_id=$1",
             [object.id],
+          );
+          await tx.query(
+            "UPDATE visit_products SET source_extraction_id=NULL WHERE organization_id=$1 AND source_extraction_id IN (SELECT id FROM document_extractions WHERE organization_id=$1 AND visit_document_id IN (SELECT id FROM visit_documents WHERE organization_id=$1 AND storage_object_id=$2))",
+            [job.organization_id, object.id],
           );
           await tx.query(
             "DELETE FROM visit_field_values WHERE organization_id=$1 AND document_extraction_id IN (SELECT id FROM document_extractions WHERE organization_id=$1 AND visit_document_id IN (SELECT id FROM visit_documents WHERE organization_id=$1 AND storage_object_id=$2))",

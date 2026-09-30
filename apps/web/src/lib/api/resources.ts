@@ -5,7 +5,7 @@ export type {MarketPriceIdentificationDto,MarketPriceIdentificationFields,Market
 export type TranscriptQualityAssessmentDto=TranscriptQualityAssessment;
 
 export interface VisitDto {id:string;caseNumber:string;status:string;visitDate:string|null;visitTime:string|null;timeZone:"Asia/Tokyo";scheduledAt:string|null;customerLabel:string|null;branchName?:string;branchId:string;lockVersion:number;}
-export interface VisitProductDto {id:string;visitId:string;productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;status:string;lockVersion:number;createdAt:string;updatedAt:string;}
+export interface VisitProductDto {id:string;visitId:string;productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;sourceExtractionId?:string|null;status:string;lockVersion:number;createdAt:string;updatedAt:string;}
 export interface ProductConsultationDto {id:string;productId:string;requestedByMembershipId:string;assignedManagerId:string;managerName?:string;proposedPriceYen:number;marketPriceResultId:string|null;requestReason:string;dueAt:string|null;overdue:boolean;status:"pending"|"approved"|"conditional"|"returned"|"cancelled";approvedPriceYen:number|null;responseNote:string|null;respondedByMembershipId:string|null;respondedAt:string|null;reassignmentReason:string|null;lockVersion:number;createdAt:string;updatedAt:string;}
 export interface ProductOfferResponseDto {id:string;offerId:string;version:number;response:"pending"|"accepted"|"declined"|"counteroffer";note:string|null;recordedByMembershipId:string;recordedAt:string;}
 export interface ProductOfferDto {id:string;productId:string;version:number;priceYen:number;terms:string;expiresAt:string|null;presentedByMembershipId:string;presentedAt:string;responses:ProductOfferResponseDto[];}
@@ -44,7 +44,7 @@ export const resources={
   visit:(id:string)=>apiClient.request<VisitDto>(`/visits/${id}`),
   workspace:(id:string)=>apiClient.request<VisitWorkspaceDto>(`/visits/${id}/workspace`),
   visitProducts:(id:string)=>apiClient.request<List<VisitProductDto>>(`/visits/${id}/products`),
-  createVisitProduct:(id:string,body:{productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null},operationKey=apiClient.idempotencyKey())=>apiClient.request<VisitProductDto>(`/visits/${id}/products`,{method:"POST",headers:{"idempotency-key":operationKey},body:JSON.stringify(body)}),
+  createVisitProduct:(id:string,body:{productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;sourceExtractionId?:string|null},operationKey=apiClient.idempotencyKey())=>apiClient.request<VisitProductDto>(`/visits/${id}/products`,{method:"POST",headers:{"idempotency-key":operationKey},body:JSON.stringify(body)}),
   updateVisitProduct:(id:string,productId:string,body:{productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;expectedLockVersion:number},operationKey=apiClient.idempotencyKey())=>apiClient.request<VisitProductDto>(`/visits/${id}/products/${productId}`,{method:"PATCH",headers:{"idempotency-key":operationKey},body:JSON.stringify(body)}),
   consultationManagers:(id:string)=>apiClient.request<{items:ConsultationManagerDto[]}>(`/visits/${id}/consultation-managers`),
   productConsultations:(id:string,productId:string)=>apiClient.request<{items:ProductConsultationDto[];reassignments:Array<{consultationId:string;previousManagerId:string;nextManagerId:string;reason:string;changedAt:string}>}>(`/visits/${id}/products/${productId}/consultations`),

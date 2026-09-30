@@ -13,6 +13,7 @@ describe.skipIf(!databaseUrl)("visit product cards",()=>{
   const visitId=randomUUID();
   const keys:string[]=[];
   const productIds:string[]=[];
+  const sourceObjectId=randomUUID(),sourceDocumentId=randomUUID(),sourceExtractionId=randomUUID();
   const headers=(key?:string)=>({"x-dev-role":"manager",...(key?{"idempotency-key":key}:{})});
   beforeAll(async()=>{
     repository=new HanamaruRepository(createPool(databaseUrl!));
@@ -23,6 +24,10 @@ describe.skipIf(!databaseUrl)("visit product cards",()=>{
     await app?.close();
     if(repository){
       await repository.system("DELETE FROM visit_products WHERE id=ANY($1::uuid[])",[productIds]);
+      await repository.system("DELETE FROM visit_field_values WHERE document_extraction_id=$1",[sourceExtractionId]);
+      await repository.system("DELETE FROM document_extractions WHERE id=$1",[sourceExtractionId]);
+      await repository.system("DELETE FROM visit_documents WHERE id=$1",[sourceDocumentId]);
+      await repository.system("DELETE FROM storage_objects WHERE id=$1",[sourceObjectId]);
       await repository.system("DELETE FROM idempotency_records WHERE idempotency_key=ANY($1::varchar[])",[keys]);
       await repository.system("DELETE FROM visits WHERE id=$1",[visitId]);
       await repository.close();
@@ -53,5 +58,23 @@ describe.skipIf(!databaseUrl)("visit product cards",()=>{
     expect(stale.statusCode).toBe(409);
     const inaccessible=await app.inject({method:"GET",url:`/api/v1/visits/${randomUUID()}/products`,headers:headers()});
     expect(inaccessible.statusCode).toBe(404);
+  });
+  it("links a manually entered card only to a confirmed appraisal field on its visit",async()=>{
+    const invalidKey=randomUUID();keys.push(invalidKey);
+    const invalid=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(invalidKey),payload:{productName:"匿名テスト品",quantity:1,sourceExtractionId:randomUUID()}});
+    expect(invalid.statusCode).toBe(422);
+    await repository.system("INSERT INTO storage_objects(id,organization_id,bucket_name,object_name,object_generation,purpose,status,mime_type,size_bytes,sha256) VALUES($1,$2,'test-bucket',$3,1,'visit_pdf','available','application/pdf',10,$4)",[sourceObjectId,developmentIds.organizationId,`organizations/${developmentIds.organizationId}/visits/${visitId}/documents/${sourceDocumentId}/source`,"0".repeat(64)]);
+    await repository.system("INSERT INTO visit_documents(id,organization_id,visit_id,storage_object_id,status,uploaded_by_membership_id) VALUES($1,$2,$3,$4,'extracted',$5)",[sourceDocumentId,developmentIds.organizationId,visitId,sourceObjectId,developmentIds.membershipId]);
+    const schema=await repository.system<{id:string}>("SELECT id FROM form_schema_versions WHERE organization_id=$1 AND schema_key='visit_info' AND status='active'",[developmentIds.organizationId]);
+    expect(schema.rows).toHaveLength(1);
+    await repository.system("INSERT INTO document_extractions(id,organization_id,visit_document_id,form_schema_version_id,version,status,provider,model_name) VALUES($1,$2,$3,$4,1,'confirmed','local','test')",[sourceExtractionId,developmentIds.organizationId,sourceDocumentId,schema.rows[0]!.id]);
+    await repository.system("INSERT INTO visit_field_values(organization_id,document_extraction_id,field_key,value_type,text_value,verification_status) VALUES($1,$2,'appraisalItems','text','時計、カメラ','confirmed')",[developmentIds.organizationId,sourceExtractionId]);
+    const validKey=randomUUID();keys.push(validKey);
+    const card=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(validKey),payload:{productName:"時計",quantity:1,sourceExtractionId}});
+    expect(card.statusCode).toBe(201);
+    expect(card.json()).toMatchObject({productName:"時計",sourceExtractionId});
+    productIds.push(card.json().id);
+    const listed=await app.inject({method:"GET",url:`/api/v1/visits/${visitId}/products`,headers:headers()});
+    expect(listed.json().items).toEqual(expect.arrayContaining([expect.objectContaining({id:card.json().id,sourceExtractionId})]));
   });
 });
