@@ -26,6 +26,9 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.post("/api/v1/visit-imports",async(r,reply)=>send(reply,service.startVisitImport(r.auth,key(r),body(r))));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id",async r=>service.getVisit(r.auth,r.params.id));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/workspace",async r=>service.getVisitWorkspace(r.auth,r.params.id));
+  app.get<{Params:{id:string}}>("/api/v1/visits/:id/products",async r=>service.listVisitProducts(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>("/api/v1/visits/:id/products",async(r,reply)=>send(reply,service.createVisitProduct(r.auth,r.params.id,key(r),body(r))));
+  app.patch<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId",async(r,reply)=>send(reply,service.updateVisitProduct(r.auth,r.params.id,r.params.productId,key(r),body(r))));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/retention-bindings",async r=>service.retentionBindings(r.auth,r.params.id));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/preparation",async r=>service.getPreparation(r.auth,r.params.id));
   app.post<{Params:{id:string}}>("/api/v1/visits/:id/preparation",async(r,reply)=>send(reply,service.createPreparation(r.auth,r.params.id,key(r),body(r))));

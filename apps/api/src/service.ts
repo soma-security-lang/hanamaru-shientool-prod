@@ -97,6 +97,11 @@ function visitDto<T extends Json>(row: T): Json {
   delete value.scheduledTimezone;
   return value;
 }
+function visitProductDto(row:Json):Json{
+  const value=camel<Json>(row);
+  value.lockVersion=Number(row.lock_version);
+  return value;
+}
 function text(value: unknown, max: number, name: string) {
   if (typeof value !== "string" || !value.trim() || value.length > max)
     throw invalid("入力内容を確認してください", [
@@ -111,6 +116,12 @@ function integer(value: unknown, min: number, max: number, name: string) {
       { field: name, message: `${min}〜${max}の整数で入力してください` },
     ]);
   return n;
+}
+function productNote(value: unknown, name: string): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.trim().length > 1000)
+    throw invalid("入力内容を確認してください", [{field:name,message:"1000文字以内で入力してください"}]);
+  return value.trim() || null;
 }
 function formProperties(schema:unknown):Record<string,Record<string,unknown>>{
   if(!schema||typeof schema!=="object"||Array.isArray(schema))return{};
@@ -1357,6 +1368,50 @@ export class BackendService {
         }
       },
     );
+  }
+  async listVisitProducts(ctx: RequestContext, visitId: string) {
+    return this.read(ctx,"visit.product.list","visit_product",async tx=>{
+      await this.assertVisitAccess(tx,ctx,visitId);
+      const result=await tx.query(
+        "SELECT id,visit_id,product_name,quantity,condition_note,accessories_note,status,lock_version,created_by_membership_id,updated_by_membership_id,created_at,updated_at FROM visit_products WHERE organization_id=$1 AND visit_id=$2 ORDER BY created_at,id",
+        [ctx.organizationId,visitId],
+      );
+      return {items:result.rows.map(row=>visitProductDto(row))};
+    });
+  }
+  async createVisitProduct(ctx:RequestContext,visitId:string,key:string|undefined,b:Json){
+    const productName=text(b.productName,300,"productName");
+    const quantity=integer(b.quantity,1,100000,"quantity");
+    const conditionNote=productNote(b.conditionNote,"conditionNote");
+    const accessoriesNote=productNote(b.accessoriesNote,"accessoriesNote");
+    return this.write(ctx,"visit.product.create",key,b,"visit.product.create","visit_product",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const result=await tx.query(
+        `INSERT INTO visit_products(organization_id,visit_id,branch_id,product_name,quantity,condition_note,accessories_note,created_by_membership_id,updated_by_membership_id)
+         SELECT $1,v.id,v.branch_id,$3,$4,$5,$6,$7,$7 FROM visits v WHERE v.organization_id=$1 AND v.id=$2 AND v.deleted_at IS NULL RETURNING *`,
+        [ctx.organizationId,visitId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId],
+      );
+      if(!result.rows[0])throw notFound();
+      return {status:201,body:visitProductDto(result.rows[0]),resourceId:result.rows[0].id};
+    });
+  }
+  async updateVisitProduct(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const productName=text(b.productName,300,"productName");
+    const quantity=integer(b.quantity,1,100000,"quantity");
+    const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    const conditionNote=productNote(b.conditionNote,"conditionNote");
+    const accessoriesNote=productNote(b.accessoriesNote,"accessoriesNote");
+    return this.write(ctx,"visit.product.update",key,b,"visit.product.update","visit_product",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const result=await tx.query(
+        `UPDATE visit_products SET product_name=$4,quantity=$5,condition_note=$6,accessories_note=$7,
+         updated_by_membership_id=$8,lock_version=lock_version+1
+         WHERE organization_id=$1 AND visit_id=$2 AND id=$3 AND lock_version=$9 AND status='draft' RETURNING *`,
+        [ctx.organizationId,visitId,productId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId,expected],
+      );
+      if(!result.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"商品情報が更新済みです。再読み込みしてください");
+      return {status:200,body:visitProductDto(result.rows[0]),resourceId:productId};
+    });
   }
   async startVisitImport(
     ctx: RequestContext,

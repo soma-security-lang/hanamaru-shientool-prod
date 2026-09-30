@@ -5,6 +5,7 @@ export type {MarketPriceIdentificationDto,MarketPriceIdentificationFields,Market
 export type TranscriptQualityAssessmentDto=TranscriptQualityAssessment;
 
 export interface VisitDto {id:string;caseNumber:string;status:string;visitDate:string|null;visitTime:string|null;timeZone:"Asia/Tokyo";scheduledAt:string|null;customerLabel:string|null;branchName?:string;branchId:string;lockVersion:number;}
+export interface VisitProductDto {id:string;visitId:string;productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;status:string;lockVersion:number;createdAt:string;updatedAt:string;}
 export interface JobAttemptDto {attemptNo:number;startedAt:string;finishedAt:string|null;resultStatus:string|null;errorCode:string|null;}
 export interface JobDto {id:string;jobType:string;status:string;entityType:string;entityId:string;attemptCount:number;maxAttempts:number;errorCode:string|null;createdAt:string;finishedAt:string|null;analysisDimensions?:ReviewDimension[]|null;attempts?:JobAttemptDto[];resultResource?:{type:string;id:string;href:string}|null;}
 export interface FieldDto {id:string;fieldKey:string;valueType:string;textValue:string|null;numberValue:number|null;dateValue:string|null;booleanValue:boolean|null;jsonValue:unknown;sourcePage:number|null;sourceExcerpt:string|null;confidence:number|null;verificationStatus:string;}
@@ -37,6 +38,9 @@ export const resources={
   visits:(query="")=>apiClient.request<List<VisitDto>>(`/visits${query?`?query=${encodeURIComponent(query)}`:""}`),
   visit:(id:string)=>apiClient.request<VisitDto>(`/visits/${id}`),
   workspace:(id:string)=>apiClient.request<VisitWorkspaceDto>(`/visits/${id}/workspace`),
+  visitProducts:(id:string)=>apiClient.request<List<VisitProductDto>>(`/visits/${id}/products`),
+  createVisitProduct:(id:string,body:{productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null},operationKey=apiClient.idempotencyKey())=>apiClient.request<VisitProductDto>(`/visits/${id}/products`,{method:"POST",headers:{"idempotency-key":operationKey},body:JSON.stringify(body)}),
+  updateVisitProduct:(id:string,productId:string,body:{productName:string;quantity:number;conditionNote:string|null;accessoriesNote:string|null;expectedLockVersion:number},operationKey=apiClient.idempotencyKey())=>apiClient.request<VisitProductDto>(`/visits/${id}/products/${productId}`,{method:"PATCH",headers:{"idempotency-key":operationKey},body:JSON.stringify(body)}),
   protectedFileAccess:(kind:"document"|"recording",id:string)=>apiClient.request<{url:string;expiresAt:string|null;requiresBearer:boolean}>(`/${kind}s/${id}/file-access`),
   protectedFileBlob:(path:string)=>apiClient.blob(path),
   createVisit:(body:Record<string,unknown>)=>apiClient.request<VisitDto>("/visits",{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify(body)}),

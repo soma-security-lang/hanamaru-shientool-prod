@@ -2065,6 +2065,10 @@ export class WorkerProcessor {
         [job.organization_id, prepared.visitId],
       );
       await tx.query(
+        "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
+        [job.organization_id, prepared.visitId],
+      );
+      await tx.query(
         "UPDATE drive_imports SET drive_file_id_ciphertext=decode('','hex'),drive_file_name_redacted=NULL,updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
         [job.organization_id, prepared.visitId],
       );
