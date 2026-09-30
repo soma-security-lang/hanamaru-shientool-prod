@@ -158,7 +158,8 @@ function ProductOffers({visitId,product,receiptStatus}:{visitId:string;product:V
   const [historyLoadError,setHistoryLoadError]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
-  const pending=useRef<{body:string;key:string}|null>(null);
+  const pendingOffer=useRef<{fingerprint:string;key:string;body:{priceYen:number;terms:string;expiresAt:string|null;expectedVersion:number}}|null>(null);
+  const pendingResponse=useRef<{fingerprint:string;key:string;body:{response:ProductOfferResponseDto["response"];note:string|null;expectedResponseVersion:number}}|null>(null);
   async function reload(){try{const result=await resources.productOffers(visitId,product.id);setOffers(result.items);setHistoryLoadError(false);}catch(cause){setHistoryLoadError(true);throw cause;}}
   useEffect(()=>{let live=true;void resources.productOffers(visitId,product.id)
     .then(result=>{if(live){setOffers(result.items);setHistoryLoadError(false);}})
@@ -168,24 +169,28 @@ function ProductOffers({visitId,product,receiptStatus}:{visitId:string;product:V
     event.preventDefault();const amount=Number(price);
     const expiry=expiresAt?new Date(expiresAt):null;
     if(!Number.isSafeInteger(amount)||amount<0||!terms.trim()||(expiry&&!Number.isFinite(expiry.getTime()))){setError("提示額、条件、有効期限を確認してください。");return;}
-    const body={priceYen:amount,terms:terms.trim(),expiresAt:expiry?.toISOString()??null,expectedVersion:offers[0]?.version??0};
-    const fingerprint=JSON.stringify(body);if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
+    const input={priceYen:amount,terms:terms.trim(),expiresAt:expiry?.toISOString()??null};
+    const fingerprint=JSON.stringify(input);
+    let operation=pendingOffer.current;
+    if(!operation||operation.fingerprint!==fingerprint){operation={fingerprint,key:crypto.randomUUID(),body:{...input,expectedVersion:offers[0]?.version??0}};pendingOffer.current=operation;}
     setBusy(true);setError("");
     try{
-      await resources.createProductOffer(visitId,product.id,body,pending.current.key);
-      pending.current=null;setPrice("");setTerms("");setExpiresAt("");
+      await resources.createProductOffer(visitId,product.id,operation.body,operation.key);
+      pendingOffer.current=null;setPrice("");setTerms("");setExpiresAt("");
       try{await reload();}catch{setError("提示は保存されましたが、履歴を取得できませんでした。提示履歴を再読込して確認してください。");}
     }
     catch{setError("提示の保存結果を確認できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined);}
     finally{setBusy(false);}
   }
   async function record(offer:ProductOfferDto){
-    const body={response,note:responseNote.trim()||null,expectedResponseVersion:offer.responses.at(-1)?.version??0};
-    const fingerprint=JSON.stringify({offerId:offer.id,...body});if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
+    const input={response,note:responseNote.trim()||null};
+    const fingerprint=JSON.stringify({offerId:offer.id,...input});
+    let operation=pendingResponse.current;
+    if(!operation||operation.fingerprint!==fingerprint){operation={fingerprint,key:crypto.randomUUID(),body:{...input,expectedResponseVersion:offer.responses.at(-1)?.version??0}};pendingResponse.current=operation;}
     setBusy(true);setError("");
     try{
-      await resources.recordProductOfferResponse(visitId,product.id,offer.id,body,pending.current.key);
-      pending.current=null;setResponse("pending");setResponseNote("");
+      await resources.recordProductOfferResponse(visitId,product.id,offer.id,operation.body,operation.key);
+      pendingResponse.current=null;setResponse("pending");setResponseNote("");
       try{await reload();}catch{setError("顧客回答は保存されましたが、履歴を取得できませんでした。提示履歴を再読込して確認してください。");}
     }
     catch{setError("顧客回答の保存結果を確認できませんでした。履歴を再読込してから確認してください。");await reload().catch(()=>undefined);}
@@ -229,7 +234,7 @@ function ProductReceiptChecks({visitId,product,onStatus}:{visitId:string;product
   const [historyLoadError,setHistoryLoadError]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
-  const pending=useRef<{body:string;key:string}|null>(null);
+  const pending=useRef<{fingerprint:string;key:string;body:{result:"hold"|"confirmed";observedQuantity:number;identityMatched:boolean;conditionMatched:boolean;observedCondition:string|null;holdReason:string|null;expectedVersion:number}}|null>(null);
   async function reload(){try{const response=await resources.productReceiptChecks(visitId,product.id);setChecks(response.items);setHistoryLoadError(false);onStatus(product.id,response.items[0]?.result==="confirmed"?"confirmed":"open");}catch(cause){setHistoryLoadError(true);onStatus(product.id,"error");throw cause;}}
   useEffect(()=>{let live=true;void resources.productReceiptChecks(visitId,product.id)
     .then(response=>{if(live){setChecks(response.items);setHistoryLoadError(false);onStatus(product.id,response.items[0]?.result==="confirmed"?"confirmed":"open");}})
@@ -238,11 +243,13 @@ function ProductReceiptChecks({visitId,product,onStatus}:{visitId:string;product
   async function save(event:React.FormEvent){
     event.preventDefault();const observedQuantity=Number(quantity);
     if(!Number.isInteger(observedQuantity)||observedQuantity<0||observedQuantity>100000||(result==="hold"&&!holdReason.trim())||(result==="confirmed"&&(!identityMatched||!conditionMatched||observedQuantity!==product.quantity))){setError("数量、一致の確認、保留理由を確認してください。");return;}
-    const body={result,observedQuantity,identityMatched,conditionMatched,observedCondition:observedCondition.trim()||null,holdReason:result==="hold"?holdReason.trim():null,expectedVersion:checks[0]?.version??0};
-    const fingerprint=JSON.stringify(body);if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
+    const input={result,observedQuantity,identityMatched,conditionMatched,observedCondition:observedCondition.trim()||null,holdReason:result==="hold"?holdReason.trim():null};
+    const fingerprint=JSON.stringify(input);
+    let operation=pending.current;
+    if(!operation||operation.fingerprint!==fingerprint){operation={fingerprint,key:crypto.randomUUID(),body:{...input,expectedVersion:checks[0]?.version??0}};pending.current=operation;}
     setBusy(true);setError("");
     try{
-      await resources.createProductReceiptCheck(visitId,product.id,body,pending.current.key);
+      await resources.createProductReceiptCheck(visitId,product.id,operation.body,operation.key);
       pending.current=null;setHoldReason("");
       try{await reload();}catch{setError("現物照合は保存されましたが、履歴を取得できませんでした。照合履歴を再読込して確認してください。");}
     }

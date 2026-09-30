@@ -165,6 +165,86 @@ it("reports an acknowledged receipt hold as saved when only its readback fails",
   expect(create).toHaveBeenCalledOnce();
 });
 
+it("reuses the original offer version and idempotency key after an uncertain response",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-offer-replay",visitId:"visit-offer-replay",productName:"提示再送確認品",quantity:1,conditionNote:null,accessoriesNote:null,status:"ready",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const offer:ProductOfferDto={id:"offer-replay",productId:product.id,version:1,priceYen:8500,terms:"現物確認後",expiresAt:null,presentedByMembershipId:"assessor-1",presentedAt:"2026-09-30T01:00:00Z",responses:[]};
+  let offers:ProductOfferDto[]=[];
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockResolvedValue({items:[],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productOffers").mockImplementation(async()=>({items:offers}));
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  const create=vi.spyOn(resources,"createProductOffer").mockImplementationOnce(async()=>{offers=[offer];throw new Error("response lost");}).mockResolvedValue(offer);
+  render(<VisitProducts visitId="visit-offer-replay"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  await user.type(await screen.findByRole("spinbutton",{name:"提示額（円）"}),"8500");
+  await user.type(screen.getByRole("textbox",{name:"条件（個人情報は入力しない）"}),"現物確認後");
+  await user.click(screen.getByRole("button",{name:"提示を記録"}));
+  expect(await screen.findByText("提示 1")).toBeInTheDocument();
+  expect(screen.getByText(/提示の保存結果を確認できませんでした/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"提示を記録"}));
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(create.mock.calls[1]).toEqual(create.mock.calls[0]);
+  expect(create.mock.calls[1]?.[2]).toMatchObject({expectedVersion:0});
+});
+
+it("reuses the original receipt version and idempotency key after an uncertain response",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-receipt-replay",visitId:"visit-receipt-replay",productName:"照合再送確認品",quantity:1,conditionNote:null,accessoriesNote:null,status:"ready",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const check:ProductReceiptCheckDto={id:"check-replay",productId:product.id,version:1,result:"hold",observedQuantity:1,identityMatched:false,conditionMatched:false,observedCondition:null,holdReason:"状態が一致しない",monocleTransferStatus:"not_sent",checkedByMembershipId:"assessor-1",checkedAt:"2026-09-30T02:00:00Z"};
+  let checks:ProductReceiptCheckDto[]=[];
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockResolvedValue({items:[],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productOffers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productReceiptChecks").mockImplementation(async()=>({items:checks}));
+  const create=vi.spyOn(resources,"createProductReceiptCheck").mockImplementationOnce(async()=>{checks=[check];throw new Error("response lost");}).mockResolvedValue(check);
+  render(<VisitProducts visitId="visit-receipt-replay"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  await user.type(await screen.findByRole("textbox",{name:"保留理由"}),"状態が一致しない");
+  await user.click(screen.getByRole("button",{name:"保留を記録"}));
+  expect(await screen.findByText("照合 1: 保留")).toBeInTheDocument();
+  expect(screen.getByText(/現物照合の保存結果を確認できませんでした/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"保留を記録"}));
+  expect(create).toHaveBeenCalledTimes(2);
+  expect(create.mock.calls[1]).toEqual(create.mock.calls[0]);
+  expect(create.mock.calls[1]?.[2]).toMatchObject({expectedVersion:0});
+});
+
+it("reuses the original customer response version and idempotency key after an uncertain response",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-response-replay",visitId:"visit-response-replay",productName:"回答再送確認品",quantity:1,conditionNote:null,accessoriesNote:null,status:"ready",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const answer:ProductOfferDto["responses"][number]={id:"response-replay",offerId:"offer-response-replay",version:1,response:"accepted",note:"承諾を確認",recordedByMembershipId:"assessor-1",recordedAt:"2026-09-30T02:00:00Z"};
+  let offer:ProductOfferDto={id:"offer-response-replay",productId:product.id,version:1,priceYen:8500,terms:"現物確認後",expiresAt:null,presentedByMembershipId:"assessor-1",presentedAt:"2026-09-30T01:00:00Z",responses:[]};
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockResolvedValue({items:[],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productOffers").mockImplementation(async()=>({items:[offer]}));
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  const record=vi.spyOn(resources,"recordProductOfferResponse").mockImplementationOnce(async()=>{offer={...offer,responses:[answer]};throw new Error("response lost");}).mockResolvedValue(answer);
+  render(<VisitProducts visitId="visit-response-replay"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  await user.selectOptions(await screen.findByRole("combobox",{name:"顧客回答"}),"accepted");
+  await user.type(screen.getByRole("textbox",{name:"回答メモ（個人情報は入力しない）"}),"承諾を確認");
+  await user.click(screen.getByRole("button",{name:"回答を記録"}));
+  expect(await screen.findByText(/回答 1: 承諾/)).toBeInTheDocument();
+  expect(screen.getByText(/顧客回答の保存結果を確認できませんでした/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"回答を記録"}));
+  expect(record).toHaveBeenCalledTimes(2);
+  expect(record.mock.calls[1]).toEqual(record.mock.calls[0]);
+  expect(record.mock.calls[1]?.[3]).toMatchObject({expectedResponseVersion:0});
+});
+
 it("attaches only a confirmed same-branch market result to a manager consultation",async()=>{
   const user=userEvent.setup();
   const product:VisitProductDto={id:"product-3",visitId:"visit-3",productName:"匿名商品",quantity:1,conditionNote:null,accessoriesNote:null,status:"draft",lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
