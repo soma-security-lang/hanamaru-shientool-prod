@@ -146,7 +146,8 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
 }
 
 const responseLabels:Record<ProductOfferResponseDto["response"],string>={pending:"回答待ち",accepted:"承諾",declined:"辞退",counteroffer:"再提案の希望"};
-function ProductOffers({visitId,product,receiptConfirmed}:{visitId:string;product:VisitProductDto;receiptConfirmed:boolean}){
+type ReceiptStatus="loading"|"error"|"open"|"confirmed";
+function ProductOffers({visitId,product,receiptStatus}:{visitId:string;product:VisitProductDto;receiptStatus:ReceiptStatus}){
   const [offers,setOffers]=useState<ProductOfferDto[]>([]);
   const [price,setPrice]=useState("");
   const [terms,setTerms]=useState("");
@@ -154,13 +155,14 @@ function ProductOffers({visitId,product,receiptConfirmed}:{visitId:string;produc
   const [response,setResponse]=useState<ProductOfferResponseDto["response"]>("pending");
   const [responseNote,setResponseNote]=useState("");
   const [loading,setLoading]=useState(true);
+  const [historyLoadError,setHistoryLoadError]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const pending=useRef<{body:string;key:string}|null>(null);
-  async function reload(){const result=await resources.productOffers(visitId,product.id);setOffers(result.items);}
+  async function reload(){try{const result=await resources.productOffers(visitId,product.id);setOffers(result.items);setHistoryLoadError(false);}catch(cause){setHistoryLoadError(true);throw cause;}}
   useEffect(()=>{let live=true;void resources.productOffers(visitId,product.id)
-    .then(result=>{if(live)setOffers(result.items);})
-    .catch(()=>{if(live)setError("提示履歴を読み込めませんでした。再読込してください。");})
+    .then(result=>{if(live){setOffers(result.items);setHistoryLoadError(false);}})
+    .catch(()=>{if(live){setHistoryLoadError(true);setError("提示履歴を読み込めませんでした。再読込してください。");}})
     .finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[visitId,product.id]);
   async function present(event:React.FormEvent){
     event.preventDefault();const amount=Number(price);
@@ -169,44 +171,53 @@ function ProductOffers({visitId,product,receiptConfirmed}:{visitId:string;produc
     const body={priceYen:amount,terms:terms.trim(),expiresAt:expiry?.toISOString()??null,expectedVersion:offers[0]?.version??0};
     const fingerprint=JSON.stringify(body);if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
     setBusy(true);setError("");
-    try{await resources.createProductOffer(visitId,product.id,body,pending.current.key);await reload();setPrice("");setTerms("");setExpiresAt("");pending.current=null;}
-    catch{setError("提示を保存できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined);}
+    try{
+      await resources.createProductOffer(visitId,product.id,body,pending.current.key);
+      pending.current=null;setPrice("");setTerms("");setExpiresAt("");
+      try{await reload();}catch{setError("提示は保存されましたが、履歴を取得できませんでした。提示履歴を再読込して確認してください。");}
+    }
+    catch{setError("提示の保存結果を確認できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined);}
     finally{setBusy(false);}
   }
   async function record(offer:ProductOfferDto){
     const body={response,note:responseNote.trim()||null,expectedResponseVersion:offer.responses.at(-1)?.version??0};
     const fingerprint=JSON.stringify({offerId:offer.id,...body});if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
     setBusy(true);setError("");
-    try{await resources.recordProductOfferResponse(visitId,product.id,offer.id,body,pending.current.key);await reload();setResponse("pending");setResponseNote("");pending.current=null;}
-    catch{setError("回答を保存できませんでした。履歴を再読込してから確認してください。");await reload().catch(()=>undefined);}
+    try{
+      await resources.recordProductOfferResponse(visitId,product.id,offer.id,body,pending.current.key);
+      pending.current=null;setResponse("pending");setResponseNote("");
+      try{await reload();}catch{setError("顧客回答は保存されましたが、履歴を取得できませんでした。提示履歴を再読込して確認してください。");}
+    }
+    catch{setError("顧客回答の保存結果を確認できませんでした。履歴を再読込してから確認してください。");await reload().catch(()=>undefined);}
     finally{setBusy(false);}
   }
   return <section className={styles.consultations} aria-label={`${product.productName}の顧客提示履歴`}>
-    <div className={styles.header}><h3>顧客への提示と回答</h3><button type="button" className={styles.secondary} onClick={()=>void reload().catch(()=>setError("再読込できませんでした。"))}>提示履歴を再読込</button></div>
+    <div className={styles.header}><h3>顧客への提示と回答</h3><button type="button" className={styles.secondary} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("提示履歴を再読込できませんでした。"))}>提示履歴を再読込</button></div>
     {loading?<p role="status">提示履歴を読み込んでいます。</p>:null}{error?<p role="alert" className={styles.error}>{error}</p>:null}
     {offers.map((offer,index)=><article key={offer.id} className={styles.consultationItem}>
       <p><strong>提示 {offer.version}</strong> · {offer.priceYen.toLocaleString()}円 · {new Date(offer.presentedAt).toLocaleString("ja-JP")}</p>
       <p>条件: {offer.terms}</p>{offer.expiresAt?<p>有効期限: {new Date(offer.expiresAt).toLocaleString("ja-JP")}</p>:null}
       {offer.responses.length?offer.responses.map(answer=><p key={answer.id}>回答 {answer.version}: {responseLabels[answer.response]} · {new Date(answer.recordedAt).toLocaleString("ja-JP")}{answer.note?` · ${answer.note}`:""}</p>):<p>顧客回答は未記録です。</p>}
-      {index===0&&!receiptConfirmed?<div className={styles.consultationActions}>
+      {index===0&&receiptStatus==="open"&&!historyLoadError?<div className={styles.consultationActions}>
         <label>顧客回答<select value={response} onChange={event=>setResponse(event.target.value as ProductOfferResponseDto["response"])}>{Object.entries(responseLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
         <label>回答メモ（個人情報は入力しない）<textarea maxLength={1000} value={responseNote} onChange={event=>setResponseNote(event.target.value)}/></label>
         <button type="button" className={styles.primary} disabled={busy} onClick={()=>void record(offer)}>回答を記録</button>
       </div>:null}
     </article>)}
-    {!loading&&offers.length===0?<p>顧客への提示はまだありません。</p>:null}
-    {receiptConfirmed?<p>現物の受領確認済みです。提示と回答の履歴はここで確認できます。</p>:null}
-    {product.status==="ready"&&!receiptConfirmed?<form className={styles.form} onSubmit={event=>void present(event)}>
+    {!loading&&!historyLoadError&&offers.length===0?<p>顧客への提示はまだありません。</p>:null}
+    {receiptStatus==="confirmed"?<p>現物の受領確認済みです。提示と回答の履歴はここで確認できます。</p>:null}
+    {receiptStatus==="error"?<p role="status">現物照合履歴を確認できないため、提示と顧客回答の追加を停止しています。照合履歴を再読込してください。</p>:null}
+    {product.status==="ready"&&receiptStatus==="open"&&!loading&&!historyLoadError?<form className={styles.form} onSubmit={event=>void present(event)}>
       <h4>新しい提示を記録</h4><p>以前の提示は残ります。上長の承認額を超える提示は保存できません。</p>
       <label>提示額（円）<input required type="number" min={0} step={1} value={price} onChange={event=>setPrice(event.target.value)}/></label>
       <label>条件（個人情報は入力しない）<textarea required maxLength={1000} value={terms} onChange={event=>setTerms(event.target.value)}/></label>
       <label>有効期限（任意）<input type="datetime-local" value={expiresAt} onChange={event=>setExpiresAt(event.target.value)}/></label>
       <button type="submit" className={styles.primary} disabled={busy}>{busy?"保存中…":"提示を記録"}</button>
-    </form>:!receiptConfirmed?<p>上長の判断が完了すると提示を記録できます。</p>:null}
+    </form>:product.status!=="ready"&&receiptStatus==="open"?<p>上長の判断が完了すると提示を記録できます。</p>:null}
   </section>;
 }
 
-function ProductReceiptChecks({visitId,product,onConfirmed}:{visitId:string;product:VisitProductDto;onConfirmed:(productId:string)=>void}){
+function ProductReceiptChecks({visitId,product,onStatus}:{visitId:string;product:VisitProductDto;onStatus:(productId:string,status:ReceiptStatus)=>void}){
   const [checks,setChecks]=useState<ProductReceiptCheckDto[]>([]);
   const [result,setResult]=useState<"hold"|"confirmed">("hold");
   const [quantity,setQuantity]=useState(String(product.quantity));
@@ -215,26 +226,31 @@ function ProductReceiptChecks({visitId,product,onConfirmed}:{visitId:string;prod
   const [observedCondition,setObservedCondition]=useState("");
   const [holdReason,setHoldReason]=useState("");
   const [loading,setLoading]=useState(true);
+  const [historyLoadError,setHistoryLoadError]=useState(false);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const pending=useRef<{body:string;key:string}|null>(null);
-  async function reload(){const response=await resources.productReceiptChecks(visitId,product.id);setChecks(response.items);if(response.items[0]?.result==="confirmed")onConfirmed(product.id);}
+  async function reload(){try{const response=await resources.productReceiptChecks(visitId,product.id);setChecks(response.items);setHistoryLoadError(false);onStatus(product.id,response.items[0]?.result==="confirmed"?"confirmed":"open");}catch(cause){setHistoryLoadError(true);onStatus(product.id,"error");throw cause;}}
   useEffect(()=>{let live=true;void resources.productReceiptChecks(visitId,product.id)
-    .then(response=>{if(live){setChecks(response.items);if(response.items[0]?.result==="confirmed")onConfirmed(product.id);}})
-    .catch(()=>{if(live)setError("現物照合履歴を読み込めませんでした。再読込してください。");})
-    .finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[visitId,product.id,onConfirmed]);
+    .then(response=>{if(live){setChecks(response.items);setHistoryLoadError(false);onStatus(product.id,response.items[0]?.result==="confirmed"?"confirmed":"open");}})
+    .catch(()=>{if(live){setHistoryLoadError(true);onStatus(product.id,"error");setError("現物照合履歴を読み込めませんでした。再読込してください。");}})
+    .finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[visitId,product.id,onStatus]);
   async function save(event:React.FormEvent){
     event.preventDefault();const observedQuantity=Number(quantity);
     if(!Number.isInteger(observedQuantity)||observedQuantity<0||observedQuantity>100000||(result==="hold"&&!holdReason.trim())||(result==="confirmed"&&(!identityMatched||!conditionMatched||observedQuantity!==product.quantity))){setError("数量、一致の確認、保留理由を確認してください。");return;}
     const body={result,observedQuantity,identityMatched,conditionMatched,observedCondition:observedCondition.trim()||null,holdReason:result==="hold"?holdReason.trim():null,expectedVersion:checks[0]?.version??0};
     const fingerprint=JSON.stringify(body);if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
     setBusy(true);setError("");
-    try{await resources.createProductReceiptCheck(visitId,product.id,body,pending.current.key);await reload();pending.current=null;setHoldReason("");}
-    catch{setError("現物照合を保存できませんでした。履歴を再読込して二重登録がないか確認してください。");await reload().catch(()=>undefined);}
+    try{
+      await resources.createProductReceiptCheck(visitId,product.id,body,pending.current.key);
+      pending.current=null;setHoldReason("");
+      try{await reload();}catch{setError("現物照合は保存されましたが、履歴を取得できませんでした。照合履歴を再読込して確認してください。");}
+    }
+    catch{setError("現物照合の保存結果を確認できませんでした。履歴を再読込して二重登録がないか確認してください。");await reload().catch(()=>undefined);}
     finally{setBusy(false);}
   }
   return <section className={styles.consultations} aria-label={`${product.productName}の現物照合`}>
-    <div className={styles.header}><h3>現物照合・受領</h3><button type="button" className={styles.secondary} onClick={()=>void reload().catch(()=>setError("再読込できませんでした。"))}>照合履歴を再読込</button></div>
+    <div className={styles.header}><h3>現物照合・受領</h3><button type="button" className={styles.secondary} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("照合履歴を再読込できませんでした。"))}>照合履歴を再読込</button></div>
     {loading?<p role="status">照合履歴を読み込んでいます。</p>:null}{error?<p role="alert" className={styles.error}>{error}</p>:null}
     {checks.map(check=><article key={check.id} className={styles.consultationItem}>
       <p><strong>照合 {check.version}: {check.result==="confirmed"?"受領確認済み":"保留"}</strong> · {new Date(check.checkedAt).toLocaleString("ja-JP")}</p>
@@ -242,8 +258,8 @@ function ProductReceiptChecks({visitId,product,onConfirmed}:{visitId:string;prod
       {check.observedCondition?<p>現物の状態: {check.observedCondition}</p>:null}{check.holdReason?<p>保留理由: {check.holdReason}</p>:null}
       <p>MONOCLEへの商品登録: 未送信</p>
     </article>)}
-    {!loading&&checks.length===0?<p>現物照合はまだありません。</p>:null}
-    {product.status==="ready"&&checks[0]?.result!=="confirmed"?<form className={styles.form} onSubmit={event=>void save(event)}>
+    {!loading&&!historyLoadError&&checks.length===0?<p>現物照合はまだありません。</p>:null}
+    {product.status==="ready"&&!loading&&!historyLoadError&&checks[0]?.result!=="confirmed"?<form className={styles.form} onSubmit={event=>void save(event)}>
       <h4>現物を確認する</h4>
       <label>照合結果<select value={result} onChange={event=>setResult(event.target.value as "hold"|"confirmed")}><option value="hold">差異・確認待ちで保留</option><option value="confirmed">受領を確認</option></select></label>
       <label>現物の数量<input type="number" min={0} max={100000} value={quantity} onChange={event=>setQuantity(event.target.value)}/></label>
@@ -264,7 +280,7 @@ export function VisitProducts({visitId}:{visitId:string}){
   const [pdfExcerpt,setPdfExcerpt]=useState("");
   const pdfSourceRef=useRef<HTMLTextAreaElement|null>(null);
   const [pdfLoadError,setPdfLoadError]=useState(false);
-  const [confirmedReceiptProductIds,setConfirmedReceiptProductIds]=useState<string[]>([]);
+  const [receiptStatusByProductId,setReceiptStatusByProductId]=useState<Record<string,ReceiptStatus>>({});
   const [form,setForm]=useState(empty);
   const [editing,setEditing]=useState<VisitProductDto|null>(null);
   const [expandedProductId,setExpandedProductId]=useState<string|null>(null);
@@ -272,7 +288,7 @@ export function VisitProducts({visitId}:{visitId:string}){
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState("");
   const pendingOperation=useRef<{body:string;key:string}|null>(null);
-  const markReceiptConfirmed=useCallback((productId:string)=>setConfirmedReceiptProductIds(current=>current.includes(productId)?current:[...current,productId]),[]);
+  const updateReceiptStatus=useCallback((productId:string,status:ReceiptStatus)=>setReceiptStatusByProductId(current=>current[productId]===status?current:{...current,[productId]:status}),[]);
 
   async function refresh(){
     const result=await resources.visitProducts(visitId);
@@ -335,8 +351,8 @@ export function VisitProducts({visitId}:{visitId:string}){
         <p>進行状態: {product.status==="draft"?"下書き":product.status==="research_hold"?"相場調査保留":product.status==="research_pending"?"相談中":product.status==="ready"?"判断済み":product.status}</p>
         {product.sourceExtractionId?<p>PDFの査定品を原本と照合して登録 · 該当部分: {product.sourceAppraisalExcerpt??"旧記録・抜粋未登録"}（抽出ID: {product.sourceExtractionId}）</p>:<p>商品情報は手入力です。</p>}
         <ProductResearchHold visitId={visitId} product={product} onChanged={refresh}/>
-        <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>setExpandedProductId(current=>current===product.id?null:product.id)} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
-        {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptConfirmed={confirmedReceiptProductIds.includes(product.id)}/><ProductReceiptChecks visitId={visitId} product={product} onConfirmed={markReceiptConfirmed}/></>:null}
+        <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>{setReceiptStatusByProductId(current=>({...current,[product.id]:"loading"}));setExpandedProductId(current=>current===product.id?null:product.id);}} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
+        {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptStatus={receiptStatusByProductId[product.id]??"loading"}/><ProductReceiptChecks visitId={visitId} product={product} onStatus={updateReceiptStatus}/></>:null}
       </article>)}
       {!loading&&products.length===0?<p className={styles.empty}>商品カードはありません。複数の商品を一件ずつ登録できます。</p>:null}
     </div>
