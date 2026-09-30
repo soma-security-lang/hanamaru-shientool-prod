@@ -1386,7 +1386,13 @@ export class BackendService {
     return this.read(ctx,"visit.product.list","visit_product",async tx=>{
       await this.assertVisitAccess(tx,ctx,visitId);
       const result=await tx.query(
-        "SELECT id,visit_id,product_name,quantity,condition_note,accessories_note,source_extraction_id,status,lock_version,created_by_membership_id,updated_by_membership_id,created_at,updated_at FROM visit_products WHERE organization_id=$1 AND visit_id=$2 ORDER BY created_at,id",
+        `SELECT p.id,p.visit_id,p.product_name,p.quantity,p.condition_note,p.accessories_note,p.source_extraction_id,p.status,p.lock_version,
+          p.research_hold_category,p.research_hold_reason,p.research_hold_assignee_id,p.research_hold_opened_at,
+          p.research_hold_resolved_at,p.research_hold_resolution_note,u.display_name AS research_hold_assignee_name,
+          p.created_by_membership_id,p.updated_by_membership_id,p.created_at,p.updated_at
+         FROM visit_products p LEFT JOIN memberships m ON m.organization_id=p.organization_id AND m.id=p.research_hold_assignee_id
+         LEFT JOIN users u ON u.id=m.user_id
+         WHERE p.organization_id=$1 AND p.visit_id=$2 ORDER BY p.created_at,p.id`,
         [ctx.organizationId,visitId],
       );
       return {items:result.rows.map(row=>visitProductDto(row))};
@@ -1436,6 +1442,50 @@ export class BackendService {
       );
       if(!result.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"商品情報が更新済みです。再読み込みしてください");
       return {status:200,body:visitProductDto(result.rows[0]),resourceId:productId};
+    });
+  }
+  async holdVisitProduct(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const category=String(b.category??"");
+    if(!["no_candidates","ambiguous","search_failed"].includes(category))throw invalid("保留区分を確認してください");
+    const reason=text(b.reason,1000,"reason");
+    const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    return this.write(ctx,"visit.product.research_hold",key,b,"visit.product.research_hold","visit_product",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const result=await tx.query(
+        `UPDATE visit_products SET status='research_hold',research_hold_category=$4,research_hold_reason=$5,
+          research_hold_assignee_id=$6,research_hold_opened_at=now(),research_hold_resolved_at=NULL,
+          research_hold_resolution_note=NULL,updated_by_membership_id=$6,lock_version=lock_version+1
+         WHERE organization_id=$1 AND visit_id=$2 AND id=$3 AND status='draft' AND lock_version=$7 RETURNING *`,
+        [ctx.organizationId,visitId,productId,category,reason,ctx.membershipId,expected],
+      );
+      if(!result.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"商品が更新済みか、保留できない状態です。再読み込みしてください");
+      return {status:200,body:visitProductDto(result.rows[0]),resourceId:productId,auditMetadata:{category,assignedMembershipId:ctx.membershipId}};
+    });
+  }
+  async resumeVisitProductResearch(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const resolution=text(b.resolutionNote,1000,"resolutionNote");
+    const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    return this.write(ctx,"visit.product.research_resume",key,b,"visit.product.research_resume","visit_product",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const current=await tx.query<{branch_id:string;status:string;lock_version:string;research_hold_assignee_id:string|null}>(
+        "SELECT branch_id,status,lock_version,research_hold_assignee_id FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3 FOR UPDATE",
+        [ctx.organizationId,visitId,productId],
+      );
+      const row=current.rows[0];
+      if(!row)throw notFound();
+      const managerScope=ctx.authorizationScopes.some(scope=>scope.role==="manager"&&(
+        scope.scopeType==="organization"&&scope.scopeId===ctx.organizationId || scope.scopeType==="branch"&&scope.scopeId===row.branch_id
+      ));
+      if(row.research_hold_assignee_id!==ctx.membershipId&&!managerScope)throw denied();
+      if(row.status!=="research_hold"||Number(row.lock_version)!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"保留状態が更新済みです。再読み込みしてください");
+      const result=await tx.query(
+        `UPDATE visit_products SET status='draft',research_hold_resolved_at=now(),research_hold_resolution_note=$4,
+          updated_by_membership_id=$5,lock_version=lock_version+1
+         WHERE organization_id=$1 AND visit_id=$2 AND id=$3 RETURNING *`,
+        [ctx.organizationId,visitId,productId,resolution,ctx.membershipId],
+      );
+      if(!result.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"保留状態が更新済みです。再読み込みしてください");
+      return {status:200,body:visitProductDto(result.rows[0]),resourceId:productId,auditMetadata:{resolvedByMembershipId:ctx.membershipId}};
     });
   }
   async consultationManagers(ctx:RequestContext,visitId:string){

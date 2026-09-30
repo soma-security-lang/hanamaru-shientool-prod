@@ -29,6 +29,8 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/products",async r=>service.listVisitProducts(r.auth,r.params.id));
   app.post<{Params:{id:string}}>("/api/v1/visits/:id/products",async(r,reply)=>send(reply,service.createVisitProduct(r.auth,r.params.id,key(r),body(r))));
   app.patch<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId",async(r,reply)=>send(reply,service.updateVisitProduct(r.auth,r.params.id,r.params.productId,key(r),body(r))));
+  app.post<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/research-hold",async(r,reply)=>send(reply,service.holdVisitProduct(r.auth,r.params.id,r.params.productId,key(r),body(r))));
+  app.post<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/research-resume",async(r,reply)=>send(reply,service.resumeVisitProductResearch(r.auth,r.params.id,r.params.productId,key(r),body(r))));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/consultation-managers",async r=>service.consultationManagers(r.auth,r.params.id));
   app.get<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/consultations",async r=>service.listProductConsultations(r.auth,r.params.id,r.params.productId));
   app.post<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/consultations",async(r,reply)=>send(reply,service.createProductConsultation(r.auth,r.params.id,r.params.productId,key(r),body(r))));

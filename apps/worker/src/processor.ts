@@ -2085,7 +2085,7 @@ export class WorkerProcessor {
         [job.organization_id, prepared.visitId],
       );
       await tx.query(
-        "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,source_extraction_id=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
+        "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,source_extraction_id=NULL,research_hold_reason=NULL,research_hold_resolution_note=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
         [job.organization_id, prepared.visitId],
       );
       await tx.query(

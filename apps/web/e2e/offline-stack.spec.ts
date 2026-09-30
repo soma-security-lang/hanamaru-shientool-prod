@@ -125,6 +125,31 @@ test("visit product card saves, updates and reappears after reload",async({page}
   await expect(card.getByText("3点")).toBeVisible();
 });
 
+test("market research hold survives reload and requires a recorded result to resume",async({page})=>{
+  test.setTimeout(90_000);
+  const productName=`Offline 調査保留 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await expect(card).toBeVisible();
+  await card.getByRole("combobox",{name:"保留区分"}).selectOption("search_failed");
+  await card.getByRole("textbox",{name:"調査が必要な理由"}).fill("検索サービスが失敗したため手動調査");
+  await card.getByRole("button",{name:"自分の担当で保留する"}).click();
+  await expect(card.getByText("進行状態: 相場調査保留")).toBeVisible();
+  await page.reload();
+  await expect(card.getByText("保留理由: 検索サービスが失敗したため手動調査")).toBeVisible();
+  await expect(card.getByRole("button",{name:"修正する"})).toHaveCount(0);
+  await card.getByRole("textbox",{name:"調査結果"}).fill("型番を確認し別の公開相場で照合した");
+  await card.getByRole("button",{name:"結果を記録して再開"}).click();
+  await expect(card.getByText("進行状態: 下書き")).toBeVisible();
+  await page.reload();
+  await expect(card.getByText("調査結果: 型番を確認し別の公開相場で照合した")).toBeVisible();
+  await expect(card.getByRole("button",{name:"修正する"})).toBeVisible();
+});
+
 test("audio registration reaches transcript confirmation and six-area AI review",async({page})=>{
   test.setTimeout(180_000);expect(visitId).not.toBe("");await page.goto(`${webBase}/visits/${visitId}/transcription`);
   await page.getByRole("checkbox",{name:/録音同意/}).check();

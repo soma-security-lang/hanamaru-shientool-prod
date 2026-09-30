@@ -6,6 +6,46 @@ import styles from "./VisitProducts.module.css";
 
 const empty={productName:"",quantity:"1",conditionNote:"",accessoriesNote:""};
 const consultationStatus:Record<ProductConsultationDto["status"],string>={pending:"回答待ち",approved:"承認",conditional:"条件付き承認",returned:"差戻し",cancelled:"取消"};
+const researchHoldLabels={no_candidates:"相場候補なし",ambiguous:"候補が曖昧",search_failed:"検索失敗"} as const;
+
+function ProductResearchHold({visitId,product,onChanged}:{visitId:string;product:VisitProductDto;onChanged:()=>Promise<void>}){
+  const [category,setCategory]=useState<keyof typeof researchHoldLabels>("no_candidates");
+  const [reason,setReason]=useState("");
+  const [resolution,setResolution]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  async function hold(event:React.FormEvent){
+    event.preventDefault();if(!reason.trim()){setError("調査が必要な理由を入力してください。");return;}
+    setBusy(true);setError("");
+    try{await resources.holdVisitProduct(visitId,product.id,{category,reason:reason.trim(),expectedLockVersion:product.lockVersion});await onChanged();setReason("");}
+    catch{setError("保留を保存できませんでした。商品カードを再読込し、登録済みか確認してください。");await onChanged().catch(()=>undefined);}
+    finally{setBusy(false);}
+  }
+  async function resume(event:React.FormEvent){
+    event.preventDefault();if(!resolution.trim()){setError("調査結果を入力してください。");return;}
+    setBusy(true);setError("");
+    try{await resources.resumeVisitProductResearch(visitId,product.id,{resolutionNote:resolution.trim(),expectedLockVersion:product.lockVersion});await onChanged();setResolution("");}
+    catch{setError("調査再開を保存できませんでした。担当と最新状態を確認してください。");await onChanged().catch(()=>undefined);}
+    finally{setBusy(false);}
+  }
+  return <section className={styles.consultationItem} aria-label={`${product.productName}の相場調査`}>
+    {product.researchHoldCategory?<p>相場調査: {researchHoldLabels[product.researchHoldCategory]} · 担当: {product.researchHoldAssigneeName??product.researchHoldAssigneeId??"未表示"}</p>:null}
+    {product.researchHoldReason?<p>保留理由: {product.researchHoldReason}</p>:null}
+    {product.researchHoldResolvedAt?<p>調査結果: {product.researchHoldResolutionNote??"記録なし"}</p>:null}
+    {product.status==="draft"?<form className={styles.consultationActions} onSubmit={event=>void hold(event)}>
+      <h4>相場調査を保留する</h4><p>候補が不足・曖昧・検索失敗の場合、推測で確定せず自分の担当として残します。上長判断が必要なら下の相談を利用してください。</p>
+      <label>保留区分<select value={category} onChange={event=>setCategory(event.target.value as keyof typeof researchHoldLabels)}><option value="no_candidates">相場候補なし</option><option value="ambiguous">候補が曖昧</option><option value="search_failed">検索失敗</option></select></label>
+      <label>調査が必要な理由<textarea required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)}/></label>
+      <button type="submit" className={styles.secondary} disabled={busy}>自分の担当で保留する</button>
+    </form>:null}
+    {product.status==="research_hold"?<form className={styles.consultationActions} onSubmit={event=>void resume(event)}>
+      <p>保留中は上長相談や顧客提示へ進めません。担当者または権限のある上長が調査結果を記録して再開します。</p>
+      <label>調査結果<textarea required maxLength={1000} value={resolution} onChange={event=>setResolution(event.target.value)}/></label>
+      <button type="submit" className={styles.secondary} disabled={busy}>結果を記録して再開</button>
+    </form>:null}
+    {error?<p className={styles.error} role="alert">{error}</p>:null}
+  </section>;
+}
 
 function ProductConsultations({visitId,product,onChanged}:{visitId:string;product:VisitProductDto;onChanged:()=>Promise<void>}){
   const [items,setItems]=useState<ProductConsultationDto[]>([]);
@@ -269,8 +309,9 @@ export function VisitProducts({visitId}:{visitId:string}){
       {products.map((product,index)=><article key={product.id} className={styles.card}>
         <div className={styles.cardHead}><strong>{index+1}. {product.productName}</strong><span>{product.quantity}点</span></div>
         <dl><div><dt>状態</dt><dd>{product.conditionNote??"未入力"}</dd></div><div><dt>付属品</dt><dd>{product.accessoriesNote??"未入力"}</dd></div></dl>
-        <p>進行状態: {product.status==="draft"?"下書き":product.status==="research_pending"?"相談中":product.status==="ready"?"判断済み":product.status}</p>
+        <p>進行状態: {product.status==="draft"?"下書き":product.status==="research_hold"?"相場調査保留":product.status==="research_pending"?"相談中":product.status==="ready"?"判断済み":product.status}</p>
         {product.sourceExtractionId?<p>PDFの査定品を原本と照合して登録（抽出ID: {product.sourceExtractionId}）</p>:<p>商品情報は手入力です。</p>}
+        <ProductResearchHold visitId={visitId} product={product} onChanged={refresh}/>
         <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>setExpandedProductId(current=>current===product.id?null:product.id)} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
         {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptConfirmed={confirmedReceiptProductIds.includes(product.id)}/><ProductReceiptChecks visitId={visitId} product={product} onConfirmed={markReceiptConfirmed}/></>:null}
       </article>)}

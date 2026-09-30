@@ -109,3 +109,28 @@ it("does not present an unverified PDF appraisal field as a confirmed source",as
   expect(screen.queryByText(/確定済みPDFの査定品/)).not.toBeInTheDocument();
   expect(screen.queryByRole("checkbox",{name:/この査定品欄を原本と照合し/})).not.toBeInTheDocument();
 });
+
+it("shows a named research hold and requires a result before reopening the product",async()=>{
+  const user=userEvent.setup();
+  let product:VisitProductDto={id:"product-hold",visitId:"visit-hold",productName:"型番不明の時計",quantity:1,conditionNote:null,accessoriesNote:null,status:"draft",lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  vi.spyOn(resources,"visitProducts").mockImplementation(async()=>({items:[product],hasMore:false,nextCursor:null}));
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  const hold=vi.spyOn(resources,"holdVisitProduct").mockImplementation(async(_visitId,_productId,body)=>{
+    product={...product,status:"research_hold",lockVersion:2,researchHoldCategory:body.category,researchHoldReason:body.reason,researchHoldAssigneeId:"member-1",researchHoldAssigneeName:"担当者",researchHoldOpenedAt:"2026-09-30T01:00:00Z"};return product;
+  });
+  const resume=vi.spyOn(resources,"resumeVisitProductResearch").mockImplementation(async(_visitId,_productId,body)=>{
+    product={...product,status:"draft",lockVersion:3,researchHoldResolvedAt:"2026-09-30T02:00:00Z",researchHoldResolutionNote:body.resolutionNote};return product;
+  });
+  render(<VisitProducts visitId="visit-hold"/>);
+  await screen.findByText(/進行状態: 下書き/);
+  await user.selectOptions(screen.getByRole("combobox",{name:"保留区分"}),"ambiguous");
+  await user.type(screen.getByRole("textbox",{name:"調査が必要な理由"}),"候補が複数で型番が一致しない");
+  await user.click(screen.getByRole("button",{name:"自分の担当で保留する"}));
+  expect(hold).toHaveBeenCalledWith("visit-hold","product-hold",expect.objectContaining({category:"ambiguous",expectedLockVersion:1}));
+  expect(await screen.findByText(/進行状態: 相場調査保留/)).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"修正する"})).not.toBeInTheDocument();
+  await user.type(screen.getByRole("textbox",{name:"調査結果"}),"型番を原本で確認した");
+  await user.click(screen.getByRole("button",{name:"結果を記録して再開"}));
+  expect(resume).toHaveBeenCalledWith("visit-hold","product-hold",expect.objectContaining({expectedLockVersion:2,resolutionNote:"型番を原本で確認した"}));
+  expect(await screen.findByText(/調査結果: 型番を原本で確認した/)).toBeInTheDocument();
+});
