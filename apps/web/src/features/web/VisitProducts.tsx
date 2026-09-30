@@ -89,32 +89,32 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     event.preventDefault();if(loading||!historyReady||managerLoadError)return;const price=Number(proposedPrice);
     const due=dueAt?new Date(dueAt):null;
     if(!managerId||!Number.isSafeInteger(price)||price<0||!reason.trim()||(due&&(!Number.isFinite(due.getTime())||due.getTime()<=Date.now()))){setError("相談先、提示案、相談理由、回答期限を確認してください。");return;}
-    setBusy(true);setError("");
-    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim(),marketPriceResultId:priceResultId||null,dueAt:due?.toISOString()??null});await reload();await onChanged();setReason("");setProposedPrice("");setPriceResultId("");setDueAt("");}
-    catch{setError("相談を登録できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined)}
+    setBusy(true);setError("");let saved=false;
+    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim(),marketPriceResultId:priceResultId||null,dueAt:due?.toISOString()??null});saved=true;setReason("");setProposedPrice("");setPriceResultId("");setDueAt("");await reload();await onChanged();}
+    catch{setHistoryReady(false);setError(saved?"相談は保存済みですが、最新状態を確認できませんでした。相談を再読込してから続けてください。":"相談の保存結果を確認できませんでした。相談を再読込し、登録済みか確認してください。");}
     finally{setBusy(false)}
   }
   async function decide(item:ProductConsultationDto,decision:"approved"|"conditional"|"returned"){
     if(loading||!historyReady)return;
     const price=Number(approvedPrice);if(decision!=="returned"&&(!Number.isSafeInteger(price)||price<0)){setError("承認額を確認してください。");return;}
     if(decision!=="approved"&&!responseNote.trim()){setError("条件または差戻し理由を入力してください。");return;}
-    setBusy(true);setError("");
-    try{await resources.decideProductConsultation(visitId,product.id,item.id,{decision,approvedPriceYen:decision==="returned"?null:price,responseNote:responseNote.trim()||null,expectedLockVersion:item.lockVersion});await reload();await onChanged();setResponseNote("");setApprovedPrice("");}
-    catch{setError("回答を保存できませんでした。担当と版を再確認してください。");await reload().catch(()=>undefined)}
+    setBusy(true);setError("");let saved=false;
+    try{await resources.decideProductConsultation(visitId,product.id,item.id,{decision,approvedPriceYen:decision==="returned"?null:price,responseNote:responseNote.trim()||null,expectedLockVersion:item.lockVersion});saved=true;setResponseNote("");setApprovedPrice("");await reload();await onChanged();}
+    catch{setHistoryReady(false);setError(saved?"回答は保存済みですが、最新状態を確認できませんでした。相談を再読込してから続けてください。":"回答の保存結果を確認できませんでした。相談を再読込し、登録済みか確認してください。");}
     finally{setBusy(false)}
   }
   async function reassign(item:ProductConsultationDto){
     if(loading||!historyReady||managerLoadError)return;
     if(!nextManager||!reassignReason.trim()){setError("代理の上長と変更理由を入力してください。");return;}
-    setBusy(true);setError("");
-    try{await resources.reassignProductConsultation(visitId,product.id,item.id,{nextManagerId:nextManager,reason:reassignReason.trim(),expectedLockVersion:item.lockVersion});await reload();setNextManager("");setReassignReason("");}
-    catch{setError("担当変更ができませんでした。権限と最新状態を確認してください。");await reload().catch(()=>undefined)}
+    setBusy(true);setError("");let saved=false;
+    try{await resources.reassignProductConsultation(visitId,product.id,item.id,{nextManagerId:nextManager,reason:reassignReason.trim(),expectedLockVersion:item.lockVersion});saved=true;setNextManager("");setReassignReason("");await reload();}
+    catch{setHistoryReady(false);setError(saved?"担当変更は保存済みですが、最新状態を確認できませんでした。相談を再読込してから続けてください。":"担当変更の保存結果を確認できませんでした。相談を再読込し、登録済みか確認してください。");}
     finally{setBusy(false)}
   }
   const lastDecision=items[items.length-1];
   const returned=product.status==="draft"&&lastDecision?.status==="returned"?lastDecision:null;
   return <section className={styles.consultations} aria-label={`${product.productName}の上長相談`}>
-    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} disabled={busy||loading} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("相談履歴を再読込できませんでした。"))}>相談を再読込</button></div>
+    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} disabled={busy||loading} onClick={()=>void reload().then(()=>onChanged()).then(()=>setError("")).catch(()=>{setHistoryReady(false);setError("相談と商品の最新状態を再読込できませんでした。");})}>相談を再読込</button></div>
     {loading?<p role="status">相談履歴を読み込んでいます。</p>:null}{error?<p className={styles.error} role="alert">{error}</p>:null}
     {!loading&&!historyReady?<p className={styles.error} role="status">相談履歴が未確認です。再読込が成功するまで新規相談・回答・代理変更はできません。</p>:null}
     {managerLoadError?<p className={styles.error} role="status">相談先の上長を取得できませんでした。相談履歴は確認できます。新規相談・代理変更は再読込後に行ってください。</p>:null}
