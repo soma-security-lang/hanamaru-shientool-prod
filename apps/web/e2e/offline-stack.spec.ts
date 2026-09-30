@@ -101,6 +101,30 @@ test("PDF registration reaches confirmed visit preparation through API, worker a
   await page.getByRole("button",{name:"確認して準備を完了"}).click();await expect(page.getByRole("button",{name:"準備完了"})).toBeVisible();
 });
 
+test("visit product card saves, updates and reappears after reload",async({page})=>{
+  test.setTimeout(90_000);
+  const productName=`Offline 匿名商品 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await expect(products).toBeVisible();
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("spinbutton",{name:"数量"}).fill("2");
+  await products.getByRole("textbox",{name:"状態・傷など"}).fill("匿名テスト用の状態");
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await expect(card).toBeVisible();
+  await page.reload();
+  await expect(card).toBeVisible();
+  await card.getByRole("button",{name:"修正する"}).click();
+  await products.getByRole("spinbutton",{name:"数量"}).fill("3");
+  await products.getByRole("button",{name:"修正を保存"}).click();
+  await expect(card.getByText("3点")).toBeVisible();
+  await page.reload();
+  await expect(card).toBeVisible();
+  await expect(card.getByText("3点")).toBeVisible();
+});
+
 test("audio registration reaches transcript confirmation and six-area AI review",async({page})=>{
   test.setTimeout(180_000);expect(visitId).not.toBe("");await page.goto(`${webBase}/visits/${visitId}/transcription`);
   await page.getByRole("checkbox",{name:/録音同意/}).check();

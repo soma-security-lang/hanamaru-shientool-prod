@@ -127,7 +127,7 @@ function ProductOffers({visitId,product,receiptConfirmed}:{visitId:string;produc
       <p><strong>提示 {offer.version}</strong> · {offer.priceYen.toLocaleString()}円 · {new Date(offer.presentedAt).toLocaleString("ja-JP")}</p>
       <p>条件: {offer.terms}</p>{offer.expiresAt?<p>有効期限: {new Date(offer.expiresAt).toLocaleString("ja-JP")}</p>:null}
       {offer.responses.length?offer.responses.map(answer=><p key={answer.id}>回答 {answer.version}: {responseLabels[answer.response]} · {new Date(answer.recordedAt).toLocaleString("ja-JP")}{answer.note?` · ${answer.note}`:""}</p>):<p>顧客回答は未記録です。</p>}
-      {index===0?<div className={styles.consultationActions}>
+      {index===0&&!receiptConfirmed?<div className={styles.consultationActions}>
         <label>顧客回答<select value={response} onChange={event=>setResponse(event.target.value as ProductOfferResponseDto["response"])}>{Object.entries(responseLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
         <label>回答メモ（個人情報は入力しない）<textarea maxLength={1000} value={responseNote} onChange={event=>setResponseNote(event.target.value)}/></label>
         <button type="button" className={styles.primary} disabled={busy} onClick={()=>void record(offer)}>回答を記録</button>
