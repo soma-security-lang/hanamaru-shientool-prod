@@ -101,9 +101,12 @@ test("PDF registration reaches confirmed visit preparation through API, worker a
   await page.getByRole("button",{name:"確認して準備を完了"}).click();await expect(page.getByRole("button",{name:"準備完了"})).toBeVisible();
   await page.goto(`${webBase}/visits/${visitId}/import`);
   const products=page.getByRole("region",{name:"訪問する商品"});
-  await expect(products.getByText(/確定済みPDFの査定品: Anonymous watch and camera/)).toBeVisible();
+  const confirmedSource=products.getByRole("textbox",{name:"確定済みPDFの査定品"});
+  await expect(confirmedSource).toHaveValue("Anonymous watch and camera");
   await products.getByRole("checkbox",{name:/この査定品欄を原本と照合し/}).check();
-  await products.getByRole("textbox",{name:"PDFで確認した該当部分"}).fill("Anonymous watch");
+  await confirmedSource.evaluate((element)=>(element as HTMLTextAreaElement).setSelectionRange(0,"Anonymous watch".length));
+  await products.getByRole("button",{name:"選択部分を抜粋に入れる"}).click();
+  await expect(products.getByRole("textbox",{name:"PDFで確認した該当部分"})).toHaveValue("Anonymous watch");
   await products.getByRole("textbox",{name:"商品名"}).fill("Anonymous watch");
   await products.getByRole("button",{name:"商品を追加"}).click();
   await expect(products.getByText(/該当部分: Anonymous watch/)).toBeVisible();
