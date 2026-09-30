@@ -94,10 +94,15 @@ it("keeps the confirmed PDF appraisal text visible while a human creates a sourc
   vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
   const create=vi.spyOn(resources,"createVisitProduct").mockResolvedValue({} as VisitProductDto);
   render(<VisitProducts visitId="visit-pdf"/>);
-  expect(await screen.findByText(/確定済みPDFの査定品: 時計、カメラ/)).toBeInTheDocument();
+  const source=await screen.findByRole("textbox",{name:"確定済みPDFの査定品"}) as HTMLTextAreaElement;
+  expect(source).toHaveValue("時計、カメラ");
   await user.click(screen.getByRole("checkbox",{name:/この査定品欄を原本と照合し/}));
   expect(screen.getByRole("button",{name:"商品を追加"})).toBeDisabled();
-  await user.type(screen.getByRole("textbox",{name:"PDFで確認した該当部分"}),"時計");
+  await user.click(screen.getByRole("button",{name:"選択部分を抜粋に入れる"}));
+  expect(screen.getByRole("alert")).toHaveTextContent("査定品欄で該当部分を選択してください");
+  source.setSelectionRange(0,2);
+  await user.click(screen.getByRole("button",{name:"選択部分を抜粋に入れる"}));
+  expect(screen.getByRole("textbox",{name:"PDFで確認した該当部分"})).toHaveValue("時計");
   await user.type(screen.getByRole("textbox",{name:"商品名"}),"時計");
   await user.click(screen.getByRole("button",{name:"商品を追加"}));
   expect(create).toHaveBeenCalledWith("visit-pdf",expect.objectContaining({productName:"時計",sourceExtractionId:"extraction-1",sourceAppraisalExcerpt:"時計"}),expect.any(String));

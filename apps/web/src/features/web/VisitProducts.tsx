@@ -254,6 +254,7 @@ export function VisitProducts({visitId}:{visitId:string}){
   const [pdfItems,setPdfItems]=useState<{extractionId:string;text:string}|null>(null);
   const [citePdf,setCitePdf]=useState(false);
   const [pdfExcerpt,setPdfExcerpt]=useState("");
+  const pdfSourceRef=useRef<HTMLTextAreaElement|null>(null);
   const [pdfLoadError,setPdfLoadError]=useState(false);
   const [confirmedReceiptProductIds,setConfirmedReceiptProductIds]=useState<string[]>([]);
   const [form,setForm]=useState(empty);
@@ -288,6 +289,13 @@ export function VisitProducts({visitId}:{visitId:string}){
     setPdfExcerpt("");
     setForm({productName:product.productName,quantity:String(product.quantity),conditionNote:product.conditionNote??"",accessoriesNote:product.accessoriesNote??""});
     setError("");
+  }
+  function useSelectedPdfPassage(){
+    const source=pdfSourceRef.current;
+    const selected=source?.value.slice(source.selectionStart,source.selectionEnd).trim()??"";
+    if(!selected){setError("査定品欄で該当部分を選択してください。");return;}
+    if(selected.length>500){setError("該当部分は500文字以内で選択してください。");return;}
+    setPdfExcerpt(selected);setError("");
   }
   async function save(event:React.FormEvent){
     event.preventDefault();
@@ -326,7 +334,7 @@ export function VisitProducts({visitId}:{visitId:string}){
     </div>
     <form className={styles.form} onSubmit={event=>void save(event)}>
       <h3>{editing?"商品カードを修正":"商品カードを追加"}</h3>
-      {!editing&&pdfItems?<div className={styles.consultationItem}><p>確定済みPDFの査定品: {pdfItems.text}</p><label><input type="checkbox" checked={citePdf} onChange={event=>{setCitePdf(event.target.checked);if(!event.target.checked)setPdfExcerpt("")}}/> この査定品欄を原本と照合し、商品カードの出典として記録する</label>{citePdf?<label>PDFで確認した該当部分<input required maxLength={500} value={pdfExcerpt} onChange={event=>setPdfExcerpt(event.target.value)} placeholder="査定品欄から該当部分を転記"/></label>:null}<p>複数商品は一件ずつ入力してください。PDFの文章を自動で商品に分割しません。該当部分は確定済み査定品欄に含まれる必要があります。</p></div>:null}
+      {!editing&&pdfItems?<div className={styles.consultationItem}><label>確定済みPDFの査定品<textarea ref={pdfSourceRef} readOnly rows={4} value={pdfItems.text}/></label><label><input type="checkbox" checked={citePdf} onChange={event=>{setCitePdf(event.target.checked);if(!event.target.checked)setPdfExcerpt("")}}/> この査定品欄を原本と照合し、商品カードの出典として記録する</label>{citePdf?<><p>査定品欄の該当部分を選択してから下のボタンを押してください。抜粋欄への手入力もできます。</p><button type="button" className={styles.secondary} onClick={useSelectedPdfPassage}>選択部分を抜粋に入れる</button><label>PDFで確認した該当部分<input required maxLength={500} value={pdfExcerpt} onChange={event=>setPdfExcerpt(event.target.value)} placeholder="査定品欄から該当部分を転記"/></label></>:null}<p>複数商品は一件ずつ入力してください。PDFの文章を自動で商品に分割しません。該当部分は確定済み査定品欄に含まれる必要があります。</p></div>:null}
       {!editing&&pdfLoadError?<p role="status">PDFの確認済み項目を取得できませんでした。出典を付ける場合は再読込してください。</p>:null}
       <label>商品名<input required maxLength={300} value={form.productName} onChange={event=>setForm(current=>({...current,productName:event.target.value}))}/></label>
       <label>数量<input required type="number" min={1} max={100000} value={form.quantity} onChange={event=>setForm(current=>({...current,quantity:event.target.value}))}/></label>
