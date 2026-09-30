@@ -1,7 +1,7 @@
 "use client";
 
 import {useCallback,useEffect,useRef,useState} from "react";
-import {resources,type ConsultationManagerDto,type ProductConsultationDto,type ProductOfferDto,type ProductOfferResponseDto,type ProductReceiptCheckDto,type VisitProductDto} from "@/lib/api/resources";
+import {resources,type ConsultationManagerDto,type MarketPriceSearchDto,type ProductConsultationDto,type ProductOfferDto,type ProductOfferResponseDto,type ProductReceiptCheckDto,type VisitProductDto} from "@/lib/api/resources";
 import styles from "./VisitProducts.module.css";
 
 const empty={productName:"",quantity:"1",conditionNote:"",accessoriesNote:""};
@@ -10,6 +10,9 @@ const consultationStatus:Record<ProductConsultationDto["status"],string>={pendin
 function ProductConsultations({visitId,product,onChanged}:{visitId:string;product:VisitProductDto;onChanged:()=>Promise<void>}){
   const [items,setItems]=useState<ProductConsultationDto[]>([]);
   const [managers,setManagers]=useState<ConsultationManagerDto[]>([]);
+  const [priceSearches,setPriceSearches]=useState<MarketPriceSearchDto[]>([]);
+  const [priceResultId,setPriceResultId]=useState("");
+  const [priceSearchError,setPriceSearchError]=useState(false);
   const [managerId,setManagerId]=useState("");
   const [proposedPrice,setProposedPrice]=useState("");
   const [reason,setReason]=useState("");
@@ -29,12 +32,15 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     .then(([consultations,candidates])=>{if(live){setItems(consultations.items);setManagers(candidates.items);}})
     .catch(()=>{if(live)setError("相談履歴を読み込めませんでした。再読込してください。")})
     .finally(()=>{if(live)setLoading(false)});return()=>{live=false};},[visitId,product.id]);
+  useEffect(()=>{let live=true;void Promise.all([resources.visit(visitId),resources.marketPriceSearches()])
+    .then(([visit,result])=>{if(live)setPriceSearches(result.items.filter(search=>Boolean(search.resultId&&search.confirmedAt&&search.branchId===visit.branchId)))})
+    .catch(()=>{if(live)setPriceSearchError(true)});return()=>{live=false};},[visitId]);
   async function submitRequest(event:React.FormEvent){
     event.preventDefault();const price=Number(proposedPrice);
     const due=dueAt?new Date(dueAt):null;
     if(!managerId||!Number.isSafeInteger(price)||price<0||!reason.trim()||(due&&(!Number.isFinite(due.getTime())||due.getTime()<=Date.now()))){setError("相談先、提示案、相談理由、回答期限を確認してください。");return;}
     setBusy(true);setError("");
-    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim(),dueAt:due?.toISOString()??null});await reload();await onChanged();setReason("");setProposedPrice("");setDueAt("");}
+    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim(),marketPriceResultId:priceResultId||null,dueAt:due?.toISOString()??null});await reload();await onChanged();setReason("");setProposedPrice("");setPriceResultId("");setDueAt("");}
     catch{setError("相談を登録できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined)}
     finally{setBusy(false)}
   }
@@ -60,6 +66,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
       <p><strong>{consultationStatus[item.status]}</strong> · 相談先: {item.managerName??item.assignedManagerId} · 提示案: {item.proposedPriceYen.toLocaleString()}円</p>
       {item.dueAt?<p>回答期限: {new Date(item.dueAt).toLocaleString("ja-JP")}{item.overdue?"（期限超過・未承認）":""}</p>:null}
       <p>相談理由: {item.requestReason}</p>
+      <p>相場根拠: {item.marketPriceResultId?`確定結果 ${priceSearches.find(search=>search.resultId===item.marketPriceResultId)?.query.keyword??item.marketPriceResultId}`:"未添付（判断理由を確認）"}</p>
       {item.responseNote?<p>回答: {item.responseNote}</p>:null}{item.approvedPriceYen!==null?<p>承認額: {item.approvedPriceYen.toLocaleString()}円</p>:null}
       {item.status==="pending"?<div className={styles.consultationActions}>
         <p>回答は指定された上長のみ、代理変更は権限のある上長のみ実行できます。</p>
@@ -76,6 +83,9 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
       <h4>商品別に相談する</h4>
       <label>相談先の上長<select required value={managerId} onChange={event=>setManagerId(event.target.value)}><option value="">選択してください</option>{managers.map(manager=><option key={manager.id} value={manager.id}>{manager.displayName}</option>)}</select></label>
       <label>顧客への提示案（円）<input required type="number" min={0} step={1} value={proposedPrice} onChange={event=>setProposedPrice(event.target.value)}/></label>
+      <label>確定済みの相場根拠（任意）<select value={priceResultId} onChange={event=>setPriceResultId(event.target.value)}><option value="">添付しない</option>{priceSearches.map(search=><option key={search.resultId!} value={search.resultId!}>{String(search.query.keyword??"検索語なし")} · 中央値 {search.medianPrice==null?"算出なし":`${search.medianPrice.toLocaleString()}円`} · {new Date(search.confirmedAt!).toLocaleDateString("ja-JP")}</option>)}</select></label>
+      <p>同じ拠点の確定結果だけを表示します。検索語と商品が一致するか確認して選択してください。相場の参考値と顧客への提示案は別の記録です。</p>
+      {priceSearchError?<p role="status">相場結果を取得できませんでした。根拠を添付する場合は相場画面を確認し、再読込してください。</p>:null}
       <label>判断が必要な理由<textarea required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)}/></label>
       <label>回答期限（任意）<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label>
       <button type="submit" className={styles.primary} disabled={busy||managers.length===0}>相談を送る</button>
