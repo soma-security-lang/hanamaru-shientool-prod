@@ -123,6 +123,18 @@ function productNote(value: unknown, name: string): string | null {
     throw invalid("入力内容を確認してください", [{field:name,message:"1000文字以内で入力してください"}]);
   return value.trim() || null;
 }
+function uuidId(value:unknown,name:string):string{
+  if(typeof value!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
+    throw invalid("入力内容を確認してください",[{field:name,message:"識別子を確認してください"}]);
+  return value;
+}
+function consultationDto(row:Json):Json{
+  const value=camel<Json>(row);
+  value.lockVersion=Number(row.lock_version);
+  value.proposedPriceYen=Number(row.proposed_price_yen);
+  value.approvedPriceYen=row.approved_price_yen===null?null:Number(row.approved_price_yen);
+  return value;
+}
 function formProperties(schema:unknown):Record<string,Record<string,unknown>>{
   if(!schema||typeof schema!=="object"||Array.isArray(schema))return{};
   const properties=(schema as Json).properties;
@@ -1411,6 +1423,161 @@ export class BackendService {
       );
       if(!result.rows[0])throw new ApiProblem("VERSION_CONFLICT",409,"商品情報が更新済みです。再読み込みしてください");
       return {status:200,body:visitProductDto(result.rows[0]),resourceId:productId};
+    });
+  }
+  async consultationManagers(ctx:RequestContext,visitId:string){
+    return this.read(ctx,"product.consultation.managers","membership",async tx=>{
+      await this.assertVisitAccess(tx,ctx,visitId);
+      const result=await tx.query(
+        `SELECT DISTINCT m.id,u.display_name FROM visits v JOIN memberships m ON m.organization_id=v.organization_id AND m.status='active'
+         JOIN users u ON u.id=m.user_id JOIN role_assignments ra ON ra.organization_id=m.organization_id AND ra.membership_id=m.id
+         JOIN roles r ON r.id=ra.role_id AND r.role_code='manager'
+         WHERE v.organization_id=$1 AND v.id=$2 AND m.id<>$3
+           AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now())
+           AND (ra.scope_type='organization' AND ra.scope_id=v.organization_id OR ra.scope_type='branch' AND ra.scope_id=v.branch_id)
+         ORDER BY u.display_name,m.id`,
+        [ctx.organizationId,visitId,ctx.membershipId],
+      );
+      return {items:camel(result.rows)};
+    });
+  }
+  async listProductConsultations(ctx:RequestContext,visitId:string,productId:string){
+    return this.read(ctx,"product.consultation.list","product_consultation",async tx=>{
+      await this.assertVisitAccess(tx,ctx,visitId);
+      const product=await tx.query("SELECT 1 FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3",[ctx.organizationId,visitId,productId]);
+      if(!product.rowCount)throw notFound();
+      const result=await tx.query(
+        `SELECT c.id,c.product_id,c.requested_by_membership_id,c.assigned_manager_id,u.display_name AS manager_name,
+          c.proposed_price_yen,c.market_price_result_id,c.request_reason,c.due_at,c.status,c.approved_price_yen,
+          c.response_note,c.responded_by_membership_id,c.responded_at,c.reassignment_reason,c.lock_version,c.created_at,c.updated_at
+         FROM product_consultations c JOIN memberships m ON m.id=c.assigned_manager_id JOIN users u ON u.id=m.user_id
+         WHERE c.organization_id=$1 AND c.visit_id=$2 AND c.product_id=$3 ORDER BY c.created_at,c.id`,
+        [ctx.organizationId,visitId,productId],
+      );
+      const changes=await tx.query(
+        `SELECT r.consultation_id,r.previous_manager_id,r.next_manager_id,r.reason,r.changed_by_membership_id,r.changed_at
+         FROM product_consultation_reassignments r JOIN product_consultations c ON c.organization_id=r.organization_id AND c.id=r.consultation_id
+         WHERE c.organization_id=$1 AND c.visit_id=$2 AND c.product_id=$3 ORDER BY r.changed_at,r.id`,
+        [ctx.organizationId,visitId,productId],
+      );
+      return {items:result.rows.map(row=>consultationDto(row)),reassignments:camel(changes.rows)};
+    });
+  }
+  async createProductConsultation(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const managerId=uuidId(b.assignedManagerId,"assignedManagerId");
+    const proposedPrice=integer(b.proposedPriceYen,0,1000000000000,"proposedPriceYen");
+    const reason=text(b.reason,1000,"reason");
+    const resultId=b.marketPriceResultId==null?null:uuidId(b.marketPriceResultId,"marketPriceResultId");
+    const dueAt=b.dueAt==null?null:new Date(String(b.dueAt));
+    if(dueAt&&(!Number.isFinite(dueAt.getTime())||dueAt.getTime()<=Date.now()))throw invalid("回答期限は未来の日時を指定してください");
+    return this.write(ctx,"product.consultation.create",key,b,"product.consultation.create","product_consultation",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const product=await tx.query<{branch_id:string;status:string}>(
+        "SELECT branch_id,status FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3 FOR UPDATE",
+        [ctx.organizationId,visitId,productId],
+      );
+      const row=product.rows[0];
+      if(!row)throw notFound();
+      if(row.status!=="draft")throw new ApiProblem("JOB_STATE_CONFLICT",409,"相談中または確定済みの商品です");
+      const manager=await tx.query(
+        `SELECT 1 FROM memberships m JOIN role_assignments ra ON ra.organization_id=m.organization_id AND ra.membership_id=m.id
+         JOIN roles r ON r.id=ra.role_id AND r.role_code='manager'
+         WHERE m.organization_id=$1 AND m.id=$2 AND m.status='active' AND m.id<>$4
+           AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now())
+           AND (ra.scope_type='organization' AND ra.scope_id=$1 OR ra.scope_type='branch' AND ra.scope_id=$3)`,
+        [ctx.organizationId,managerId,row.branch_id,ctx.membershipId],
+      );
+      if(!manager.rowCount)throw invalid("相談先の上長を確認してください");
+      if(resultId){
+        requireCap(ctx,"market_price:read");
+        const evidence=await tx.query(
+          "SELECT 1 FROM market_price_results r JOIN market_price_searches s ON s.organization_id=r.organization_id AND s.id=r.search_id WHERE r.organization_id=$1 AND r.id=$2 AND s.branch_id=$3",
+          [ctx.organizationId,resultId,row.branch_id],
+        );
+        if(!evidence.rowCount)throw invalid("相場根拠を確認してください");
+      }
+      const created=await tx.query(
+        `INSERT INTO product_consultations(organization_id,visit_id,product_id,branch_id,requested_by_membership_id,assigned_manager_id,proposed_price_yen,market_price_result_id,request_reason,due_at)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [ctx.organizationId,visitId,productId,row.branch_id,ctx.membershipId,managerId,proposedPrice,resultId,reason,dueAt],
+      );
+      await tx.query("UPDATE visit_products SET status='research_pending',lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[ctx.organizationId,productId]);
+      const createdRow=created.rows[0];
+      if(!createdRow)throw new Error("PRODUCT_CONSULTATION_CREATE_FAILED");
+      return {status:201,body:consultationDto(createdRow),resourceId:createdRow.id};
+    });
+  }
+  async decideProductConsultation(ctx:RequestContext,visitId:string,productId:string,consultationId:string,key:string|undefined,b:Json){
+    const decision=b.decision;
+    if(!["approved","conditional","returned"].includes(String(decision)))throw invalid("回答区分を確認してください");
+    const note=productNote(b.responseNote,"responseNote");
+    if(decision!=="approved"&&!note)throw invalid("条件または差戻し理由を入力してください");
+    const approvedPrice=decision==="returned"?null:integer(b.approvedPriceYen,0,1000000000000,"approvedPriceYen");
+    const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    return this.write(ctx,"product.consultation.decide",key,b,"product.consultation.decide","product_consultation",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const current=await tx.query<{branch_id:string;assigned_manager_id:string;status:string;lock_version:string}>(
+        "SELECT branch_id,assigned_manager_id,status,lock_version FROM product_consultations WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND id=$4 FOR UPDATE",
+        [ctx.organizationId,visitId,productId,consultationId],
+      );
+      const row=current.rows[0];
+      if(!row)throw notFound();
+      const managerScope=ctx.authorizationScopes.some(scope=>scope.role==="manager"&&(
+        scope.scopeType==="organization"&&scope.scopeId===ctx.organizationId || scope.scopeType==="branch"&&scope.scopeId===row.branch_id
+      ));
+      if(!managerScope||row.assigned_manager_id!==ctx.membershipId)throw denied();
+      if(row.status!=="pending"||Number(row.lock_version)!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"相談が更新済みです。再読み込みしてください");
+      const updated=await tx.query(
+        `UPDATE product_consultations SET status=$5,approved_price_yen=$6,response_note=$7,responded_by_membership_id=$8,
+         responded_at=now(),lock_version=lock_version+1 WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND id=$4 RETURNING *`,
+        [ctx.organizationId,visitId,productId,consultationId,decision,approvedPrice,note,ctx.membershipId],
+      );
+      await tx.query("UPDATE visit_products SET status=$3,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[ctx.organizationId,productId,decision==="returned"?"draft":"ready"]);
+      const updatedRow=updated.rows[0];
+      if(!updatedRow)throw new Error("PRODUCT_CONSULTATION_DECISION_FAILED");
+      return {status:200,body:consultationDto(updatedRow),resourceId:consultationId};
+    });
+  }
+  async reassignProductConsultation(ctx:RequestContext,visitId:string,productId:string,consultationId:string,key:string|undefined,b:Json){
+    const nextManager=uuidId(b.nextManagerId,"nextManagerId");
+    const reason=text(b.reason,1000,"reason");
+    const expected=integer(b.expectedLockVersion,1,Number.MAX_SAFE_INTEGER,"expectedLockVersion");
+    return this.write(ctx,"product.consultation.reassign",key,b,"product.consultation.reassign","product_consultation",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const found=await tx.query<{branch_id:string;assigned_manager_id:string;status:string;lock_version:string}>(
+        "SELECT branch_id,assigned_manager_id,status,lock_version FROM product_consultations WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND id=$4 FOR UPDATE",
+        [ctx.organizationId,visitId,productId,consultationId],
+      );
+      const row=found.rows[0];
+      if(!row)throw notFound();
+      const managerScope=ctx.authorizationScopes.some(scope=>scope.role==="manager"&&(
+        scope.scopeType==="organization"&&scope.scopeId===ctx.organizationId || scope.scopeType==="branch"&&scope.scopeId===row.branch_id
+      ));
+      if(!managerScope)throw denied();
+      if(row.status!=="pending"||Number(row.lock_version)!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"相談が更新済みです。再読み込みしてください");
+      if(nextManager===row.assigned_manager_id)throw invalid("別の上長を選択してください");
+      const candidate=await tx.query(
+        `SELECT 1 FROM memberships m JOIN role_assignments ra ON ra.organization_id=m.organization_id AND ra.membership_id=m.id
+         JOIN roles r ON r.id=ra.role_id AND r.role_code='manager'
+         WHERE m.organization_id=$1 AND m.id=$2 AND m.status='active'
+           AND ra.valid_from<=now() AND (ra.valid_until IS NULL OR ra.valid_until>now())
+           AND (ra.scope_type='organization' AND ra.scope_id=$1 OR ra.scope_type='branch' AND ra.scope_id=$3)`,
+        [ctx.organizationId,nextManager,row.branch_id],
+      );
+      if(!candidate.rowCount)throw invalid("代理上長の権限を確認してください");
+      await tx.query(
+        `INSERT INTO product_consultation_reassignments(organization_id,consultation_id,previous_manager_id,next_manager_id,reason,changed_by_membership_id)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [ctx.organizationId,consultationId,row.assigned_manager_id,nextManager,reason,ctx.membershipId],
+      );
+      const updated=await tx.query(
+        `UPDATE product_consultations SET assigned_manager_id=$3,reassigned_by_membership_id=$4,reassignment_reason=$5,
+         lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2 RETURNING *`,
+        [ctx.organizationId,consultationId,nextManager,ctx.membershipId,reason],
+      );
+      const updatedRow=updated.rows[0];
+      if(!updatedRow)throw new Error("PRODUCT_CONSULTATION_REASSIGN_FAILED");
+      return {status:200,body:consultationDto(updatedRow),resourceId:consultationId};
     });
   }
   async startVisitImport(

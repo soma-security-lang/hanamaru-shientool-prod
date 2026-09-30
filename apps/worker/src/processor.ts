@@ -2065,6 +2065,14 @@ export class WorkerProcessor {
         [job.organization_id, prepared.visitId],
       );
       await tx.query(
+        "UPDATE product_consultation_reassignments SET reason='[deleted]' WHERE organization_id=$1 AND consultation_id IN (SELECT id FROM product_consultations WHERE organization_id=$1 AND visit_id=$2)",
+        [job.organization_id, prepared.visitId],
+      );
+      await tx.query(
+        "UPDATE product_consultations SET request_reason='[deleted]',response_note=NULL,reassignment_reason=NULL,proposed_price_yen=0,approved_price_yen=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
+        [job.organization_id, prepared.visitId],
+      );
+      await tx.query(
         "UPDATE visit_products SET product_name='[deleted]',condition_note=NULL,accessories_note=NULL,status='cancelled',updated_at=now() WHERE organization_id=$1 AND visit_id=$2",
         [job.organization_id, prepared.visitId],
       );
