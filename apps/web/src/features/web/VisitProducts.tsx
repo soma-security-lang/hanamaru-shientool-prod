@@ -13,6 +13,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   const [managerId,setManagerId]=useState("");
   const [proposedPrice,setProposedPrice]=useState("");
   const [reason,setReason]=useState("");
+  const [dueAt,setDueAt]=useState("");
   const [responseNote,setResponseNote]=useState("");
   const [approvedPrice,setApprovedPrice]=useState("");
   const [nextManager,setNextManager]=useState("");
@@ -30,9 +31,10 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     .finally(()=>{if(live)setLoading(false)});return()=>{live=false};},[visitId,product.id]);
   async function submitRequest(event:React.FormEvent){
     event.preventDefault();const price=Number(proposedPrice);
-    if(!managerId||!Number.isSafeInteger(price)||price<0||!reason.trim()){setError("相談先、提示案、相談理由を確認してください。");return;}
+    const due=dueAt?new Date(dueAt):null;
+    if(!managerId||!Number.isSafeInteger(price)||price<0||!reason.trim()||(due&&(!Number.isFinite(due.getTime())||due.getTime()<=Date.now()))){setError("相談先、提示案、相談理由、回答期限を確認してください。");return;}
     setBusy(true);setError("");
-    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim()});await reload();await onChanged();setReason("");setProposedPrice("");}
+    try{await resources.createProductConsultation(visitId,product.id,{assignedManagerId:managerId,proposedPriceYen:price,reason:reason.trim(),dueAt:due?.toISOString()??null});await reload();await onChanged();setReason("");setProposedPrice("");setDueAt("");}
     catch{setError("相談を登録できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined)}
     finally{setBusy(false)}
   }
@@ -56,6 +58,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     {loading?<p role="status">相談履歴を読み込んでいます。</p>:null}{error?<p className={styles.error} role="alert">{error}</p>:null}
     {items.map(item=><div key={item.id} className={styles.consultationItem}>
       <p><strong>{consultationStatus[item.status]}</strong> · 相談先: {item.managerName??item.assignedManagerId} · 提示案: {item.proposedPriceYen.toLocaleString()}円</p>
+      {item.dueAt?<p>回答期限: {new Date(item.dueAt).toLocaleString("ja-JP")}{item.overdue?"（期限超過・未承認）":""}</p>:null}
       <p>相談理由: {item.requestReason}</p>
       {item.responseNote?<p>回答: {item.responseNote}</p>:null}{item.approvedPriceYen!==null?<p>承認額: {item.approvedPriceYen.toLocaleString()}円</p>:null}
       {item.status==="pending"?<div className={styles.consultationActions}>
@@ -74,6 +77,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
       <label>相談先の上長<select required value={managerId} onChange={event=>setManagerId(event.target.value)}><option value="">選択してください</option>{managers.map(manager=><option key={manager.id} value={manager.id}>{manager.displayName}</option>)}</select></label>
       <label>顧客への提示案（円）<input required type="number" min={0} step={1} value={proposedPrice} onChange={event=>setProposedPrice(event.target.value)}/></label>
       <label>判断が必要な理由<textarea required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)}/></label>
+      <label>回答期限（任意）<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label>
       <button type="submit" className={styles.primary} disabled={busy||managers.length===0}>相談を送る</button>
       {managers.length===0?<p>相談できる上長がいません。所属・権限を管理者に確認してください。</p>:null}
     </form>:null}

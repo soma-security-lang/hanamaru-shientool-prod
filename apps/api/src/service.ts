@@ -133,6 +133,7 @@ function consultationDto(row:Json):Json{
   value.lockVersion=Number(row.lock_version);
   value.proposedPriceYen=Number(row.proposed_price_yen);
   value.approvedPriceYen=row.approved_price_yen===null?null:Number(row.approved_price_yen);
+  value.overdue=Boolean(row.overdue);
   return value;
 }
 function formProperties(schema:unknown):Record<string,Record<string,unknown>>{
@@ -1449,7 +1450,8 @@ export class BackendService {
       const result=await tx.query(
         `SELECT c.id,c.product_id,c.requested_by_membership_id,c.assigned_manager_id,u.display_name AS manager_name,
           c.proposed_price_yen,c.market_price_result_id,c.request_reason,c.due_at,c.status,c.approved_price_yen,
-          c.response_note,c.responded_by_membership_id,c.responded_at,c.reassignment_reason,c.lock_version,c.created_at,c.updated_at
+          c.response_note,c.responded_by_membership_id,c.responded_at,c.reassignment_reason,c.lock_version,c.created_at,c.updated_at,
+          (c.status='pending' AND c.due_at IS NOT NULL AND c.due_at<now()) AS overdue
          FROM product_consultations c JOIN memberships m ON m.id=c.assigned_manager_id JOIN users u ON u.id=m.user_id
          WHERE c.organization_id=$1 AND c.visit_id=$2 AND c.product_id=$3 ORDER BY c.created_at,c.id`,
         [ctx.organizationId,visitId,productId],
