@@ -12,17 +12,19 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
   let repository:HanamaruRepository;
   const keys:string[]=[];
   const productIds:string[]=[];
+  const visitId=randomUUID();
   const backupUserId=randomUUID();
   const backupMembershipId=randomUUID();
-  const url=(productId:string)=>`/api/v1/visits/${developmentIds.visitId}/products/${productId}/consultations`;
+  const url=(productId:string)=>`/api/v1/visits/${visitId}/products/${productId}/consultations`;
   const headers=(role:"assessor"|"manager",key?:string)=>({"x-dev-role":role,...(key?{"idempotency-key":key}:{})});
   const key=()=>{const value=randomUUID();keys.push(value);return value};
   async function product(){
-    const response=await app.inject({method:"POST",url:`/api/v1/visits/${developmentIds.visitId}/products`,headers:headers("assessor",key()),payload:{productName:"匿名テスト商品",quantity:1}});
+    const response=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers("assessor",key()),payload:{productName:"匿名テスト商品",quantity:1}});
     expect(response.statusCode).toBe(201);productIds.push(response.json().id);return response.json().id as string;
   }
   beforeAll(async()=>{
     repository=new HanamaruRepository(createPool(databaseUrl!));
+    await repository.system("INSERT INTO visits(id,organization_id,branch_id,assigned_membership_id,case_number,status) VALUES($1,$2,$3,$4,$5,'draft')",[visitId,developmentIds.organizationId,developmentIds.branchId,developmentIds.membershipId,`CONSULT-${visitId.slice(0,8)}`]);
     app=await buildApp({repository:new HanamaruRepository(createPool(databaseUrl!)),providers:createLocalProviders(),config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
     await repository.system("INSERT INTO users(id,provider_subject_hash,email_hash,email_masked,display_name) VALUES($1,$2,$3,'b***@example.invalid','匿名代理上長')",[backupUserId,randomUUID().replaceAll("-","").padEnd(64,"0"),randomUUID().replaceAll("-","").padEnd(64,"0")]);
     await repository.system("INSERT INTO memberships(id,organization_id,user_id,branch_id) VALUES($1,$2,$3,$4)",[backupMembershipId,developmentIds.organizationId,backupUserId,developmentIds.branchId]);
@@ -35,6 +37,7 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
       await repository.system("DELETE FROM product_consultations WHERE product_id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM visit_products WHERE id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM idempotency_records WHERE idempotency_key=ANY($1::varchar[])",[keys]);
+      await repository.system("DELETE FROM visits WHERE id=$1",[visitId]);
       await repository.system("DELETE FROM role_assignments WHERE membership_id=$1",[backupMembershipId]);
       await repository.system("DELETE FROM memberships WHERE id=$1",[backupMembershipId]);
       await repository.system("DELETE FROM users WHERE id=$1",[backupUserId]);
@@ -43,7 +46,7 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
   });
   it("keeps the request pending until the assigned manager approves and rejects stale responses",async()=>{
     const productId=await product();
-    const managers=await app.inject({method:"GET",url:`/api/v1/visits/${developmentIds.visitId}/consultation-managers`,headers:headers("assessor")});
+    const managers=await app.inject({method:"GET",url:`/api/v1/visits/${visitId}/consultation-managers`,headers:headers("assessor")});
     expect(managers.statusCode).toBe(200);
     expect(managers.json().items.map((item:{id:string})=>item.id)).toContain(developmentIds.managerMembershipId);
     const createKey=key();

@@ -10,11 +10,13 @@ const databaseUrl=process.env.DATABASE_URL;
 describe.skipIf(!databaseUrl)("visit product cards",()=>{
   let app:FastifyInstance;
   let repository:HanamaruRepository;
+  const visitId=randomUUID();
   const keys:string[]=[];
   const productIds:string[]=[];
   const headers=(key?:string)=>({"x-dev-role":"manager",...(key?{"idempotency-key":key}:{})});
   beforeAll(async()=>{
     repository=new HanamaruRepository(createPool(databaseUrl!));
+    await repository.system("INSERT INTO visits(id,organization_id,branch_id,assigned_membership_id,case_number,status) VALUES($1,$2,$3,$4,$5,'draft')",[visitId,developmentIds.organizationId,developmentIds.branchId,developmentIds.membershipId,`PRODUCT-${visitId.slice(0,8)}`]);
     app=await buildApp({repository:new HanamaruRepository(createPool(databaseUrl!)),providers:createLocalProviders(),config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
   });
   afterAll(async()=>{
@@ -22,11 +24,11 @@ describe.skipIf(!databaseUrl)("visit product cards",()=>{
     if(repository){
       await repository.system("DELETE FROM visit_products WHERE id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM idempotency_records WHERE idempotency_key=ANY($1::varchar[])",[keys]);
+      await repository.system("DELETE FROM visits WHERE id=$1",[visitId]);
       await repository.close();
     }
   });
   it("stores multiple cards, replays safely, and rejects stale updates or an inaccessible visit",async()=>{
-    const visitId=developmentIds.visitId;
     const firstKey=randomUUID();keys.push(firstKey);
     const firstBody={productName:"試験用の時計",quantity:2,conditionNote:"小傷あり",accessoriesNote:"箱あり"};
     const first=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(firstKey),payload:firstBody});
