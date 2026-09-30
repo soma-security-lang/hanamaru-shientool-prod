@@ -34,6 +34,9 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.post<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/consultations",async(r,reply)=>send(reply,service.createProductConsultation(r.auth,r.params.id,r.params.productId,key(r),body(r))));
   app.post<{Params:{id:string;productId:string;consultationId:string}}>("/api/v1/visits/:id/products/:productId/consultations/:consultationId/decision",async(r,reply)=>send(reply,service.decideProductConsultation(r.auth,r.params.id,r.params.productId,r.params.consultationId,key(r),body(r))));
   app.post<{Params:{id:string;productId:string;consultationId:string}}>("/api/v1/visits/:id/products/:productId/consultations/:consultationId/reassign",async(r,reply)=>send(reply,service.reassignProductConsultation(r.auth,r.params.id,r.params.productId,r.params.consultationId,key(r),body(r))));
+  app.get<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/offers",async r=>service.listProductOffers(r.auth,r.params.id,r.params.productId));
+  app.post<{Params:{id:string;productId:string}}>("/api/v1/visits/:id/products/:productId/offers",async(r,reply)=>send(reply,service.createProductOffer(r.auth,r.params.id,r.params.productId,key(r),body(r))));
+  app.post<{Params:{id:string;productId:string;offerId:string}}>("/api/v1/visits/:id/products/:productId/offers/:offerId/responses",async(r,reply)=>send(reply,service.recordProductOfferResponse(r.auth,r.params.id,r.params.productId,r.params.offerId,key(r),body(r))));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/retention-bindings",async r=>service.retentionBindings(r.auth,r.params.id));
   app.get<{Params:{id:string}}>("/api/v1/visits/:id/preparation",async r=>service.getPreparation(r.auth,r.params.id));
   app.post<{Params:{id:string}}>("/api/v1/visits/:id/preparation",async(r,reply)=>send(reply,service.createPreparation(r.auth,r.params.id,key(r),body(r))));

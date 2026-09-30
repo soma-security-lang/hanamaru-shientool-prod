@@ -1,7 +1,7 @@
 "use client";
 
 import {useEffect,useRef,useState} from "react";
-import {resources,type ConsultationManagerDto,type ProductConsultationDto,type VisitProductDto} from "@/lib/api/resources";
+import {resources,type ConsultationManagerDto,type ProductConsultationDto,type ProductOfferDto,type ProductOfferResponseDto,type VisitProductDto} from "@/lib/api/resources";
 import styles from "./VisitProducts.module.css";
 
 const empty={productName:"",quantity:"1",conditionNote:"",accessoriesNote:""};
@@ -84,6 +84,66 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   </section>;
 }
 
+const responseLabels:Record<ProductOfferResponseDto["response"],string>={pending:"回答待ち",accepted:"承諾",declined:"辞退",counteroffer:"再提案の希望"};
+function ProductOffers({visitId,product}:{visitId:string;product:VisitProductDto}){
+  const [offers,setOffers]=useState<ProductOfferDto[]>([]);
+  const [price,setPrice]=useState("");
+  const [terms,setTerms]=useState("");
+  const [expiresAt,setExpiresAt]=useState("");
+  const [response,setResponse]=useState<ProductOfferResponseDto["response"]>("pending");
+  const [responseNote,setResponseNote]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const pending=useRef<{body:string;key:string}|null>(null);
+  async function reload(){const result=await resources.productOffers(visitId,product.id);setOffers(result.items);}
+  useEffect(()=>{let live=true;void resources.productOffers(visitId,product.id)
+    .then(result=>{if(live)setOffers(result.items);})
+    .catch(()=>{if(live)setError("提示履歴を読み込めませんでした。再読込してください。");})
+    .finally(()=>{if(live)setLoading(false);});return()=>{live=false;};},[visitId,product.id]);
+  async function present(event:React.FormEvent){
+    event.preventDefault();const amount=Number(price);
+    const expiry=expiresAt?new Date(expiresAt):null;
+    if(!Number.isSafeInteger(amount)||amount<0||!terms.trim()||(expiry&&!Number.isFinite(expiry.getTime()))){setError("提示額、条件、有効期限を確認してください。");return;}
+    const body={priceYen:amount,terms:terms.trim(),expiresAt:expiry?.toISOString()??null,expectedVersion:offers[0]?.version??0};
+    const fingerprint=JSON.stringify(body);if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
+    setBusy(true);setError("");
+    try{await resources.createProductOffer(visitId,product.id,body,pending.current.key);await reload();setPrice("");setTerms("");setExpiresAt("");pending.current=null;}
+    catch{setError("提示を保存できませんでした。履歴を再読込し、二重登録がないことを確認してください。");await reload().catch(()=>undefined);}
+    finally{setBusy(false);}
+  }
+  async function record(offer:ProductOfferDto){
+    const body={response,note:responseNote.trim()||null,expectedResponseVersion:offer.responses.at(-1)?.version??0};
+    const fingerprint=JSON.stringify({offerId:offer.id,...body});if(pending.current?.body!==fingerprint)pending.current={body:fingerprint,key:crypto.randomUUID()};
+    setBusy(true);setError("");
+    try{await resources.recordProductOfferResponse(visitId,product.id,offer.id,body,pending.current.key);await reload();setResponse("pending");setResponseNote("");pending.current=null;}
+    catch{setError("回答を保存できませんでした。履歴を再読込してから確認してください。");await reload().catch(()=>undefined);}
+    finally{setBusy(false);}
+  }
+  return <section className={styles.consultations} aria-label={`${product.productName}の顧客提示履歴`}>
+    <div className={styles.header}><h3>顧客への提示と回答</h3><button type="button" className={styles.secondary} onClick={()=>void reload().catch(()=>setError("再読込できませんでした。"))}>提示履歴を再読込</button></div>
+    {loading?<p role="status">提示履歴を読み込んでいます。</p>:null}{error?<p role="alert" className={styles.error}>{error}</p>:null}
+    {offers.map((offer,index)=><article key={offer.id} className={styles.consultationItem}>
+      <p><strong>提示 {offer.version}</strong> · {offer.priceYen.toLocaleString()}円 · {new Date(offer.presentedAt).toLocaleString("ja-JP")}</p>
+      <p>条件: {offer.terms}</p>{offer.expiresAt?<p>有効期限: {new Date(offer.expiresAt).toLocaleString("ja-JP")}</p>:null}
+      {offer.responses.length?offer.responses.map(answer=><p key={answer.id}>回答 {answer.version}: {responseLabels[answer.response]} · {new Date(answer.recordedAt).toLocaleString("ja-JP")}{answer.note?` · ${answer.note}`:""}</p>):<p>顧客回答は未記録です。</p>}
+      {index===0?<div className={styles.consultationActions}>
+        <label>顧客回答<select value={response} onChange={event=>setResponse(event.target.value as ProductOfferResponseDto["response"])}>{Object.entries(responseLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+        <label>回答メモ（個人情報は入力しない）<textarea maxLength={1000} value={responseNote} onChange={event=>setResponseNote(event.target.value)}/></label>
+        <button type="button" className={styles.primary} disabled={busy} onClick={()=>void record(offer)}>回答を記録</button>
+      </div>:null}
+    </article>)}
+    {!loading&&offers.length===0?<p>顧客への提示はまだありません。</p>:null}
+    {product.status==="ready"?<form className={styles.form} onSubmit={event=>void present(event)}>
+      <h4>新しい提示を記録</h4><p>以前の提示は残ります。上長の承認額を超える提示は保存できません。</p>
+      <label>提示額（円）<input required type="number" min={0} step={1} value={price} onChange={event=>setPrice(event.target.value)}/></label>
+      <label>条件（個人情報は入力しない）<textarea required maxLength={1000} value={terms} onChange={event=>setTerms(event.target.value)}/></label>
+      <label>有効期限（任意）<input type="datetime-local" value={expiresAt} onChange={event=>setExpiresAt(event.target.value)}/></label>
+      <button type="submit" className={styles.primary} disabled={busy}>{busy?"保存中…":"提示を記録"}</button>
+    </form>:<p>上長の判断が完了すると提示を記録できます。</p>}
+  </section>;
+}
+
 export function VisitProducts({visitId}:{visitId:string}){
   const [products,setProducts]=useState<VisitProductDto[]>([]);
   const [form,setForm]=useState(empty);
@@ -136,8 +196,8 @@ export function VisitProducts({visitId}:{visitId:string}){
         <div className={styles.cardHead}><strong>{index+1}. {product.productName}</strong><span>{product.quantity}点</span></div>
         <dl><div><dt>状態</dt><dd>{product.conditionNote??"未入力"}</dd></div><div><dt>付属品</dt><dd>{product.accessoriesNote??"未入力"}</dd></div></dl>
         <p>進行状態: {product.status==="draft"?"下書き":product.status==="research_pending"?"相談中":product.status==="ready"?"判断済み":product.status}</p>
-        <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>setExpandedProductId(current=>current===product.id?null:product.id)} aria-expanded={expandedProductId===product.id}>相談・回答</button></div>
-        {expandedProductId===product.id?<ProductConsultations visitId={visitId} product={product} onChanged={refresh}/>:null}
+        <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>setExpandedProductId(current=>current===product.id?null:product.id)} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
+        {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product}/></>:null}
       </article>)}
       {!loading&&products.length===0?<p className={styles.empty}>商品カードはありません。複数の商品を一件ずつ登録できます。</p>:null}
     </div>

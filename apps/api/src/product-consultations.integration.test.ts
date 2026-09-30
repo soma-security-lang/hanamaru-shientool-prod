@@ -33,6 +33,8 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
   afterAll(async()=>{
     await app?.close();
     if(repository){
+      await repository.system("DELETE FROM product_offer_responses WHERE offer_id IN(SELECT id FROM product_offers WHERE product_id=ANY($1::uuid[]))",[productIds]);
+      await repository.system("DELETE FROM product_offers WHERE product_id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM product_consultation_reassignments WHERE consultation_id IN(SELECT id FROM product_consultations WHERE product_id=ANY($1::uuid[]))",[productIds]);
       await repository.system("DELETE FROM product_consultations WHERE product_id=ANY($1::uuid[])",[productIds]);
       await repository.system("DELETE FROM visit_products WHERE id=ANY($1::uuid[])",[productIds]);
@@ -74,5 +76,35 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
     expect(oldManager.statusCode).toBe(403);
     const listed=await app.inject({method:"GET",url:url(productId),headers:headers("assessor")});
     expect(listed.json().reassignments).toHaveLength(1);
+  });
+  it("keeps presented terms and customer answers as versioned history",async()=>{
+    const productId=await product();
+    const offersUrl=`/api/v1/visits/${visitId}/products/${productId}/offers`;
+    const beforeApproval=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:8000,terms:"現物確認後に有効",expectedVersion:0}});
+    expect(beforeApproval.statusCode).toBe(409);
+    const consultation=await app.inject({method:"POST",url:url(productId),headers:headers("assessor",key()),payload:{assignedManagerId:developmentIds.managerMembershipId,proposedPriceYen:10000,reason:"提示額を確認する"}});
+    expect(consultation.statusCode).toBe(201);
+    const approved=await app.inject({method:"POST",url:`${url(productId)}/${consultation.json().id}/decision`,headers:headers("manager",key()),payload:{decision:"approved",approvedPriceYen:9000,expectedLockVersion:1}});
+    expect(approved.statusCode).toBe(200);
+    const tooHigh=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:9001,terms:"現物確認後に有効",expectedVersion:0}});
+    expect(tooHigh.statusCode).toBe(409);
+    const offerKey=key();const firstPayload={priceYen:8500,terms:"現物確認後に有効",expectedVersion:0};
+    const first=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",offerKey),payload:firstPayload});
+    expect(first.statusCode).toBe(201);expect(first.json()).toMatchObject({version:1,priceYen:8500,terms:firstPayload.terms});
+    const replay=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",offerKey),payload:firstPayload});
+    expect(replay.statusCode).toBe(201);expect(replay.json().id).toBe(first.json().id);
+    const stale=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:8000,terms:"変更後",expectedVersion:0}});
+    expect(stale.statusCode).toBe(409);
+    const answered=await app.inject({method:"POST",url:`${offersUrl}/${first.json().id}/responses`,headers:headers("assessor",key()),payload:{response:"counteroffer",note:"価格の再検討を希望",expectedResponseVersion:0}});
+    expect(answered.statusCode).toBe(201);expect(answered.json()).toMatchObject({version:1,response:"counteroffer"});
+    const staleAnswer=await app.inject({method:"POST",url:`${offersUrl}/${first.json().id}/responses`,headers:headers("assessor",key()),payload:{response:"accepted",expectedResponseVersion:0}});
+    expect(staleAnswer.statusCode).toBe(409);
+    const second=await app.inject({method:"POST",url:offersUrl,headers:headers("assessor",key()),payload:{priceYen:8800,terms:"再提示",expectedVersion:1}});
+    expect(second.statusCode).toBe(201);expect(second.json().version).toBe(2);
+    const oldOfferAnswer=await app.inject({method:"POST",url:`${offersUrl}/${first.json().id}/responses`,headers:headers("assessor",key()),payload:{response:"accepted",expectedResponseVersion:1}});
+    expect(oldOfferAnswer.statusCode).toBe(409);
+    const listed=await app.inject({method:"GET",url:offersUrl,headers:headers("assessor")});
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().items).toMatchObject([{version:2,terms:"再提示",responses:[]},{version:1,terms:firstPayload.terms,responses:[{response:"counteroffer"}]}]);
   });
 });

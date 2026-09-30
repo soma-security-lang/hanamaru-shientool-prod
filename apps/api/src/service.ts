@@ -1582,6 +1582,102 @@ export class BackendService {
       return {status:200,body:consultationDto(updatedRow),resourceId:consultationId};
     });
   }
+  async listProductOffers(ctx:RequestContext,visitId:string,productId:string){
+    return this.read(ctx,"product.offer.list","product_offer",async tx=>{
+      await this.assertVisitAccess(tx,ctx,visitId);
+      const product=await tx.query("SELECT 1 FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3",[ctx.organizationId,visitId,productId]);
+      if(!product.rowCount)throw notFound();
+      const offers=await tx.query(
+        "SELECT id,product_id,version,price_yen,terms,expires_at,presented_by_membership_id,presented_at FROM product_offers WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 ORDER BY version DESC",
+        [ctx.organizationId,visitId,productId],
+      );
+      const ids=offers.rows.map(row=>row.id);
+      const responses=ids.length?await tx.query(
+        "SELECT id,offer_id,version,response,note,recorded_by_membership_id,recorded_at FROM product_offer_responses WHERE organization_id=$1 AND offer_id=ANY($2::uuid[]) ORDER BY version",
+        [ctx.organizationId,ids],
+      ):{rows:[]};
+      return {items:offers.rows.map(row=>({
+        ...camel<Json>(row),priceYen:Number(row.price_yen),
+        responses:responses.rows.filter(response=>response.offer_id===row.id).map(response=>camel(response)),
+      }))};
+    });
+  }
+  async createProductOffer(ctx:RequestContext,visitId:string,productId:string,key:string|undefined,b:Json){
+    const price=integer(b.priceYen,0,1000000000000,"priceYen");
+    const terms=text(b.terms,1000,"terms");
+    const expected=integer(b.expectedVersion,0,Number.MAX_SAFE_INTEGER,"expectedVersion");
+    const expiresAt=b.expiresAt==null?null:new Date(String(b.expiresAt));
+    if(expiresAt&&!Number.isFinite(expiresAt.getTime()))throw invalid("提示の有効期限を確認してください");
+    return this.write(ctx,`product.offer.create:${productId}`,key,b,"product.offer.create","product_offer",async tx=>{
+      if(expiresAt&&expiresAt.getTime()<=Date.now())throw invalid("提示の有効期限を確認してください");
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const product=await tx.query<{branch_id:string;status:string}>(
+        "SELECT branch_id,status FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3 FOR UPDATE",
+        [ctx.organizationId,visitId,productId],
+      );
+      const row=product.rows[0];if(!row)throw notFound();
+      if(row.status!=="ready")throw new ApiProblem("JOB_STATE_CONFLICT",409,"上長の判断が完了した商品だけ提示できます");
+      const approved=await tx.query<{approved_price_yen:string}>(
+        "SELECT approved_price_yen FROM product_consultations WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND status IN ('approved','conditional') ORDER BY responded_at DESC,id DESC LIMIT 1",
+        [ctx.organizationId,visitId,productId],
+      );
+      if(approved.rows[0]?.approved_price_yen==null||price>Number(approved.rows[0].approved_price_yen))
+        throw new ApiProblem("JOB_STATE_CONFLICT",409,"上長の承認額を超える提示はできません。再相談してください");
+      const current=await tx.query<{version:number}>(
+        "SELECT COALESCE(MAX(version),0)::int AS version FROM product_offers WHERE organization_id=$1 AND product_id=$2",
+        [ctx.organizationId,productId],
+      );
+      const version=current.rows[0]?.version??0;
+      if(version!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"提示履歴が更新済みです。再読み込みしてください");
+      const created=await tx.query(
+        `INSERT INTO product_offers(organization_id,visit_id,product_id,branch_id,version,price_yen,terms,expires_at,presented_by_membership_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,product_id,version,price_yen,terms,expires_at,presented_by_membership_id,presented_at`,
+        [ctx.organizationId,visitId,productId,row.branch_id,version+1,price,terms,expiresAt,ctx.membershipId],
+      );
+      const offer=created.rows[0];if(!offer)throw new Error("PRODUCT_OFFER_CREATE_FAILED");
+      return {status:201,body:{...camel<Json>(offer),priceYen:Number(offer.price_yen),responses:[]},resourceId:offer.id};
+    });
+  }
+  async recordProductOfferResponse(ctx:RequestContext,visitId:string,productId:string,offerId:string,key:string|undefined,b:Json){
+    const response=b.response;
+    if(!["pending","accepted","declined","counteroffer"].includes(String(response)))throw invalid("顧客回答の区分を確認してください");
+    const note=productNote(b.note,"note");
+    const expected=integer(b.expectedResponseVersion,0,Number.MAX_SAFE_INTEGER,"expectedResponseVersion");
+    return this.write(ctx,`product.offer.response:${offerId}`,key,b,"product.offer.response","product_offer_response",async tx=>{
+      await this.assertVisitMutable(tx,ctx,visitId);
+      const product=await tx.query<{status:string}>(
+        "SELECT status FROM visit_products WHERE organization_id=$1 AND visit_id=$2 AND id=$3 FOR UPDATE",
+        [ctx.organizationId,visitId,productId],
+      );
+      if(!product.rows[0])throw notFound();
+      if(product.rows[0].status!=="ready")throw new ApiProblem("JOB_STATE_CONFLICT",409,"判断済みの商品について回答を記録してください");
+      const offer=await tx.query<{version:number;expires_at:Date|null}>(
+        "SELECT version,expires_at FROM product_offers WHERE organization_id=$1 AND visit_id=$2 AND product_id=$3 AND id=$4",
+        [ctx.organizationId,visitId,productId,offerId],
+      );
+      if(!offer.rows[0])throw notFound();
+      if(response==="accepted"&&offer.rows[0].expires_at&&offer.rows[0].expires_at.getTime()<=Date.now())
+        throw new ApiProblem("JOB_STATE_CONFLICT",409,"有効期限を過ぎた提示です。新しい提示を記録してください");
+      const latest=await tx.query<{version:number}>(
+        "SELECT COALESCE(MAX(version),0)::int AS version FROM product_offers WHERE organization_id=$1 AND product_id=$2",
+        [ctx.organizationId,productId],
+      );
+      if(offer.rows[0].version!==latest.rows[0]?.version)throw new ApiProblem("VERSION_CONFLICT",409,"新しい提示があるため、最新の履歴を確認してください");
+      const current=await tx.query<{version:number}>(
+        "SELECT COALESCE(MAX(version),0)::int AS version FROM product_offer_responses WHERE organization_id=$1 AND offer_id=$2",
+        [ctx.organizationId,offerId],
+      );
+      const version=current.rows[0]?.version??0;
+      if(version!==expected)throw new ApiProblem("VERSION_CONFLICT",409,"顧客回答が更新済みです。再読み込みしてください");
+      const created=await tx.query(
+        `INSERT INTO product_offer_responses(organization_id,offer_id,version,response,note,recorded_by_membership_id)
+         VALUES($1,$2,$3,$4,$5,$6) RETURNING id,offer_id,version,response,note,recorded_by_membership_id,recorded_at`,
+        [ctx.organizationId,offerId,version+1,response,note,ctx.membershipId],
+      );
+      const row=created.rows[0];if(!row)throw new Error("PRODUCT_OFFER_RESPONSE_CREATE_FAILED");
+      return {status:201,body:camel(row),resourceId:row.id};
+    });
+  }
   async startVisitImport(
     ctx: RequestContext,
     key: string | undefined,
