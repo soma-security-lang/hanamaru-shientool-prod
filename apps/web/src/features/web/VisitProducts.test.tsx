@@ -96,9 +96,11 @@ it("keeps the confirmed PDF appraisal text visible while a human creates a sourc
   render(<VisitProducts visitId="visit-pdf"/>);
   expect(await screen.findByText(/確定済みPDFの査定品: 時計、カメラ/)).toBeInTheDocument();
   await user.click(screen.getByRole("checkbox",{name:/この査定品欄を原本と照合し/}));
+  expect(screen.getByRole("button",{name:"商品を追加"})).toBeDisabled();
+  await user.type(screen.getByRole("textbox",{name:"PDFで確認した該当部分"}),"時計");
   await user.type(screen.getByRole("textbox",{name:"商品名"}),"時計");
   await user.click(screen.getByRole("button",{name:"商品を追加"}));
-  expect(create).toHaveBeenCalledWith("visit-pdf",expect.objectContaining({productName:"時計",sourceExtractionId:"extraction-1"}),expect.any(String));
+  expect(create).toHaveBeenCalledWith("visit-pdf",expect.objectContaining({productName:"時計",sourceExtractionId:"extraction-1",sourceAppraisalExcerpt:"時計"}),expect.any(String));
 });
 
 it("does not present an unverified PDF appraisal field as a confirmed source",async()=>{

@@ -69,13 +69,19 @@ describe.skipIf(!databaseUrl)("visit product cards",()=>{
     expect(schema.rows).toHaveLength(1);
     await repository.system("INSERT INTO document_extractions(id,organization_id,visit_document_id,form_schema_version_id,version,status,provider,model_name) VALUES($1,$2,$3,$4,1,'confirmed','local','test')",[sourceExtractionId,developmentIds.organizationId,sourceDocumentId,schema.rows[0]!.id]);
     await repository.system("INSERT INTO visit_field_values(organization_id,document_extraction_id,field_key,value_type,text_value,verification_status) VALUES($1,$2,'appraisalItems','text','時計、カメラ','confirmed')",[developmentIds.organizationId,sourceExtractionId]);
+    const unrelatedKey=randomUUID();keys.push(unrelatedKey);
+    const unrelated=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(unrelatedKey),payload:{productName:"時計",quantity:1,sourceExtractionId,sourceAppraisalExcerpt:"自動車"}});
+    expect(unrelated.statusCode).toBe(422);
+    const orphanKey=randomUUID();keys.push(orphanKey);
+    const orphan=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(orphanKey),payload:{productName:"時計",quantity:1,sourceAppraisalExcerpt:"時計"}});
+    expect(orphan.statusCode).toBe(422);
     const validKey=randomUUID();keys.push(validKey);
-    const card=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(validKey),payload:{productName:"時計",quantity:1,sourceExtractionId}});
+    const card=await app.inject({method:"POST",url:`/api/v1/visits/${visitId}/products`,headers:headers(validKey),payload:{productName:"時計",quantity:1,sourceExtractionId,sourceAppraisalExcerpt:"時計"}});
     expect(card.statusCode).toBe(201);
-    expect(card.json()).toMatchObject({productName:"時計",sourceExtractionId});
+    expect(card.json()).toMatchObject({productName:"時計",sourceExtractionId,sourceAppraisalExcerpt:"時計"});
     productIds.push(card.json().id);
     const listed=await app.inject({method:"GET",url:`/api/v1/visits/${visitId}/products`,headers:headers()});
-    expect(listed.json().items).toEqual(expect.arrayContaining([expect.objectContaining({id:card.json().id,sourceExtractionId})]));
+    expect(listed.json().items).toEqual(expect.arrayContaining([expect.objectContaining({id:card.json().id,sourceExtractionId,sourceAppraisalExcerpt:"時計"})]));
   });
   it("keeps failed market research assigned and blocks judgment until the result is recorded",async()=>{
     const createKey=randomUUID();keys.push(createKey);

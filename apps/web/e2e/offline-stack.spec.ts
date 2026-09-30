@@ -99,6 +99,16 @@ test("PDF registration reaches confirmed visit preparation through API, worker a
   await page.getByRole("button",{name:"内容を確定して訪問前チェックへ"}).click();await expect(page).toHaveURL(new RegExp(`/visits/${visitId}/preparation$`));
   await expect(page.getByRole("checkbox")).toHaveCount(4,{timeout:30_000});for(const checkbox of await page.getByRole("checkbox").all())await checkbox.check();
   await page.getByRole("button",{name:"確認して準備を完了"}).click();await expect(page.getByRole("button",{name:"準備完了"})).toBeVisible();
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await expect(products.getByText(/確定済みPDFの査定品: Anonymous watch and camera/)).toBeVisible();
+  await products.getByRole("checkbox",{name:/この査定品欄を原本と照合し/}).check();
+  await products.getByRole("textbox",{name:"PDFで確認した該当部分"}).fill("Anonymous watch");
+  await products.getByRole("textbox",{name:"商品名"}).fill("Anonymous watch");
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  await expect(products.getByText(/該当部分: Anonymous watch/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region",{name:"訪問する商品"}).getByText(/該当部分: Anonymous watch/)).toBeVisible();
 });
 
 test("visit product card saves, updates and reappears after reload",async({page})=>{

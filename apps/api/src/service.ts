@@ -1386,7 +1386,7 @@ export class BackendService {
     return this.read(ctx,"visit.product.list","visit_product",async tx=>{
       await this.assertVisitAccess(tx,ctx,visitId);
       const result=await tx.query(
-        `SELECT p.id,p.visit_id,p.product_name,p.quantity,p.condition_note,p.accessories_note,p.source_extraction_id,p.status,p.lock_version,
+        `SELECT p.id,p.visit_id,p.product_name,p.quantity,p.condition_note,p.accessories_note,p.source_extraction_id,p.source_appraisal_excerpt,p.status,p.lock_version,
           p.research_hold_category,p.research_hold_reason,p.research_hold_assignee_id,p.research_hold_opened_at,
           p.research_hold_resolved_at,p.research_hold_resolution_note,u.display_name AS research_hold_assignee_name,
           p.created_by_membership_id,p.updated_by_membership_id,p.created_at,p.updated_at
@@ -1404,11 +1404,13 @@ export class BackendService {
     const conditionNote=productNote(b.conditionNote,"conditionNote");
     const accessoriesNote=productNote(b.accessoriesNote,"accessoriesNote");
     const sourceExtractionId=b.sourceExtractionId==null?null:uuidId(b.sourceExtractionId,"sourceExtractionId");
+    const sourceAppraisalExcerpt=b.sourceAppraisalExcerpt==null?null:text(b.sourceAppraisalExcerpt,500,"sourceAppraisalExcerpt");
+    if(sourceAppraisalExcerpt&&!sourceExtractionId)throw invalid("PDFの抜粋には確定済み抽出の指定が必要です");
     return this.write(ctx,"visit.product.create",key,b,"visit.product.create","visit_product",async tx=>{
       await this.assertVisitMutable(tx,ctx,visitId);
       if(sourceExtractionId){
         const source=await tx.query(
-          `SELECT 1 FROM document_extractions e JOIN visit_documents d ON d.id=e.visit_document_id AND d.organization_id=e.organization_id
+          `SELECT f.text_value FROM document_extractions e JOIN visit_documents d ON d.id=e.visit_document_id AND d.organization_id=e.organization_id
            JOIN visit_field_values f ON f.document_extraction_id=e.id AND f.organization_id=e.organization_id
            WHERE e.organization_id=$1 AND d.visit_id=$2 AND e.id=$3 AND e.status='confirmed' AND d.status<>'deleted'
              AND f.field_key='appraisalItems' AND f.value_type='text' AND length(trim(f.text_value))>0
@@ -1416,11 +1418,16 @@ export class BackendService {
           [ctx.organizationId,visitId,sourceExtractionId],
         );
         if(!source.rowCount)throw invalid("この訪問で確定したPDFの査定品を確認してください");
+        if(sourceAppraisalExcerpt){
+          const normalize=(value:string)=>value.normalize("NFKC").replace(/\s+/g," ").trim().toLocaleLowerCase("ja-JP");
+          if(!normalize(String(source.rows[0]?.text_value??"")).includes(normalize(sourceAppraisalExcerpt)))
+            throw invalid("PDFの抜粋が確定済み査定品欄に見つかりません。原本と照合してください");
+        }
       }
       const result=await tx.query(
-        `INSERT INTO visit_products(organization_id,visit_id,branch_id,product_name,quantity,condition_note,accessories_note,source_extraction_id,created_by_membership_id,updated_by_membership_id)
-         SELECT $1,v.id,v.branch_id,$3,$4,$5,$6,$8,$7,$7 FROM visits v WHERE v.organization_id=$1 AND v.id=$2 AND v.deleted_at IS NULL RETURNING *`,
-        [ctx.organizationId,visitId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId,sourceExtractionId],
+        `INSERT INTO visit_products(organization_id,visit_id,branch_id,product_name,quantity,condition_note,accessories_note,source_extraction_id,source_appraisal_excerpt,created_by_membership_id,updated_by_membership_id)
+         SELECT $1,v.id,v.branch_id,$3,$4,$5,$6,$8,$9,$7,$7 FROM visits v WHERE v.organization_id=$1 AND v.id=$2 AND v.deleted_at IS NULL RETURNING *`,
+        [ctx.organizationId,visitId,productName,quantity,conditionNote,accessoriesNote,ctx.membershipId,sourceExtractionId,sourceAppraisalExcerpt],
       );
       if(!result.rows[0])throw notFound();
       return {status:201,body:visitProductDto(result.rows[0]),resourceId:result.rows[0].id};
