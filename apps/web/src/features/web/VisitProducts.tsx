@@ -71,19 +71,22 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   const [managerLoadError,setManagerLoadError]=useState(false);
+  const [historyReady,setHistoryReady]=useState(false);
   async function reload(){
-    const result=await loadConsultationData(visitId,product.id);
-    setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);
+    setLoading(true);setHistoryReady(false);
+    try{const result=await loadConsultationData(visitId,product.id);
+      setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);setHistoryReady(true);
+    }finally{setLoading(false);}
   }
   useEffect(()=>{let live=true;void loadConsultationData(visitId,product.id)
-    .then(result=>{if(live){setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);}})
+    .then(result=>{if(live){setItems(result.items);setManagers(result.managers);setManagerLoadError(result.managerLoadError);setHistoryReady(true);}})
     .catch(()=>{if(live)setError("相談履歴を読み込めませんでした。再読込してください。")})
     .finally(()=>{if(live)setLoading(false)});return()=>{live=false};},[visitId,product.id]);
   useEffect(()=>{let live=true;void Promise.all([resources.visit(visitId),resources.marketPriceSearches()])
     .then(([visit,result])=>{if(live)setPriceSearches(result.items.filter(search=>Boolean(search.resultId&&search.confirmedAt&&search.branchId===visit.branchId)))})
     .catch(()=>{if(live)setPriceSearchError(true)});return()=>{live=false};},[visitId]);
   async function submitRequest(event:React.FormEvent){
-    event.preventDefault();const price=Number(proposedPrice);
+    event.preventDefault();if(loading||!historyReady||managerLoadError)return;const price=Number(proposedPrice);
     const due=dueAt?new Date(dueAt):null;
     if(!managerId||!Number.isSafeInteger(price)||price<0||!reason.trim()||(due&&(!Number.isFinite(due.getTime())||due.getTime()<=Date.now()))){setError("相談先、提示案、相談理由、回答期限を確認してください。");return;}
     setBusy(true);setError("");
@@ -92,6 +95,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     finally{setBusy(false)}
   }
   async function decide(item:ProductConsultationDto,decision:"approved"|"conditional"|"returned"){
+    if(loading||!historyReady)return;
     const price=Number(approvedPrice);if(decision!=="returned"&&(!Number.isSafeInteger(price)||price<0)){setError("承認額を確認してください。");return;}
     if(decision!=="approved"&&!responseNote.trim()){setError("条件または差戻し理由を入力してください。");return;}
     setBusy(true);setError("");
@@ -100,6 +104,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     finally{setBusy(false)}
   }
   async function reassign(item:ProductConsultationDto){
+    if(loading||!historyReady||managerLoadError)return;
     if(!nextManager||!reassignReason.trim()){setError("代理の上長と変更理由を入力してください。");return;}
     setBusy(true);setError("");
     try{await resources.reassignProductConsultation(visitId,product.id,item.id,{nextManagerId:nextManager,reason:reassignReason.trim(),expectedLockVersion:item.lockVersion});await reload();setNextManager("");setReassignReason("");}
@@ -109,8 +114,9 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
   const lastDecision=items[items.length-1];
   const returned=product.status==="draft"&&lastDecision?.status==="returned"?lastDecision:null;
   return <section className={styles.consultations} aria-label={`${product.productName}の上長相談`}>
-    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("相談履歴を再読込できませんでした。"))}>相談を再読込</button></div>
+    <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} disabled={busy||loading} onClick={()=>void reload().then(()=>setError("")).catch(()=>setError("相談履歴を再読込できませんでした。"))}>相談を再読込</button></div>
     {loading?<p role="status">相談履歴を読み込んでいます。</p>:null}{error?<p className={styles.error} role="alert">{error}</p>:null}
+    {!loading&&!historyReady?<p className={styles.error} role="status">相談履歴が未確認です。再読込が成功するまで新規相談・回答・代理変更はできません。</p>:null}
     {managerLoadError?<p className={styles.error} role="status">相談先の上長を取得できませんでした。相談履歴は確認できます。新規相談・代理変更は再読込後に行ってください。</p>:null}
     {items.map(item=><div key={item.id} className={styles.consultationItem}>
       <p><strong>{consultationStatus[item.status]}</strong> · 相談先: {item.managerName??item.assignedManagerId} · 提示案: {item.proposedPriceYen.toLocaleString()}円</p>
@@ -122,13 +128,13 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
         <p>回答は指定された上長のみ、代理変更は権限のある上長のみ実行できます。</p>
         <label>承認額（円）<input type="number" min={0} step={1} value={approvedPrice} onChange={event=>setApprovedPrice(event.target.value)}/></label>
         <label>回答・条件・差戻し理由<textarea maxLength={1000} value={responseNote} onChange={event=>setResponseNote(event.target.value)}/></label>
-        <div className={styles.actions}><button type="button" className={styles.primary} disabled={busy} onClick={()=>void decide(item,"approved")}>承認</button><button type="button" className={styles.secondary} disabled={busy} onClick={()=>void decide(item,"conditional")}>条件付き承認</button><button type="button" className={styles.secondary} disabled={busy} onClick={()=>void decide(item,"returned")}>差戻し</button></div>
+        <div className={styles.actions}><button type="button" className={styles.primary} disabled={busy||loading||!historyReady} onClick={()=>void decide(item,"approved")}>承認</button><button type="button" className={styles.secondary} disabled={busy||loading||!historyReady} onClick={()=>void decide(item,"conditional")}>条件付き承認</button><button type="button" className={styles.secondary} disabled={busy||loading||!historyReady} onClick={()=>void decide(item,"returned")}>差戻し</button></div>
         <label>代理の上長<select value={nextManager} onChange={event=>setNextManager(event.target.value)}><option value="">選択してください</option>{managers.filter(manager=>manager.id!==item.assignedManagerId).map(manager=><option key={manager.id} value={manager.id}>{manager.displayName}</option>)}</select></label>
         <label>代理変更の理由<textarea maxLength={1000} value={reassignReason} onChange={event=>setReassignReason(event.target.value)}/></label>
-        <button type="button" className={styles.secondary} disabled={busy||managerLoadError||managers.length===0} onClick={()=>void reassign(item)}>代理へ引き継ぐ</button>
+        <button type="button" className={styles.secondary} disabled={busy||loading||!historyReady||managerLoadError||managers.length===0} onClick={()=>void reassign(item)}>代理へ引き継ぐ</button>
       </div>:null}
     </div>)}
-    {!loading&&items.length===0?<p>相談履歴はありません。</p>:null}
+    {!loading&&historyReady&&items.length===0?<p>相談履歴はありません。</p>:null}
     {product.status==="draft"?<form className={styles.consultationActions} onSubmit={event=>void submitRequest(event)}>
       <h4>{returned?"差戻し内容を修正して再提出する":"商品別に相談する"}</h4>
       {returned?<p>前回の差戻し理由: {returned.responseNote}。内容と提示案を確認して新しい相談として送信してください。前回の判断履歴は残ります。</p>:null}
@@ -139,7 +145,7 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
       {priceSearchError?<p role="status">相場結果を取得できませんでした。根拠を添付する場合は相場画面を確認し、再読込してください。</p>:null}
       <label>判断が必要な理由<textarea required maxLength={1000} value={reason} onChange={event=>setReason(event.target.value)}/></label>
       <label>回答期限（任意）<input type="datetime-local" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label>
-      <button type="submit" className={styles.primary} disabled={busy||managers.length===0}>相談を送る</button>
+      <button type="submit" className={styles.primary} disabled={busy||loading||!historyReady||managerLoadError||managers.length===0}>相談を送る</button>
       {managers.length===0&&!managerLoadError?<p>相談できる上長がいません。所属・権限を管理者に確認してください。</p>:null}
     </form>:null}
   </section>;
@@ -359,7 +365,7 @@ export function VisitProducts({visitId}:{visitId:string}){
         {product.sourceExtractionId?<p>PDFの査定品を原本と照合して登録 · 該当部分: {product.sourceAppraisalExcerpt??"旧記録・抜粋未登録"}（抽出ID: {product.sourceExtractionId}）</p>:<p>商品情報は手入力です。</p>}
         <ProductResearchHold visitId={visitId} product={product} onChanged={refresh}/>
         <div className={styles.actions}>{product.status==="draft"?<button type="button" className={styles.secondary} onClick={()=>edit(product)}>修正する</button>:null}<button type="button" className={styles.secondary} onClick={()=>{setReceiptStatusByProductId(current=>({...current,[product.id]:"loading"}));setExpandedProductId(current=>current===product.id?null:product.id);}} aria-expanded={expandedProductId===product.id}>相談・提示・回答</button></div>
-        {expandedProductId===product.id?<><ProductConsultations visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptStatus={receiptStatusByProductId[product.id]??"loading"}/><ProductReceiptChecks visitId={visitId} product={product} onStatus={updateReceiptStatus}/></>:null}
+        {expandedProductId===product.id?<><ProductConsultations key={`${visitId}:${product.id}`} visitId={visitId} product={product} onChanged={refresh}/><ProductOffers visitId={visitId} product={product} receiptStatus={receiptStatusByProductId[product.id]??"loading"}/><ProductReceiptChecks visitId={visitId} product={product} onStatus={updateReceiptStatus}/></>:null}
       </article>)}
       {!loading&&products.length===0?<p className={styles.empty}>商品カードはありません。複数の商品を一件ずつ登録できます。</p>:null}
     </div>

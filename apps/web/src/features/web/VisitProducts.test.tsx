@@ -376,3 +376,51 @@ it("shows a named research hold and requires a result before reopening the produ
   expect(resume).toHaveBeenCalledWith("visit-hold","product-hold",expect.objectContaining({expectedLockVersion:2,resolutionNote:"型番を原本で確認した"}));
   expect(await screen.findByText(/調査結果: 型番を原本で確認した/)).toBeInTheDocument();
 });
+
+it("blocks consultation writes after history refresh fails and restores them after a successful read",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-4",visitId:"visit-4",productName:"確認待ち商品",quantity:1,conditionNote:null,accessoriesNote:null,status:"research_pending",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const consultation:ProductConsultationDto={id:"consultation-4",productId:product.id,requestedByMembershipId:"assessor-1",assignedManagerId:"manager-1",managerName:"担当上長",proposedPriceYen:9000,marketPriceResultId:null,requestReason:"査定額を確認",dueAt:"2026-09-30T01:00:00Z",overdue:true,status:"pending",approvedPriceYen:null,responseNote:null,respondedByMembershipId:null,respondedAt:null,reassignmentReason:null,lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockResolvedValueOnce({items:[consultation],reassignments:[]}).mockRejectedValueOnce(new Error("history unavailable")).mockResolvedValue({items:[consultation],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockResolvedValue({items:[{id:"manager-2",displayName:"代理上長"}]});
+  vi.spyOn(resources,"productOffers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  render(<VisitProducts visitId="visit-4"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  expect(await screen.findByText(/期限超過・未承認/)).toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"承認"})).toBeEnabled();
+  await user.click(screen.getByRole("button",{name:"相談を再読込"}));
+  expect(await screen.findByText(/相談履歴が未確認です/)).toBeInTheDocument();
+  expect(screen.getByText(/期限超過・未承認/)).toBeInTheDocument();
+  for(const name of ["承認","条件付き承認","差戻し","代理へ引き継ぐ"]){expect(screen.getByRole("button",{name})).toBeDisabled();}
+  expect(screen.queryByText("相談履歴はありません。")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button",{name:"相談を再読込"}));
+  await vi.waitFor(()=>expect(screen.getByRole("button",{name:"承認"})).toBeEnabled());
+  expect(screen.queryByText(/相談履歴が未確認です/)).not.toBeInTheDocument();
+});
+
+it("does not treat an initial consultation history failure as an empty history",async()=>{
+  const user=userEvent.setup();
+  const product:VisitProductDto={id:"product-4",visitId:"visit-4",productName:"確認待ち商品",quantity:1,conditionNote:null,accessoriesNote:null,status:"draft",lockVersion:2,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  const consultation:ProductConsultationDto={id:"consultation-4",productId:product.id,requestedByMembershipId:"assessor-1",assignedManagerId:"manager-1",managerName:"担当上長",proposedPriceYen:9000,marketPriceResultId:null,requestReason:"査定額を確認",dueAt:"2026-09-30T01:00:00Z",overdue:true,status:"pending",approvedPriceYen:null,responseNote:null,respondedByMembershipId:null,respondedAt:null,reassignmentReason:null,lockVersion:1,createdAt:"2026-09-30T00:00:00Z",updatedAt:"2026-09-30T00:00:00Z"};
+  vi.spyOn(resources,"visitProducts").mockResolvedValue({items:[product],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"workspace").mockResolvedValue({extraction:null,fields:[]} as unknown as VisitWorkspaceDto);
+  vi.spyOn(resources,"visit").mockResolvedValue({branchId:"branch-1"} as VisitDto);
+  vi.spyOn(resources,"marketPriceSearches").mockResolvedValue({items:[],hasMore:false,nextCursor:null});
+  vi.spyOn(resources,"productConsultations").mockRejectedValueOnce(new Error("history unavailable")).mockResolvedValue({items:[consultation],reassignments:[]});
+  vi.spyOn(resources,"consultationManagers").mockResolvedValue({items:[{id:"manager-2",displayName:"代理上長"}]});
+  vi.spyOn(resources,"productOffers").mockResolvedValue({items:[]});
+  vi.spyOn(resources,"productReceiptChecks").mockResolvedValue({items:[]});
+  render(<VisitProducts visitId="visit-4"/>);
+  await user.click(await screen.findByRole("button",{name:"相談・提示・回答"}));
+  expect(await screen.findByText(/相談履歴が未確認です/)).toBeInTheDocument();
+  expect(screen.queryByText("相談履歴はありません。")).not.toBeInTheDocument();
+  expect(screen.getByRole("button",{name:"相談を送る"})).toBeDisabled();
+  await user.click(screen.getByRole("button",{name:"相談を再読込"}));
+  expect(await screen.findByText(/期限超過・未承認/)).toBeInTheDocument();
+  await vi.waitFor(()=>expect(screen.getByRole("button",{name:"承認"})).toBeEnabled());
+});
