@@ -234,7 +234,7 @@ export function VisitProducts({visitId}:{visitId:string}){
   },[visitId]);
   useEffect(()=>{
     let live=true;void resources.workspace(visitId)
-      .then(workspace=>{if(!live)return;const field=workspace.fields.find(item=>item.fieldKey==="appraisalItems"&&item.valueType==="text"&&item.verificationStatus!=="rejected");setPdfItems(workspace.extraction?.status==="confirmed"&&field?.textValue?.trim()?{extractionId:workspace.extraction.id,text:field.textValue.trim()}:null);setPdfLoadError(false)})
+      .then(workspace=>{if(!live)return;const field=workspace.fields.find(item=>item.fieldKey==="appraisalItems"&&item.valueType==="text"&&["confirmed","corrected"].includes(item.verificationStatus));setPdfItems(workspace.extraction?.status==="confirmed"&&field?.textValue?.trim()?{extractionId:workspace.extraction.id,text:field.textValue.trim()}:null);setPdfLoadError(false)})
       .catch(()=>{if(live)setPdfLoadError(true)});return()=>{live=false};
   },[visitId]);
   function edit(product:VisitProductDto){
