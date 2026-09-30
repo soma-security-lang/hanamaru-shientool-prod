@@ -99,6 +99,8 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     catch{setError("担当変更ができませんでした。権限と最新状態を確認してください。");await reload().catch(()=>undefined)}
     finally{setBusy(false)}
   }
+  const lastDecision=items[items.length-1];
+  const returned=product.status==="draft"&&lastDecision?.status==="returned"?lastDecision:null;
   return <section className={styles.consultations} aria-label={`${product.productName}の上長相談`}>
     <div className={styles.header}><h3>上長相談</h3><button type="button" className={styles.secondary} onClick={()=>void reload().catch(()=>setError("再読込できませんでした。"))}>相談を再読込</button></div>
     {loading?<p role="status">相談履歴を読み込んでいます。</p>:null}{error?<p className={styles.error} role="alert">{error}</p>:null}
@@ -120,7 +122,8 @@ function ProductConsultations({visitId,product,onChanged}:{visitId:string;produc
     </div>)}
     {!loading&&items.length===0?<p>相談履歴はありません。</p>:null}
     {product.status==="draft"?<form className={styles.consultationActions} onSubmit={event=>void submitRequest(event)}>
-      <h4>商品別に相談する</h4>
+      <h4>{returned?"差戻し内容を修正して再提出する":"商品別に相談する"}</h4>
+      {returned?<p>前回の差戻し理由: {returned.responseNote}。内容と提示案を確認して新しい相談として送信してください。前回の判断履歴は残ります。</p>:null}
       <label>相談先の上長<select required value={managerId} onChange={event=>setManagerId(event.target.value)}><option value="">選択してください</option>{managers.map(manager=><option key={manager.id} value={manager.id}>{manager.displayName}</option>)}</select></label>
       <label>顧客への提示案（円）<input required type="number" min={0} step={1} value={proposedPrice} onChange={event=>setProposedPrice(event.target.value)}/></label>
       <label>確定済みの相場根拠（任意）<select value={priceResultId} onChange={event=>setPriceResultId(event.target.value)}><option value="">添付しない</option>{priceSearches.map(search=><option key={search.resultId!} value={search.resultId!}>{String(search.query.keyword??"検索語なし")} · 中央値 {search.medianPrice==null?"算出なし":`${search.medianPrice.toLocaleString()}円`} · {new Date(search.confirmedAt!).toLocaleDateString("ja-JP")}</option>)}</select></label>

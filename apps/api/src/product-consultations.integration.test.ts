@@ -78,6 +78,24 @@ describe.skipIf(!databaseUrl)("product consultation and assigned-manager decisio
     const listed=await app.inject({method:"GET",url:url(productId),headers:headers("assessor")});
     expect(listed.json().reassignments).toHaveLength(1);
   });
+  it("keeps the returned decision and requires a new manager decision after resubmission",async()=>{
+    const productId=await product();
+    const first=await app.inject({method:"POST",url:url(productId),headers:headers("assessor",key()),payload:{assignedManagerId:developmentIds.managerMembershipId,proposedPriceYen:12000,reason:"初回の状態確認"}});
+    expect(first.statusCode).toBe(201);
+    const returned=await app.inject({method:"POST",url:`${url(productId)}/${first.json().id}/decision`,headers:headers("manager",key()),payload:{decision:"returned",approvedPriceYen:null,responseNote:"付属品を確認して再提出",expectedLockVersion:1}});
+    expect(returned.statusCode).toBe(200);
+    expect(returned.json()).toMatchObject({status:"returned",responseNote:"付属品を確認して再提出",approvedPriceYen:null});
+    const second=await app.inject({method:"POST",url:url(productId),headers:headers("assessor",key()),payload:{assignedManagerId:developmentIds.managerMembershipId,proposedPriceYen:10000,reason:"付属品を確認し、提示案を修正"}});
+    expect(second.statusCode).toBe(201);
+    expect(second.json()).toMatchObject({status:"pending",proposedPriceYen:10000});
+    expect(second.json().id).not.toBe(first.json().id);
+    const history=await app.inject({method:"GET",url:url(productId),headers:headers("assessor")});
+    expect(history.statusCode).toBe(200);
+    expect(history.json().items).toMatchObject([{id:first.json().id,status:"returned"},{id:second.json().id,status:"pending"}]);
+    const approved=await app.inject({method:"POST",url:`${url(productId)}/${second.json().id}/decision`,headers:headers("manager",key()),payload:{decision:"approved",approvedPriceYen:9500,expectedLockVersion:1}});
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json()).toMatchObject({status:"approved",approvedPriceYen:9500});
+  });
   it("keeps presented terms and customer answers as versioned history",async()=>{
     const productId=await product();
     const offersUrl=`/api/v1/visits/${visitId}/products/${productId}/offers`;
