@@ -141,6 +141,12 @@ test("visit product card saves, updates and reappears after reload",async({page}
 test("consultation saved before failed readback recovers without duplicate registration",async({page,context})=>{
   test.setTimeout(90_000);
   await addRole(context,"assessor");
+  // The preceding PDF test replaces the suite visit with a manager-created
+  // visit. Use a visit returned within the assessor's own access scope.
+  const assignedVisits=await api.get("visits",{headers:{"x-dev-role":"assessor"}});
+  expect(assignedVisits.ok(),await assignedVisits.text()).toBeTruthy();
+  const visitId=(await assignedVisits.json() as {items:Array<{id:string}>}).items[0]?.id;
+  expect(visitId).toBeTruthy();
   const productName=`Offline 相談復帰 ${Date.now()}`;
   await page.goto(`${webBase}/visits/${visitId}/import`);
   await waitForResolvedScreen(page,`/visits/${visitId}/import`);
