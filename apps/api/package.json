@@ -20,7 +20,7 @@
     "@hanamaru/database": "workspace:*",
     "@hanamaru/market-price": "workspace:*",
     "@hanamaru/platform": "workspace:*",
-    "fastify": "^5.6.2",
+    "fastify": "^5.12.1",
     "jose": "^6.1.0"
   },
   "devDependencies": {

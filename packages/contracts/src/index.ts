@@ -336,6 +336,7 @@ export interface MarketPriceStatisticsDto {
 
 export interface MarketPriceSearchDto extends MarketPriceStatisticsDto {
   id: Identifier;
+  branchId?: Identifier;
   identificationId: Identifier;
   jobId: Identifier | null;
   sourceProvider: MarketPriceSourceProvider;

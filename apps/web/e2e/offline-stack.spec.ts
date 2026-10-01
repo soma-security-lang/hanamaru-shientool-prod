@@ -99,6 +99,121 @@ test("PDF registration reaches confirmed visit preparation through API, worker a
   await page.getByRole("button",{name:"内容を確定して訪問前チェックへ"}).click();await expect(page).toHaveURL(new RegExp(`/visits/${visitId}/preparation$`));
   await expect(page.getByRole("checkbox")).toHaveCount(4,{timeout:30_000});for(const checkbox of await page.getByRole("checkbox").all())await checkbox.check();
   await page.getByRole("button",{name:"確認して準備を完了"}).click();await expect(page.getByRole("button",{name:"準備完了"})).toBeVisible();
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  const confirmedSource=products.getByRole("textbox",{name:"確定済みPDFの査定品"});
+  await expect(confirmedSource).toHaveValue("Anonymous watch and camera");
+  await products.getByRole("checkbox",{name:/この査定品欄を原本と照合し/}).check();
+  await confirmedSource.evaluate((element)=>(element as HTMLTextAreaElement).setSelectionRange(0,"Anonymous watch".length));
+  await products.getByRole("button",{name:"選択部分を抜粋に入れる"}).click();
+  await expect(products.getByRole("textbox",{name:"PDFで確認した該当部分"})).toHaveValue("Anonymous watch");
+  await products.getByRole("textbox",{name:"商品名"}).fill("Anonymous watch");
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  await expect(products.getByText(/該当部分: Anonymous watch/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("region",{name:"訪問する商品"}).getByText(/該当部分: Anonymous watch/)).toBeVisible();
+});
+
+test("visit product card saves, updates and reappears after reload",async({page})=>{
+  test.setTimeout(90_000);
+  const productName=`Offline 匿名商品 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await expect(products).toBeVisible();
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("spinbutton",{name:"数量"}).fill("2");
+  await products.getByRole("textbox",{name:"状態・傷など"}).fill("匿名テスト用の状態");
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await expect(card).toBeVisible();
+  await page.reload();
+  await expect(card).toBeVisible();
+  await card.getByRole("button",{name:"修正する"}).click();
+  await products.getByRole("spinbutton",{name:"数量"}).fill("3");
+  await products.getByRole("button",{name:"修正を保存"}).click();
+  await expect(card.getByText("3点")).toBeVisible();
+  await page.reload();
+  await expect(card).toBeVisible();
+  await expect(card.getByText("3点")).toBeVisible();
+});
+
+test("consultation saved before failed readback recovers without duplicate registration",async({page,context})=>{
+  test.setTimeout(90_000);
+  await addRole(context,"assessor");
+  // The preceding PDF test replaces the suite visit with a manager-created
+  // visit. Use a visit returned within the assessor's own access scope.
+  const assignedVisits=await api.get("visits",{headers:{"x-dev-role":"assessor"}});
+  expect(assignedVisits.ok(),await assignedVisits.text()).toBeTruthy();
+  const visitId=(await assignedVisits.json() as {items:Array<{id:string}>}).items[0]?.id;
+  expect(visitId).toBeTruthy();
+  const productName=`Offline 相談復帰 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await card.getByRole("button",{name:"相談・提示・回答"}).click();
+  const consultation=page.getByRole("region",{name:`${productName}の上長相談`});
+  await expect(consultation.getByRole("button",{name:"相談を送る"})).toBeEnabled();
+  await consultation.getByLabel("相談先の上長").selectOption({index:1});
+  await consultation.getByLabel("顧客への提示案（円）").fill("12000");
+  await consultation.getByLabel("判断が必要な理由").fill("匿名商品の価格判断を確認する");
+  let saved=false;
+  let failReadback=true;
+  let writes=0;
+  let consultationUrl="";
+  await page.route("**/products/*/consultations",async route=>{
+    const req=route.request();
+    if(req.method()==="POST"){
+      const response=await route.fetch({headers:{...req.headers(),"x-dev-role":"assessor"}});
+      expect(response.ok()).toBeTruthy();
+      saved=true;writes++;consultationUrl=req.url();
+      await route.fulfill({response});
+    }else if(req.method()==="GET"&&saved&&failReadback){
+      await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"TEST_READBACK_FAILURE",message:"test"}})});
+    }else await route.fallback();
+  });
+  await consultation.getByRole("button",{name:"相談を送る"}).click();
+  await expect(consultation.getByRole("alert")).toContainText("相談は保存済み");
+  await expect(consultation.getByRole("button",{name:"相談を送る"})).toBeDisabled();
+  failReadback=false;
+  await consultation.getByRole("button",{name:"相談を再読込"}).click();
+  await expect(consultation.getByText("相談理由: 匿名商品の価格判断を確認する")).toBeVisible();
+  await expect(consultation.getByRole("button",{name:"承認",exact:true})).toBeEnabled();
+  await page.reload();
+  await card.getByRole("button",{name:"相談・提示・回答"}).click();
+  await expect(consultation.getByText("相談理由: 匿名商品の価格判断を確認する")).toBeVisible();
+  const persisted=await api.get(consultationUrl);
+  expect(persisted.ok()).toBeTruthy();
+  expect((await persisted.json()).items).toHaveLength(1);
+  expect(writes).toBe(1);
+});
+
+test("market research hold survives reload and requires a recorded result to resume",async({page})=>{
+  test.setTimeout(90_000);
+  const productName=`Offline 調査保留 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await expect(card).toBeVisible();
+  await card.getByRole("combobox",{name:"保留区分"}).selectOption("search_failed");
+  await card.getByRole("textbox",{name:"調査が必要な理由"}).fill("検索サービスが失敗したため手動調査");
+  await card.getByRole("button",{name:"自分の担当で保留する"}).click();
+  await expect(card.getByText("進行状態: 相場調査保留")).toBeVisible();
+  await page.reload();
+  await expect(card.getByText("保留理由: 検索サービスが失敗したため手動調査")).toBeVisible();
+  await expect(card.getByRole("button",{name:"修正する"})).toHaveCount(0);
+  await card.getByRole("textbox",{name:"調査結果"}).fill("型番を確認し別の公開相場で照合した");
+  await card.getByRole("button",{name:"結果を記録して再開"}).click();
+  await expect(card.getByText("進行状態: 下書き")).toBeVisible();
+  await page.reload();
+  await expect(card.getByText("調査結果: 型番を確認し別の公開相場で照合した")).toBeVisible();
+  await expect(card.getByRole("button",{name:"修正する"})).toBeVisible();
 });
 
 test("audio registration reaches transcript confirmation and six-area AI review",async({page})=>{
