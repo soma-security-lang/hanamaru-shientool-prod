@@ -138,6 +138,53 @@ test("visit product card saves, updates and reappears after reload",async({page}
   await expect(card.getByText("3点")).toBeVisible();
 });
 
+test("consultation saved before failed readback recovers without duplicate registration",async({page,context})=>{
+  test.setTimeout(90_000);
+  await addRole(context,"assessor");
+  const productName=`Offline 相談復帰 ${Date.now()}`;
+  await page.goto(`${webBase}/visits/${visitId}/import`);
+  await waitForResolvedScreen(page,`/visits/${visitId}/import`);
+  const products=page.getByRole("region",{name:"訪問する商品"});
+  await products.getByRole("textbox",{name:"商品名"}).fill(productName);
+  await products.getByRole("button",{name:"商品を追加"}).click();
+  const card=products.locator("article").filter({hasText:productName});
+  await card.getByRole("button",{name:"相談・提示・回答"}).click();
+  const consultation=page.getByRole("region",{name:`${productName}の上長相談`});
+  await expect(consultation.getByRole("button",{name:"相談を送る"})).toBeEnabled();
+  await consultation.getByLabel("相談先の上長").selectOption({index:1});
+  await consultation.getByLabel("顧客への提示案（円）").fill("12000");
+  await consultation.getByLabel("判断が必要な理由").fill("匿名商品の価格判断を確認する");
+  let saved=false;
+  let failReadback=true;
+  let writes=0;
+  let consultationUrl="";
+  await page.route("**/products/*/consultations",async route=>{
+    const req=route.request();
+    if(req.method()==="POST"){
+      const response=await route.fetch({headers:{...req.headers(),"x-dev-role":"assessor"}});
+      expect(response.ok()).toBeTruthy();
+      saved=true;writes++;consultationUrl=req.url();
+      await route.fulfill({response});
+    }else if(req.method()==="GET"&&saved&&failReadback){
+      await route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:{code:"TEST_READBACK_FAILURE",message:"test"}})});
+    }else await route.fallback();
+  });
+  await consultation.getByRole("button",{name:"相談を送る"}).click();
+  await expect(consultation.getByRole("alert")).toContainText("相談は保存済み");
+  await expect(consultation.getByRole("button",{name:"相談を送る"})).toBeDisabled();
+  failReadback=false;
+  await consultation.getByRole("button",{name:"相談を再読込"}).click();
+  await expect(consultation.getByText("相談理由: 匿名商品の価格判断を確認する")).toBeVisible();
+  await expect(consultation.getByRole("button",{name:"承認",exact:true})).toBeEnabled();
+  await page.reload();
+  await card.getByRole("button",{name:"相談・提示・回答"}).click();
+  await expect(consultation.getByText("相談理由: 匿名商品の価格判断を確認する")).toBeVisible();
+  const persisted=await api.get(consultationUrl);
+  expect(persisted.ok()).toBeTruthy();
+  expect((await persisted.json()).items).toHaveLength(1);
+  expect(writes).toBe(1);
+});
+
 test("market research hold survives reload and requires a recorded result to resume",async({page})=>{
   test.setTimeout(90_000);
   const productName=`Offline 調査保留 ${Date.now()}`;
