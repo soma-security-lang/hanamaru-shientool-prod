@@ -65,6 +65,31 @@ export const recordingConsentLegacyNotice = "録音同意を確認済み\n口頭
 export type Identifier = string;
 export type Timestamp = string;
 
+export interface ExpenseDayDto {
+  id:string; branchId:string; ownerMembershipId:string; businessDate:string;
+  openingWalletCash:string|null; purchaseTotal:string|null; status:"draft";
+  lockVersion:number; createdAt:Timestamp; updatedAt:Timestamp;
+}
+export interface ExpenseItemDto {
+  id:string; dayId:string; spentByMembershipId:string; enteredByMembershipId:string;
+  businessDate:string; merchant:string; category:string; amount:string;
+  paymentSource:"company_wallet"|"personal"; status:"candidate"|"confirmed"|"excluded";
+  entrySource:"manual"|"synthetic_ocr"; receiptStatus:"not_attached"|"reference_pending";
+  note:string|null; excludedReason:string|null; excludedAt:Timestamp|null;
+  lockVersion:number; confirmedAt:Timestamp|null; createdAt:Timestamp;
+}
+export interface ExpenseFollowupDto {
+  id:string; kind:"funding_request"|"unreplenished"|"vault_discrepancy"|"report"|"correction_proposal";
+  status:"open"|"resolved"; amount:string|null; reason:string; targetItemId:string|null;
+  proposedBefore:{amount:string;lockVersion:string}|null; proposedAfter:{amount:number}|null;
+  recordedByMembershipId:string; occurredAt:Timestamp; createdAt:Timestamp;
+}
+export interface ExpenseDayDetailDto {
+  day:ExpenseDayDto; items:ExpenseItemDto[]; followups:ExpenseFollowupDto[];
+  totals:{companyWallet:string;personal:string;candidateCount:number};
+  nextAction:string; cashReconciliation:"unavailable"; closeEnabled:false;
+}
+
 export interface AuthorizationScope {
   role: Role;
   scopeType: "self" | "branch" | "organization";

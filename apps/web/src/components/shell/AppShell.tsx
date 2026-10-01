@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import {useRouter} from "next/navigation";
-import { BookOpen, BriefcaseBusiness, ChevronLeft, GraduationCap, Home, LogOut, Menu, MessageSquareText, Scale, ShieldCheck, UserRound, X } from "lucide-react";
+import { BookOpen, BriefcaseBusiness, ChevronLeft, GraduationCap, Home, LogOut, Menu, MessageSquareText, Scale, ShieldCheck, UserRound, Wallet, X } from "lucide-react";
 import {useEffect,useRef,useState,type ReactNode} from "react";
 import type { Role } from "@/lib/prototype/types";
 import {clearCommonAccessToken,commonAppsUrl} from "@/lib/auth/sso";
@@ -11,6 +11,7 @@ const baseNavigation = [
   { href: "/", label: "買取支援AI", icon: Home },
   { href: "/visits", label: "訪問前チェック", icon: BriefcaseBusiness },
   { href: "/market-price", label: "買取相場", icon: Scale, featureFlag:"market_price_search" },
+  { href: "/expense-settlement", label: "経費・車両金精算", icon: Wallet, featureFlag:"expense_settlement" },
   { href: "/reviews", label: "振り返りチェックシート", icon: MessageSquareText },
   { href: "/knowledge/talks", label: "現場の知識", icon: BookOpen },
   { href: "/training/roleplay", label: "研修", icon: GraduationCap },
@@ -43,6 +44,7 @@ function mobilePageTitle(pathname:string){
   if(pathname.endsWith("/review"))return"振り返り結果";
   if(pathname==="/reviews")return"振り返り";
   if(pathname==="/market-price")return"買取相場";
+  if(pathname==="/expense-settlement")return"経費・車両金精算";
   if(pathname.startsWith("/knowledge"))return"現場の知識";
   if(pathname.startsWith("/training"))return"研修";
   if(pathname.startsWith("/admin"))return"管理";
@@ -57,7 +59,7 @@ function mobileParentHref(pathname:string,homeHref:string){
   return null;
 }
 
-function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,displayName,role,appSwitchUrl}:{open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role;appSwitchUrl:string|null}){
+function MobileMoreMenu({open,onClose,onLogout,showBusiness,showExpense,showAdmin,adminHref,displayName,role,appSwitchUrl}:{open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showExpense:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role;appSwitchUrl:string|null}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{const dialog=ref.current;if(open&&dialog&&!dialog.open){if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");}if(!open&&dialog?.open){if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");}},[open]);
   return <dialog className={styles.moreDialog} ref={ref} aria-labelledby="mobile-more-title" onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
@@ -65,6 +67,7 @@ function MobileMoreMenu({open,onClose,onLogout,showBusiness,showAdmin,adminHref,
       <header><div><span>メニュー</span><h2 id="mobile-more-title">その他</h2></div><button type="button" aria-label="メニューを閉じる" onClick={onClose}><X size={22}/></button></header>
       <nav aria-label="その他の機能">
         {showBusiness?<><Link href="/knowledge/talks" onClick={onClose}><BookOpen size={20}/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" onClick={onClose}><GraduationCap size={20}/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
+        {showExpense?<Link href="/expense-settlement" onClick={onClose}><Wallet size={20}/><span><strong>経費・車両金精算</strong><small>支出記録と日次取りまとめ</small></span></Link>:null}
         {showAdmin?<Link href={adminHref} onClick={onClose}><ShieldCheck size={20}/><span><strong>管理</strong><small>権限に応じた管理機能</small></span></Link>:null}
         {appSwitchUrl?<a href={appSwitchUrl} onClick={onClose}><Home size={20}/><span><strong>アプリ切替</strong><small>利用できるアプリを選ぶ</small></span></a>:null}
       </nav>
@@ -126,7 +129,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
         {mobileNavigation.map(({ href, label, icon: Icon }) => <Link data-active={isActive(pathname, href)} href={href} key={href}><Icon size={21} aria-hidden="true" /><span>{label}</span></Link>)}
         <button type="button" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={()=>setMoreOpen(true)}><Menu size={21} aria-hidden="true"/><span>その他</span></button>
       </nav>
-      <MobileMoreMenu open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role} appSwitchUrl={appSwitchUrl}/>
+      <MobileMoreMenu open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showExpense={Boolean(featureFlags.expense_settlement)&&navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role} appSwitchUrl={appSwitchUrl}/>
     </div>
   );
 }

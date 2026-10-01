@@ -8,14 +8,14 @@ const concreteRoutes = [
   "/knowledge/talks", "/knowledge/flows", "/knowledge/reference", "/knowledge/manuals",
   "/training/videos", "/training/roleplay", "/admin/contents", "/admin/users",
   "/admin/operations", "/admin/approvals", "/admin/analytics",
-  "/market-price",
+  "/market-price", "/expense-settlement",
 ];
 
 describe("screen registry", () => {
-  it("has exactly 21 unique SCR definitions and 21 canonical route patterns", () => {
-    expect(allScreens).toHaveLength(21);
-    expect(new Set(allScreens.map((screen) => screen.id)).size).toBe(21);
-    expect(allScreens.flatMap((screen) => screen.routes)).toHaveLength(21);
+  it("has exactly 22 unique SCR definitions and 22 canonical route patterns", () => {
+    expect(allScreens).toHaveLength(22);
+    expect(new Set(allScreens.map((screen) => screen.id)).size).toBe(22);
+    expect(allScreens.flatMap((screen) => screen.routes)).toHaveLength(22);
   });
 
   it.each(concreteRoutes)("resolves %s", (route) => {
@@ -26,6 +26,7 @@ describe("screen registry", () => {
     expect(allScreens.find((screen) => screen.id === "SCR-019")?.featureFlag).toBeTruthy();
     expect(allScreens.find((screen) => screen.id === "SCR-020")?.featureFlag).toBeTruthy();
     expect(allScreens.find((screen) => screen.id === "SCR-021")?.featureFlag).toBe("market_price_search");
+    expect(allScreens.find((screen) => screen.id === "SCR-022")?.featureFlag).toBe("expense_settlement");
   });
 
   it("does not model rankings or human-resources evaluation", () => {

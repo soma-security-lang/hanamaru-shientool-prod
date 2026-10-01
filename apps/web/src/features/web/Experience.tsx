@@ -19,6 +19,7 @@ import type { ContentDetail, ContentSummary, ContentType } from "@/lib/content/t
 import type { ScreenKind } from "@/lib/prototype/types";
 import {approvalStateLabel,attemptResultLabel,auditActionLabel,auditResultLabel,businessText,contentRoute,contentTypeLabel,deletionStateLabel,entityTypeLabel,jobStateLabel,jobTypeLabel,membershipStateLabel,publicationStateLabel,statusDisplayLabel,visitStateLabel} from "@/lib/ui-vocabulary";
 import {MarketPriceExperience} from "@/features/market-price/MarketPriceExperience";
+import {ExpenseExperience} from "@/features/expense/ExpenseExperience";
 import styles from "./Experience.module.css";
 
 type Props = { kind: ScreenKind; viewerId?: string; capabilities?:string[]; featureFlags?:Record<string,boolean> };
@@ -51,7 +52,7 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
   const pilotContentAi=Boolean(featureFlags?.pilot_content_ai);
   switch (kind) {
     case "auth": return <Login />;
-    case "aiHome": return <AiHome pilotContentAi={pilotContentAi} />;
+    case "aiHome": return <AiHome pilotContentAi={pilotContentAi} expenseEnabled={Boolean(featureFlags?.expense_settlement)} />;
     case "visitList": return <VisitList />;
     case "visitImport": return <VisitImport />;
     case "visitPreparation": return <VisitPreparation pilotContentAi={pilotContentAi} />;
@@ -71,6 +72,7 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
     case "approval": return <Approval />;
     case "analytics": return <Analytics />;
     case "marketPrice": return <MarketPriceExperience />;
+    case "expense": return <ExpenseExperience viewerId={viewerId} capabilities={capabilities??[]} />;
     default: return null;
   }
 }
@@ -196,7 +198,7 @@ const reviewDimensionOptions:ReadonlyArray<{id:ReviewDimension;label:string}>=[
 ];
 function qualityRequiresAcknowledgement(assessment:TranscriptQualityAssessmentDto|null|undefined){return Boolean(assessment&&(assessment.status==="assessment_unavailable"||assessment.flags.length>0)&&assessment.continuationDecision!=="continue");}
 
-function AiHome({pilotContentAi}:{pilotContentAi:boolean}) {
+function AiHome({pilotContentAi,expenseEnabled}:{pilotContentAi:boolean;expenseEnabled:boolean}) {
   const composerRef=useRef<HTMLTextAreaElement>(null);
   useEffect(()=>{
     const reveal=()=>{const field=composerRef.current;if(field&&document.activeElement===field)revealAboveMobileNavigation(field);};
@@ -228,7 +230,7 @@ function AiHome({pilotContentAi}:{pilotContentAi:boolean}) {
       </section>
       <aside className={styles.homeAside}>
         <section data-home-pane="evidence"><MobilePaneBack onClick={()=>setMobileView("assistant")}>AI相談へ戻る</MobilePaneBack><h2>根拠となる現場知識</h2><p className={styles.resultCount}>{answer?`${answer.citations.length}件を回答根拠として確認済み`:submitted?`${total.toLocaleString()}件から関連候補を表示`:"回答すると根拠を表示します"}</p><div className={styles.compactList}>{evidence.slice(0, 8).map((item) => <button data-selected={selectedId === item.id} key={item.id} onClick={() => setSelected(item.id)}><span>{typeLabel(item.type as ContentType)}{detail?.id===item.id?`・${detail.category}`:""}{"requiresReview" in item&&item.requiresReview?"・要確認":""}</span><strong>{item.title}</strong></button>)}</div>{detail?<Link className={styles.textButton} href={contentRoute(detail.type)}>選択した根拠を開く<ArrowRight size={16}/></Link>:null}</section>
-        <section data-home-pane="actions"><h2>業務を始める</h2><div className={styles.quickLinks}><Link href={activeVisit?`/visits/${activeVisit}/preparation`:"/visits"}><ListChecks />訪問前チェック<ChevronRight /></Link><Link href={activeVisit?`/visits/${activeVisit}/review/input`:"/reviews"}><MessageCircle />振り返り<ChevronRight /></Link><Link href="/training/roleplay"><Sparkles />AIロープレ<ChevronRight /></Link></div></section>
+        <section data-home-pane="actions"><h2>業務を始める</h2><div className={styles.quickLinks}><Link href={activeVisit?`/visits/${activeVisit}/preparation`:"/visits"}><ListChecks />訪問前チェック<ChevronRight /></Link><Link href={activeVisit?`/visits/${activeVisit}/review/input`:"/reviews"}><MessageCircle />振り返り<ChevronRight /></Link>{expenseEnabled?<Link href="/expense-settlement"><ListChecks />経費・車両金精算<ChevronRight /></Link>:null}<Link href="/training/roleplay"><Sparkles />AIロープレ<ChevronRight /></Link></div></section>
       </aside>
     </div>
   </>;

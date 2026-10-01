@@ -2,6 +2,7 @@ import type { FastifyInstance,FastifyReply,FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { BackendService } from "./service.js";
 import { denied } from "./errors.js";
+import { ExpenseService } from "./expense.js";
 
 const body=(request:FastifyRequest)=>(request.body&&typeof request.body==="object"&&!Buffer.isBuffer(request.body)?request.body:{}) as Record<string,unknown>;
 const query=(request:FastifyRequest)=>(request.query??{}) as Record<string,unknown>;
@@ -9,6 +10,7 @@ const key=(request:FastifyRequest)=>typeof request.headers["idempotency-key"]===
 async function send(reply:FastifyReply,promise:Promise<{status:number;body:unknown}>){const result=await promise;if(result.status===204)return reply.code(204).send();return reply.code(result.status).send(result.body);}
 
 export async function registerRoutes(app:FastifyInstance,service:BackendService){
+  const expense=new ExpenseService(service);
   app.get("/health/live",{config:{public:true}},async()=>({status:"ok",revision:process.env.K_REVISION??"local"}));
   app.get("/health/ready",{config:{public:true}},async()=>{await service.repository.system("SELECT 1");return {status:"ready",database:"ok",providers:service.providers.mode,revision:process.env.K_REVISION??"local"};});
   app.get("/api/v1/openapi.json",async(r,reply)=>{if(!r.auth.authorizationScopes?.some(scope=>scope.role==="system_admin"))throw denied();return reply.send(app.swagger());});
@@ -19,6 +21,18 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.delete("/api/v1/sessions/current",{config:{public:true}},sessionGone);
   app.get("/api/v1/me",async r=>service.me(r.auth));
   app.get("/api/v1/dashboard",async r=>service.dashboard(r.auth));
+  app.get("/api/v1/expense-days",async r=>expense.list(r.auth));
+  app.post("/api/v1/expense-days",async(r,reply)=>send(reply,expense.createDay(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>("/api/v1/expense-days/:id",async r=>expense.getDay(r.auth,r.params.id));
+  app.patch<{Params:{id:string}}>("/api/v1/expense-days/:id",async(r,reply)=>send(reply,expense.updateDay(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/expense-days/:id/items",async(r,reply)=>send(reply,expense.addItem(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string;itemId:string}}>("/api/v1/expense-days/:id/items/:itemId/confirm",async(r,reply)=>send(reply,expense.confirmItem(r.auth,r.params.id,r.params.itemId,key(r),body(r))));
+  app.patch<{Params:{id:string;itemId:string}}>("/api/v1/expense-days/:id/items/:itemId",async(r,reply)=>send(reply,expense.updateCandidate(r.auth,r.params.id,r.params.itemId,key(r),body(r))));
+  app.post<{Params:{id:string;itemId:string}}>("/api/v1/expense-days/:id/items/:itemId/exclude",async(r,reply)=>send(reply,expense.excludeCandidate(r.auth,r.params.id,r.params.itemId,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/expense-days/:id/followups",async(r,reply)=>send(reply,expense.addFollowup(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>("/api/v1/expense-days/:id/cash-transfers",async r=>expense.unavailable(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>("/api/v1/expense-days/:id/reconcile",async r=>expense.unavailable(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>("/api/v1/expense-days/:id/close",async r=>expense.unavailable(r.auth,r.params.id));
   app.post("/api/v1/assist/answers",async(r,reply)=>send(reply,service.assist(r.auth,body(r),key(r))));
 
   app.get("/api/v1/visits",async r=>service.listVisits(r.auth,query(r)));

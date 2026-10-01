@@ -78,6 +78,57 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>api?.dispose());
 test.beforeEach(async({context})=>addRole(context));
 
+test("expense day records survive reload and mobile entry keeps cash operations unavailable",async({browser,browserName})=>{
+  const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context,"assessor");
+  const page=await context.newPage();
+  try{
+    await page.goto(`${webBase}/`);
+    await page.getByRole("button",{name:"その他"}).click();
+    await page.getByRole("link",{name:/経費・車両金精算/}).click();
+    await expect(page.getByRole("heading",{name:"経費・車両金精算"})).toBeVisible();
+    await page.getByLabel("業務日").fill(browserName==="webkit"?"2026-09-30":"2026-09-29");
+    await page.getByRole("button",{name:"日次記録を開く"}).click();
+    await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
+    await page.getByLabel("実際の開始財布残高（任意）").fill("0");
+    await page.getByRole("button",{name:"入力値を保存"}).click();
+    await page.getByLabel("支払先").fill("匿名駐車場");
+    await page.getByLabel("支払額（円）").fill("1200");
+    await page.getByRole("button",{name:"候補として保存"}).click();
+    await expect(page.getByText("確認待ち候補",{exact:true}).locator("..")).toContainText("1件");
+    await page.getByRole("button",{name:"候補を修正"}).click();
+    await page.getByLabel("候補の支払額（円）").fill("1300");
+    await page.getByRole("button",{name:"候補を保存"}).click();
+    await expect(page.getByText("1,300円",{exact:false}).first()).toBeVisible();
+    await page.getByLabel("支払先").fill("匿名の重複候補");
+    await page.getByLabel("支払額（円）").fill("500");
+    await page.getByRole("button",{name:"候補として保存"}).click();
+    await expect(page.getByText("確認待ち候補",{exact:true}).locator("..")).toContainText("2件");
+    const duplicate=page.getByRole("article").filter({hasText:"匿名の重複候補"});
+    await duplicate.getByRole("button",{name:"候補を除外"}).click();
+    await duplicate.getByLabel("集計対象外にする理由").fill("匿名テストの重複");
+    await duplicate.getByRole("button",{name:"理由を記録して除外"}).click();
+    await expect(page.getByText("確認待ち候補",{exact:true}).locator("..")).toContainText("1件");
+    await page.getByRole("button",{name:"内容を確認済みにする"}).click();
+    await expect(page.getByText("確定・会社の財布",{exact:true}).locator("..")).toContainText("1,300円");
+    await page.reload();
+    await expect(page.getByText("確定・会社の財布",{exact:true}).locator("..")).toContainText("1,300円");
+    await expect(page.getByText("対象外の理由：匿名テストの重複")).toBeVisible();
+    await expect(page.getByText("財布残高・金庫残高：")).toContainText("未算定");
+    const managerContext=await browser.newContext({viewport:{width:390,height:844}});
+    try{
+      await addRole(managerContext,"manager");
+      const managerPage=await managerContext.newPage();
+      await managerPage.goto(`${webBase}/expense-settlement${new URL(page.url()).search}`);
+      await expect(managerPage.getByText("別の査定員（閲覧のみ）")).toBeVisible();
+      await expect(managerPage.getByRole("button",{name:"候補として保存"})).toHaveCount(0);
+      await expect(managerPage.getByRole("button",{name:"日次記録を開く"})).toHaveCount(0);
+      await expect(managerPage.getByText("対象外の理由：匿名テストの重複")).toBeVisible();
+    }finally{await managerContext.close();}
+    const results=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa"]).analyze();
+    expect(results.violations.filter(item=>item.impact==="serious"||item.impact==="critical")).toEqual([]);
+  }finally{await context.close();}
+});
+
 test("all 21 API-backed screens render and remain free of serious accessibility violations",async({page})=>{
   test.setTimeout(240_000);
   await page.goto(`${webBase}/`);
