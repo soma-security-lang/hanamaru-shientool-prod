@@ -74,8 +74,16 @@ export async function seedDevelopment(pool: Pool): Promise<void> {
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'content_approval',false,$2,'承認フロー停止'),($1,'team_analytics',false,$2,'分析画面停止') ON CONFLICT DO NOTHING`,[d.organizationId,d.managerMembershipId]);
     await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
-      VALUES($1,'expense_settlement',true,$2,'ローカル検証専用。現金操作はAPIで無効')
+      VALUES($1,'expense_settlement',true,$2,'ローカル検証専用。拠点指定の権限・照合方式でのみ現金業務を操作')
       ON CONFLICT(organization_id,flag_key) DO UPDATE SET enabled=true,rollback_note=EXCLUDED.rollback_note`,[d.organizationId,d.managerMembershipId]);
+    // Synthetic local authority only. Production migrations never grant these.
+    const cashSchema=await client.query("SELECT to_regclass('expense_cash_permissions') AS table_name");
+    if(cashSchema.rows[0]?.table_name){
+      await client.query(`INSERT INTO expense_cash_permissions(organization_id,branch_id,membership_id,authority,can_close,valid_from)
+        VALUES($1,$2,$3,'officer',true,'2020-01-01Z'),($1,$2,$4,'delegate',false,'2020-01-01Z') ON CONFLICT DO NOTHING`,[d.organizationId,d.branchId,d.managerMembershipId,d.membershipId]);
+      await client.query(`INSERT INTO expense_cash_policies(organization_id,branch_id,reconciliation_mode,policy_reference,version)
+        VALUES($1,$2,'external_reference','合成データ検証：手動参照額との照合。全支店の業務式ではありません',1) ON CONFLICT DO NOTHING`,[d.organizationId,d.branchId]);
+    }
     if(marketPriceSchema)await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'market_price_search',false,$2,'Yahoo落札相場の外部取得を即時停止'),
             ($1,'market_price_aucfan',false,$2,'オークファン取得だけを停止'),

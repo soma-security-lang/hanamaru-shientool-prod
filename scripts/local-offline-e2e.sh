@@ -112,7 +112,7 @@ if [[ -n "${OFFLINE_E2E_GREP:-}" ]]; then
   playwright_arguments+=(--grep "$OFFLINE_E2E_GREP")
   hanamaru_info "対象を絞ったoffline browser E2Eを実走します: $OFFLINE_E2E_GREP"
 else
-  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、RBAC、axe、正式63画像＋中核14画像を実走します。"
+  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axe、正式63画像＋中核14画像＋拠点経費4画像を実走します。"
 fi
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
@@ -125,7 +125,12 @@ OFFLINE_STACK_E2E=1 \
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
 if [[ -z "${OFFLINE_E2E_GREP:-}" ]]; then
-  [[ "$screenshot_count" == "77" ]] || hanamaru_fail "offline E2E screenshotは正式63枚＋中核画面360/430pxの14枚、計77枚必要です（actual: $screenshot_count）。"
+  [[ "$screenshot_count" == "81" ]] || hanamaru_fail "offline E2E screenshotは正式63枚＋中核14枚＋拠点経費4枚、計81枚必要です（actual: $screenshot_count）。"
+  for expense_browser in chromium webkit; do
+    for expense_width in 390 1440; do
+      [[ -s "$evidence_dir/screenshots/expense-branch-$expense_browser-$expense_width.png" ]] || hanamaru_fail "拠点経費の画像がありません: $expense_browser/$expense_width"
+    done
+  done
 fi
 jq -n \
   --arg gitSha "$(git rev-parse HEAD)" \

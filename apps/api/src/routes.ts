@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import type { BackendService } from "./service.js";
 import { denied } from "./errors.js";
 import { ExpenseService } from "./expense.js";
+import {ExpenseCashService} from "./expense-cash.js";
 
 const body=(request:FastifyRequest)=>(request.body&&typeof request.body==="object"&&!Buffer.isBuffer(request.body)?request.body:{}) as Record<string,unknown>;
 const query=(request:FastifyRequest)=>(request.query??{}) as Record<string,unknown>;
@@ -11,6 +12,14 @@ async function send(reply:FastifyReply,promise:Promise<{status:number;body:unkno
 
 export async function registerRoutes(app:FastifyInstance,service:BackendService){
   const expense=new ExpenseService(service);
+  const expenseCash=new ExpenseCashService(service);
+  app.get('/api/v1/expense-branch-options',async r=>expenseCash.options(r.auth));
+  app.get('/api/v1/expense-branch-days',async r=>expenseCash.list(r.auth,String(query(r).branchId??''),String(query(r).businessDate??'')));
+  app.post('/api/v1/expense-branch-days',async(r,reply)=>send(reply,expenseCash.create(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>('/api/v1/expense-branch-days/:id',async r=>expenseCash.read(r.auth,r.params.id));
+  app.get<{Params:{id:string}}>('/api/v1/expense-branch-days/:id/logs',async r=>expenseCash.logs(r.auth,r.params.id));
+  app.post<{Params:{id:string;action:string}}>('/api/v1/expense-branch-days/:id/actions/:action',async(r,reply)=>send(reply,expenseCash.command(r.auth,r.params.id,r.params.action,key(r),body(r))));
+  app.get<{Params:{key:string}}>('/api/v1/expense-branch-operations/:key',async r=>expenseCash.result(r.auth,r.params.key,String(query(r).operation??'')));
   app.get("/health/live",{config:{public:true}},async()=>({status:"ok",revision:process.env.K_REVISION??"local"}));
   app.get("/health/ready",{config:{public:true}},async()=>{await service.repository.system("SELECT 1");return {status:"ready",database:"ok",providers:service.providers.mode,revision:process.env.K_REVISION??"local"};});
   app.get("/api/v1/openapi.json",async(r,reply)=>{if(!r.auth.authorizationScopes?.some(scope=>scope.role==="system_admin"))throw denied();return reply.send(app.swagger());});
@@ -21,7 +30,8 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.delete("/api/v1/sessions/current",{config:{public:true}},sessionGone);
   app.get("/api/v1/me",async r=>service.me(r.auth));
   app.get("/api/v1/dashboard",async r=>service.dashboard(r.auth));
-  app.get("/api/v1/expense-days",async r=>expense.list(r.auth));
+  app.get("/api/v1/expense-days",async r=>expense.list(r.auth,query(r)));
+  app.get<{Params:{key:string}}>("/api/v1/expense-operations/:key",async r=>expense.operationResult(r.auth,r.params.key,query(r).operation));
   app.post("/api/v1/expense-days",async(r,reply)=>send(reply,expense.createDay(r.auth,key(r),body(r))));
   app.get<{Params:{id:string}}>("/api/v1/expense-days/:id",async r=>expense.getDay(r.auth,r.params.id));
   app.patch<{Params:{id:string}}>("/api/v1/expense-days/:id",async(r,reply)=>send(reply,expense.updateDay(r.auth,r.params.id,key(r),body(r))));

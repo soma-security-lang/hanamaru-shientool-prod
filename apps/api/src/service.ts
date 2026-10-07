@@ -623,6 +623,13 @@ export class BackendService {
     const requestHash = sha(JSON.stringify(body ?? {}));
     try {
       const result = await this.repository.withContext(ctx, async (tx) => {
+        // Expense retries may arrive before the first response. Serialize only
+        // identical operation keys so the second request observes the saved result.
+        if (endpoint.startsWith("expense.")) {
+          await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
+            `${ctx.organizationId}:${ctx.membershipId}:${endpoint}`, key,
+          ]);
+        }
         const existing = await tx.query<{
           request_hash: string;
           response_status: number;

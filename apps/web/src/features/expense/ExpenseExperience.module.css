@@ -7,4 +7,6 @@
 .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.metrics div{background:#f1f6fc;border-radius:14px;padding:15px}.metrics small,.metrics strong,.item span,.item small{display:block}.metrics strong{font-size:20px}
 .item{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid #d7e1eb;padding:14px 0}.item span{margin:4px 0}.item small,.note{color:#54697f;font-size:14px}.error{background:#fff1f0;color:#922e3a;padding:15px;border-radius:12px}.error button{margin-left:8px}.page a{color:#155ed0}
 .itemBody{flex:1;min-width:0}.itemBody form{margin-top:12px}.actions{display:flex;flex-wrap:wrap;gap:8px}.actions button{white-space:normal}.actions button:not(:last-child),.itemBody form button[type="button"]{background:#fff;color:#155ed0}
+.secondaryButton,.card>button,.card>.actions button{min-height:44px;padding:9px 16px;border-radius:10px;border:1px solid #155ed0;background:#fff;color:#155ed0;font:inherit;font-weight:700;cursor:pointer}
+.secondaryButton:disabled,.card>button:disabled,.card>.actions button:disabled{opacity:.5;cursor:wait}
 @media(max-width:700px){.page{padding:14px}.card,.disabled{padding:18px}.metrics{grid-template-columns:1fr}.item{align-items:start;flex-direction:column}.steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}

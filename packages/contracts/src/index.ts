@@ -67,9 +67,30 @@ export type Timestamp = string;
 
 export interface ExpenseDayDto {
   id:string; branchId:string; ownerMembershipId:string; businessDate:string;
-  openingWalletCash:string|null; purchaseTotal:string|null; status:"draft";
+  openingWalletCash:string|null; purchaseTotal:string|null; purchaseSourceNote:string|null; status:"draft";
   lockVersion:number; createdAt:Timestamp; updatedAt:Timestamp;
 }
+export interface ExpenseBranchOptionDto {
+ id:string;name:string;authority:"officer"|"delegate";canClose:boolean;
+ reconciliationMode:"external_reference"|"vault_ledger_v1"|null;policyReference:string|null;policyVersion:number|null;
+}
+export interface ExpenseBranchListDto {
+ days:Array<{id:string;businessDate:string;status:string;lockVersion:number;reviewRequired:boolean}>;
+ members:Array<{id:string;displayName:string}>;
+ pending:Array<{id:string;branchDayId:string;businessDate:string;kind:string;amount:string|null;note:string;assigneeId:string}>;
+}
+export interface ExpenseBranchDetailDto {
+ day:{id:string;branchId:string;businessDate:string;status:"open"|"closed_balanced"|"closed_difference";rosterNote:string;lockVersion:number;expectedCash:string|null;actualCash:string|null;reconciliationVersion:string|null;reviewRequired:boolean;closedAt:string|null};
+ permission:{authority:"officer"|"delegate";canClose:boolean};
+ participants:Array<{id:string;ownerMembershipId:string;displayName:string;openingWalletCash:string|null;purchaseTotal:string|null;purchaseSourceNote:string|null;companyExpense:string;personalExpense:string;candidateCount:number;readyAt:string|null}>;
+ items:Array<{id:string;dayId:string;merchant:string;category:string;amount:string;paymentSource:string;status:string;note:string|null;lockVersion:number}>;
+ transfers:Array<{id:string;dayId:string;amount:string;performedBy:string;occurredAt:string;reversesId:string|null;unreplenishedId:string|null}>;
+ unreplenished:Array<{id:string;dayId:string;amount:string;replenishedAmount:string;status:string;reason:string}>;
+ issues:Array<{id:string;kind:string;status:string;amount:string|null;note:string;assigneeId:string;resolutionNote:string|null}>;
+ closure:{expectedCash:string;actualCash:string;difference:string;closedAt:string;snapshotHash:string}|null;
+ report:{reportedAt:string;createdAt:string}|null;
+}
+export interface ExpenseBranchEventDto {action:string;actorId:string;details:Record<string,unknown>;createdAt:string;}
 export interface ExpenseItemDto {
   id:string; dayId:string; spentByMembershipId:string; enteredByMembershipId:string;
   businessDate:string; merchant:string; category:string; amount:string;
@@ -82,12 +103,16 @@ export interface ExpenseFollowupDto {
   id:string; kind:"funding_request"|"unreplenished"|"vault_discrepancy"|"report"|"correction_proposal";
   status:"open"|"resolved"; amount:string|null; reason:string; targetItemId:string|null;
   proposedBefore:{amount:string;lockVersion:string}|null; proposedAfter:{amount:number}|null;
-  recordedByMembershipId:string; occurredAt:Timestamp; createdAt:Timestamp;
+  recordedByMembershipId:string; occurredAt:Timestamp; reportedAt:Timestamp|null; createdAt:Timestamp;
+}
+export interface ExpenseOperationResultDto {
+  status:"succeeded"|"unknown"; operation:string; resourceId:string|null;
 }
 export interface ExpenseDayDetailDto {
   day:ExpenseDayDto; items:ExpenseItemDto[]; followups:ExpenseFollowupDto[];
   totals:{companyWallet:string;personal:string;candidateCount:number};
   nextAction:string; cashReconciliation:"unavailable"; closeEnabled:false;
+  branchClosingStatus?:"open"|"closed_balanced"|"closed_difference"|null;
 }
 
 export interface AuthorizationScope {

@@ -10,6 +10,39 @@ test.describe.configure({mode:"serial"});
 const webBase=process.env.E2E_WEB_BASE_URL??"http://127.0.0.1:3100";
 const apiBase=process.env.E2E_API_BASE_URL??"http://127.0.0.1:3200/api/v1";
 const screenshots=resolve(process.env.OFFLINE_E2E_SCREENSHOT_DIR??".artifacts/offline-e2e-screenshots");
+test('expense branch workflow closes with a difference and preserves later corrections',async({browser,browserName})=>{
+ test.setTimeout(90000);
+ const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context);
+ const page=await context.newPage();page.on('dialog',dialog=>void dialog.accept());
+ const businessDate=browserName==='webkit'?'2026-04-12':'2026-04-11';
+ const panel=page.locator('details[name="expense-branch"]');
+ async function section(title:string){await panel.locator('summary').filter({hasText:new RegExp(`^${title}$`)}).click();return panel.getByRole('group',{name:title,exact:true});}
+ try{
+  await page.goto(`${webBase}/expense-settlement`);await panel.locator(':scope > summary').click();
+  await panel.getByLabel('取りまとめ業務日').fill(businessDate);await panel.getByRole('button',{name:'拠点の日次を検索',exact:true}).click();
+  await panel.getByLabel('佐藤 花子',{exact:true}).check();await panel.getByLabel('対象者の確認メモ',{exact:true}).fill('合成当番表：当日1名');
+  await panel.getByRole('button',{name:'拠点の日次を作成',exact:true}).click();await expect(panel.getByRole('heading',{name:`${businessDate}の拠点取りまとめ`})).toBeVisible();
+  const url=page.url();const branchId=new URL(url).searchParams.get('branchDayId');expect(branchId).toBeTruthy();
+ let group=await section('日次の代理入力');await group.getByRole('combobox',{name:'対象者の日次',exact:true}).selectOption({label:'佐藤 花子'});await group.getByLabel('開始財布額（円）').fill('200000');await group.getByLabel('買取金額（円）').fill('150000');await group.getByLabel('買取金額の参照元').fill('合成買取実績');await group.getByRole('button',{name:'保存する'}).click();await expect(panel.getByText('150,000円',{exact:true})).toBeVisible();
+  group=await section('確認済み経費の代理入力');await group.getByLabel('対象者の日次').selectOption({label:'佐藤 花子'});await group.getByLabel('支払先',{exact:true}).fill('架空駐車場');await group.getByLabel('費目',{exact:true}).fill('駐車場');await group.getByLabel('支出額（円）').fill('1200');await group.getByLabel('支払元',{exact:true}).selectOption('company_wallet');await group.getByLabel('支出日・支出者・金額を人が確認しました').check();await group.getByRole('button',{name:'確認した経費を登録'}).click();await expect(panel.getByText('1,200円',{exact:true})).toBeVisible();
+  group=await section('財布への補充実績');await group.getByLabel('対象者の日次').selectOption({label:'佐藤 花子'});await group.getByLabel('実際の補充額（円）').fill('151200');await group.getByLabel('実際の現金取扱者').selectOption({label:'鈴木 一郎'});await group.getByLabel('補充した日時（日本時間）').fill(`${businessDate}T19:00`);await group.getByLabel('補充の記録メモ').fill('合成補充');
+  let aborted=false;await page.route(`${apiBase}/expense-branch-days/*/actions/transfer`,async route=>{if(aborted){await route.fallback();return;}aborted=true;const response=await route.fetch({headers:{...route.request().headers(),'x-dev-role':'manager'}});expect(response.status()).toBe(200);await route.abort('failed');});
+  await group.getByRole('button',{name:'補充実績を記録'}).click();await expect(panel.getByRole('button',{name:'拠点の保存結果を確認'})).toBeVisible();
+  await page.reload();await panel.getByRole('button',{name:'拠点の保存結果を確認'}).click();await expect(panel.getByText(/補充 151,200円/)).toHaveCount(1);
+  await panel.getByRole('button',{name:'この人の入力完了を記録'}).click();await expect(panel.getByText('入力完了 1 / 1 人')).toBeVisible();
+  group=await section('金庫の最終照合');await group.getByLabel('資料で確認した金庫残高（円）').fill('500000');await group.getByLabel('実際に数えた金庫残高（円）').fill('499500');await group.getByLabel('照合元資料・対象範囲').fill('合成残金表');await group.getByRole('button',{name:'照合結果を保存'}).click();await expect(panel.getByText('差額：-500円')).toBeVisible();
+  group=await section('日次の締め');await group.getByLabel('差異の状況（原因調査中でも可）').fill('原因調査中');await group.getByLabel('調査担当者').selectOption({label:'鈴木 一郎'});await group.getByLabel('差異と調査事項を残して締めます').check();await group.getByRole('button',{name:'差異を残して締める'}).click();await expect(panel.getByText('締め済み・差異あり',{exact:true})).toBeVisible();
+  await page.reload();await expect(panel.getByText('締め済み・差異あり',{exact:true})).toBeVisible();
+  group=await section('役職者による経費の後日追加・訂正');await group.getByLabel('対象者の日次').selectOption({label:'佐藤 花子'});await group.getByLabel('支払先',{exact:true}).fill('架空高速道路');await group.getByLabel('費目',{exact:true}).fill('交通費');await group.getByLabel('支出額（円）').fill('300');await group.getByLabel('支払元',{exact:true}).selectOption('company_wallet');await group.getByLabel('支出日・支出者・金額を人が確認しました').check();await group.getByLabel('追加・訂正の理由').fill('前日の経費入力漏れ');await group.getByRole('button',{name:'理由を残して経費を訂正'}).click();await expect(panel.getByText('1,500円',{exact:true})).toBeVisible();await expect(panel.getByText(/締め時差異：-500円/)).toBeVisible();
+  group=await section('報告実績の記録');await group.getByLabel('実際に報告した日時（日本時間）').fill(`${businessDate}T20:00`);await group.getByLabel('報告先・内容のメモ').fill('合成報告先への自己記録');await group.getByRole('button',{name:'報告実績を記録',exact:true}).click();await expect(panel.getByText(/実報告日時：/)).toBeVisible();
+  await panel.getByRole('button',{name:'記録ログを表示'}).click();await expect(panel.locator('pre').filter({hasText:'前日の経費入力漏れ'})).toHaveCount(1);
+  expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>v.impact==='serious'||v.impact==='critical')).toEqual([]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await mkdir(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,`expense-branch-${browserName}-390.png`),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(screenshots,`expense-branch-${browserName}-1440.png`),fullPage:true});
+  const employee=await browser.newContext({viewport:{width:390,height:844}});await addRole(employee,'assessor');const employeePage=await employee.newPage();await employeePage.goto(url);await expect(employeePage.getByRole('button',{name:'記録ログを表示'})).toHaveCount(0);await expect(employeePage.getByText('役職者による経費の後日追加・訂正',{exact:true})).toHaveCount(0);await expect(employeePage.getByText('締め済み・差異あり',{exact:true})).toBeVisible();const branchData=await employeePage.request.get(`${apiBase}/expense-branch-days/${branchId}`,{headers:{'x-dev-role':'assessor'}});const ownDay=(await branchData.json()).participants[0].id;await employeePage.goto(`${url}&dayId=${ownDay}`);await expect(employeePage.getByText('この業務日は締め済みです。',{exact:false})).toBeVisible();await expect(employeePage.getByRole('button',{name:'候補として保存',exact:true})).toHaveCount(0);await employee.close();
+ }finally{await context.close();}
+});
 let api:APIRequestContext;
 let visitId="";
 
@@ -86,13 +119,15 @@ test("expense day records survive reload and mobile entry keeps cash operations 
     await page.getByRole("button",{name:"その他"}).click();
     await page.getByRole("link",{name:/経費・車両金精算/}).click();
     await expect(page.getByRole("heading",{name:"経費・車両金精算"})).toBeVisible();
-    await page.getByLabel("業務日").fill(browserName==="webkit"?"2026-09-30":"2026-09-29");
+    await page.getByLabel("業務日",{exact:true}).fill(browserName==="webkit"?"2026-09-30":"2026-09-29");
     await page.getByRole("button",{name:"日次記録を開く"}).click();
     await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
     await page.getByLabel("実際の開始財布残高（任意）").fill("0");
+    await page.getByLabel("買取金の参照元メモ（任意）").fill("匿名の当日買取一覧");
     await page.getByRole("button",{name:"入力値を保存"}).click();
     await page.getByLabel("支払先").fill("匿名駐車場");
     await page.getByLabel("支払額（円）").fill("1200");
+    await page.getByLabel("用途・補足（任意）").fill("訪問先の駐車料金");
     await page.getByRole("button",{name:"候補として保存"}).click();
     await expect(page.getByText("確認待ち候補",{exact:true}).locator("..")).toContainText("1件");
     await page.getByRole("button",{name:"候補を修正"}).click();
@@ -113,6 +148,42 @@ test("expense day records survive reload and mobile entry keeps cash operations 
     await page.reload();
     await expect(page.getByText("確定・会社の財布",{exact:true}).locator("..")).toContainText("1,300円");
     await expect(page.getByText("対象外の理由：匿名テストの重複")).toBeVisible();
+    await expect(page.getByText("用途・補足：訪問先の駐車料金")).toBeVisible();
+    await expect(page.getByLabel("買取金の参照元メモ（任意）")).toHaveValue("匿名の当日買取一覧");
+    await page.getByLabel("記録の種類").selectOption("report");
+    await page.getByLabel("実際に報告した日時（任意・日本時間）").fill("2026-09-23T18:30");
+    await page.getByLabel("理由・内容").fill("匿名の報告を自己記録");
+    await page.getByRole("button",{name:"記録を残す"}).click();
+    await expect(page.getByText(/実報告日時：2026\/9\/23 18:30/)).toBeVisible();
+    const savedUrl=page.url();
+    await page.getByLabel("業務日",{exact:true}).fill(browserName==="webkit"?"2026-09-28":"2026-09-27");
+    await page.getByRole("button",{name:"日次記録を開く"}).click();
+    await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
+    await expect.poll(()=>page.url()).not.toBe(savedUrl);
+    await page.goBack();
+    await expect(page.getByText("用途・補足：訪問先の駐車料金")).toBeVisible();
+    expect(page.url()).toBe(savedUrl);
+    await page.goForward();
+    await expect(page.getByText("支出明細はありません。")).toBeVisible();
+    await page.goBack();
+    await expect(page.getByText("用途・補足：訪問先の駐車料金")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText(/実報告日時：2026\/9\/23 18:30/)).toBeVisible();
+    expect(page.url()).toBe(savedUrl);
+    await page.getByLabel("保存済み日次を業務日で検索").fill(browserName==="webkit"?"2026-09-30":"2026-09-29");
+    await page.getByRole("button",{name:"検索",exact:true}).click();
+    await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
+    await page.goBack();
+    await expect(page.getByText("用途・補足：訪問先の駐車料金")).toBeVisible();
+    await page.goto(`${webBase}/expense-settlement?dayId=00000000-0000-4000-8000-999999999999`);
+    await expect(page.getByText(/指定された日次記録を確認できません/)).toBeVisible();
+    await page.goto(savedUrl);
+    await expect(page.getByText("用途・補足：訪問先の駐車料金")).toBeVisible();
+    await page.getByLabel("支払先").fill("未保存の下書き");
+    page.once("dialog",dialog=>void dialog.dismiss());
+    await page.getByRole("link",{name:"買取支援ホームへ戻る"}).click();
+    await expect(page.getByLabel("支払先")).toHaveValue("未保存の下書き");
+    await page.getByLabel("支払先").fill("");
     await expect(page.getByText("財布残高・金庫残高：")).toContainText("未算定");
     const managerContext=await browser.newContext({viewport:{width:390,height:844}});
     try{
@@ -126,6 +197,49 @@ test("expense day records survive reload and mobile entry keeps cash operations 
     }finally{await managerContext.close();}
     const results=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa"]).analyze();
     expect(results.violations.filter(item=>item.impact==="serious"||item.impact==="critical")).toEqual([]);
+  }finally{await context.close();}
+});
+
+test("expense write with a lost response resumes by operation key without a duplicate",async({browser,browserName})=>{
+  const context=await browser.newContext({viewport:{width:browserName==="webkit"?390:1440,height:900}});
+  await addRole(context,"assessor");
+  const page=await context.newPage();
+  try{
+    await page.goto(`${webBase}/expense-settlement`);
+    await page.getByLabel("業務日",{exact:true}).fill(browserName==="webkit"?"2026-09-25":"2026-09-26");
+    await page.getByRole("button",{name:"日次記録を開く"}).click();
+    await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
+    const itemUrl=`${apiBase}/expense-days/*/items`;
+    let intercepted=0;
+    await page.route(itemUrl,async route=>{
+      intercepted++;
+      const response=await route.fetch({headers:{...route.request().headers(),"x-dev-role":"assessor"}});
+      expect(response.status()).toBe(201);
+      await route.abort("failed");
+    },{times:1});
+    await page.getByLabel("支払先").fill("匿名の通信断テスト");
+    await page.getByLabel("支払額（円）").fill("700");
+    await page.getByRole("button",{name:"候補として保存"}).click();
+    await expect(page.getByRole("heading",{name:"保存結果の確認"})).toBeVisible();
+    expect(intercepted).toBe(1);
+    await page.getByRole("button",{name:"保存結果を確認"}).click();
+    await expect(page.getByRole("heading",{name:"保存結果の確認"})).toHaveCount(0);
+    await expect(page.getByText("匿名の通信断テスト")).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByText("匿名の通信断テスト")).toHaveCount(1);
+    expect(await page.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.startsWith("hanamaru:expense:pending:")))).toEqual([]);
+    await page.evaluate(()=>{
+      const original=Storage.prototype.setItem;
+      Storage.prototype.setItem=function(key:string,value:string){
+        if(key.startsWith("hanamaru:expense:pending:"))throw new DOMException("Storage unavailable","QuotaExceededError");
+        return original.call(this,key,value);
+      };
+    });
+    await page.getByLabel("支払先").fill("送信前停止の確認");
+    await page.getByLabel("支払額（円）").fill("900");
+    await page.getByRole("button",{name:"候補として保存"}).click();
+    await expect(page.getByText(/一時保存できません。保存を開始せずに停止/)).toBeVisible();
+    await expect(page.getByText("送信前停止の確認",{exact:true})).toHaveCount(0);
   }finally{await context.close();}
 });
 
