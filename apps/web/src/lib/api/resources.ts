@@ -122,7 +122,7 @@ export const resources={
     await putUpload(session,file);
     return apiClient.request<{id:string;status:string;expiresAt:string}>(`/market-price/image-uploads/${session.uploadId}/complete`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})});
   },
-  analyzeMarketPriceIdentification:(id:string)=>apiClient.request<{jobId:string;status:string}>(`/market-price/identifications/${id}/analyze`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({})}),
+  analyzeMarketPriceIdentification:(id:string,searchLanguage?:"en")=>apiClient.request<{jobId:string;status:string}>(`/market-price/identifications/${id}/analyze`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify(searchLanguage?{searchLanguage}:{})}),
   updateMarketPriceIdentification:(id:string,expectedLockVersion:number,fields:MarketPriceIdentificationFields,productCandidates:MarketPriceProductCandidate[]=[])=>apiClient.request<{id:string;status:string;lockVersion:number}>(`/market-price/identifications/${id}`,{method:"PATCH",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({expectedLockVersion,fields,suggestionDecisions:{productCandidates:productCandidates.map(candidate=>({id:candidate.id,decision:candidate.decision}))}})}),
   confirmMarketPriceIdentification:(id:string,expectedLockVersion:number)=>apiClient.request<{id:string;status:string;lockVersion:number;confirmedAt:string}>(`/market-price/identifications/${id}/confirm`,{method:"POST",headers:{"idempotency-key":apiClient.idempotencyKey()},body:JSON.stringify({expectedLockVersion})}),
   marketPriceSearches:()=>apiClient.request<List<MarketPriceSearchDto>>("/market-price/searches"),

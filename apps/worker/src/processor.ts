@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { processEbayMarketPriceSearch } from "./ebay-market-price.js";
 import sharp from "sharp";
 import type { MarketPriceOutlierPolicy,MarketPriceSourceProvider,ProductCondition,RequestContext,YahooClosedSearchSpec } from "@hanamaru/contracts";
 import type {
@@ -590,6 +591,15 @@ export class WorkerProcessor {
         return this.marketPriceIdentification(ctx,job);
       case "market_price_search":
         return this.marketPriceSearch(ctx,job);
+      case "market_price_ebay_search": {
+        const result = await processEbayMarketPriceSearch(this.repository,this.providers,ctx,job.entity_id);
+        if (result.pending) {
+          if (job.attempt_count>=job.max_attempts) throw new Error("PROVIDER_PERMANENT: eBay polling limit reached; checkpoints retained");
+          await this.repository.withContext(ctx,async tx=>this.finish(tx,job,"retry_wait",undefined,undefined,result.retryAt));
+          return "deferred";
+        }
+        return;
+      }
       case "delete":
         return this.remove(ctx, job);
       case "retention_scan":
@@ -607,6 +617,7 @@ export class WorkerProcessor {
     status: "succeeded" | "retry_wait" | "failed",
     message?: string,
     failureCode?:string,
+    retryNotBefore?:string,
   ): Promise<void> {
     const code =
       failureCode??(status === "retry_wait"
@@ -627,7 +638,7 @@ export class WorkerProcessor {
     const updated = await tx.query<{available_at:Date}>(
       `UPDATE jobs
          SET status=$2::varchar,
-             available_at=CASE WHEN $2::text='retry_wait' THEN now()+(LEAST(300,power(2,$3))*interval '1 second') ELSE available_at END,
+             available_at=CASE WHEN $2::text='retry_wait' THEN GREATEST(now()+(LEAST(300,power(2,$3))*interval '1 second'),$6::timestamptz) ELSE available_at END,
              finished_at=CASE WHEN $2::text IN ('succeeded','failed') THEN now() ELSE NULL END,
              input_redacted=CASE WHEN $2::text='succeeded' THEN '{}'::jsonb ELSE input_redacted END,
              error_code=$4,
@@ -637,7 +648,7 @@ export class WorkerProcessor {
              heartbeat_at=now()
        WHERE id=$1 AND status='running' AND ($2::text<>'succeeded' OR cancel_requested_at IS NULL)
        RETURNING available_at`,
-      [job.id, status, job.attempt_count, code, message ?? null],
+      [job.id, status, job.attempt_count, code, message ?? null, retryNotBefore??null],
     );
     if(status==="retry_wait"&&updated.rows[0]){
       await tx.query(
@@ -1492,9 +1503,14 @@ export class WorkerProcessor {
   }
 
   private async marketPriceIdentification(ctx:RequestContext,job:ClaimedJob):Promise<void>{
+    const searchLanguage=job.input_redacted.searchLanguage==="en"?"en":"ja";
     type IdentificationRow={id:string;input_mode:"image_assisted"|"manual_assisted";input_redacted:Record<string,unknown>;status:string};
     type ImageRow={id:string;status:string;storage_object_id:string;object_name:string;object_generation:string;mime_type:"image/jpeg"|"image/png"|"image/webp"};
     const prepared=await this.repository.withContext(ctx,async tx=>{
+      if(searchLanguage==="en"){
+        const flag=await tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_ebay' AND (expires_at IS NULL OR expires_at>now())",[job.organization_id]);
+        if(!flag.rows[0]?.enabled)throw new Error("PROVIDER_PERMANENT: eBay English support is disabled");
+      }
       const enabled=await tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_search' AND (expires_at IS NULL OR expires_at>now())",[job.organization_id]);if(!enabled.rows[0]?.enabled)throw new Error("PROVIDER_PERMANENT: market price feature is disabled");
       const found=await tx.query<IdentificationRow>("SELECT id,input_mode,input_redacted,status FROM market_price_identifications WHERE organization_id=$1 AND id=$2 FOR UPDATE",[job.organization_id,job.entity_id]);const identification=found.rows[0];if(!identification||identification.status!=="analyzing")throw new Error("PROVIDER_PERMANENT: market price identification is not available");
       const images=await tx.query<ImageRow>(`SELECT image.id,image.status,image.storage_object_id,o.object_name,o.object_generation::text,o.mime_type
@@ -1513,8 +1529,8 @@ export class WorkerProcessor {
       }else{images.push({content:original,mimeType:image.mime_type});}
     }
     const input=prepared.identification.input_redacted;const stringOrNull=(value:unknown)=>typeof value==="string"&&value.trim()?value.trim():null;
-    const result=await this.providers.ai.identifyMarketProduct({inputMode:prepared.identification.input_mode,productName:stringOrNull(input.productName)??"",category:stringOrNull(input.category),brand:stringOrNull(input.brand),modelNumber:stringOrNull(input.modelNumber),attributes:input.attributes&&typeof input.attributes==="object"&&!Array.isArray(input.attributes)?Object.fromEntries(Object.entries(input.attributes as Record<string,unknown>).map(([key,value])=>[key,String(value)])): {},excludeKeywords:Array.isArray(input.excludeKeywords)?input.excludeKeywords.map(String):[],confirmedConditions:Array.isArray(input.conditions)?input.conditions.map(String) as ProductCondition[]:[],images});
-    await this.repository.withContext(ctx,async tx=>{const current=await tx.query("SELECT 1 FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status='analyzing' FOR UPDATE",[job.organization_id,job.entity_id]);if(!current.rowCount)throw new Error("JOB_CANCELLED");const suggestion={productCandidates:result.productCandidates,searchQueries:result.searchQueries,excludeKeywords:result.excludeKeywords,suggestedConditions:result.suggestedConditions,warnings:result.warnings};await tx.query("UPDATE market_price_identifications SET status='suggestion_ready',suggestion_json=$3,model_name=$4,prompt_version=1,failure_class=NULL,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[job.organization_id,job.entity_id,suggestion,result.model]);await tx.audit("market_price.identification.suggested","market_price_identification",job.entity_id,"allowed",{model:result.model,candidateCount:result.productCandidates.length,queryCount:result.searchQueries.length,imageCount:images.length});});
+    const result=await this.providers.ai.identifyMarketProduct({searchLanguage,inputMode:prepared.identification.input_mode,productName:stringOrNull(input.productName)??"",category:stringOrNull(input.category),brand:stringOrNull(input.brand),modelNumber:stringOrNull(input.modelNumber),attributes:input.attributes&&typeof input.attributes==="object"&&!Array.isArray(input.attributes)?Object.fromEntries(Object.entries(input.attributes as Record<string,unknown>).map(([key,value])=>[key,String(value)])): {},excludeKeywords:Array.isArray(input.excludeKeywords)?input.excludeKeywords.map(String):[],confirmedConditions:Array.isArray(input.conditions)?input.conditions.map(String) as ProductCondition[]:[],images});
+    await this.repository.withContext(ctx,async tx=>{const current=await tx.query("SELECT 1 FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status='analyzing' FOR UPDATE",[job.organization_id,job.entity_id]);if(!current.rowCount)throw new Error("JOB_CANCELLED");const suggestion={productCandidates:result.productCandidates,searchQueries:result.searchQueries,excludeKeywords:result.excludeKeywords,suggestedConditions:result.suggestedConditions,warnings:result.warnings};await tx.query("UPDATE market_price_identifications SET status='suggestion_ready',suggestion_json=$3,model_name=$4,prompt_version=$5,failure_class=NULL,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[job.organization_id,job.entity_id,suggestion,result.model,searchLanguage==="en"?2:1]);await tx.audit("market_price.identification.suggested","market_price_identification",job.entity_id,"allowed",{model:result.model,candidateCount:result.productCandidates.length,queryCount:result.searchQueries.length,imageCount:images.length});});
   }
 
   private async marketPriceSearch(ctx:RequestContext,job:ClaimedJob):Promise<void>{
@@ -2100,6 +2116,8 @@ export class WorkerProcessor {
   }
 
   private async retention(ctx: RequestContext, job: ClaimedJob): Promise<void> {
+    const ebayPurged=await this.repository.system<{count:number}>("SELECT purge_expired_ebay_content($1,100)::int count",[job.organization_id]);
+    if(Number(ebayPurged.rows[0]?.count??0)>0)await this.repository.withContext(ctx,tx=>tx.audit("market_price.ebay.content_purged","organization",job.organization_id,"allowed",{count:Number(ebayPurged.rows[0]!.count)}));
     const incompleteUploadsDeleted=await cleanupExpiredUploadObjects(this.repository,this.providers.storage,ctx,job);
     const expiredMarketUploads=await this.repository.withContext(ctx,tx=>tx.query<{id:string;object_name:string}>("SELECT id,object_name FROM market_price_image_upload_sessions WHERE organization_id=$1 AND completed_at IS NULL AND expires_at<now()-interval '24 hours' ORDER BY expires_at,id LIMIT 500",[job.organization_id]));
     let marketUploadDeletedCount=0;

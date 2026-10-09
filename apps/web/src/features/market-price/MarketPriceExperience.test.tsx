@@ -9,6 +9,8 @@ const api=vi.hoisted(()=>({
   marketPriceOptions:vi.fn(),createMarketPriceIdentification:vi.fn(),uploadMarketPriceImage:vi.fn(),analyzeMarketPriceIdentification:vi.fn(),marketPriceIdentification:vi.fn(),updateMarketPriceIdentification:vi.fn(),confirmMarketPriceIdentification:vi.fn(),createMarketPriceSearch:vi.fn(),
   marketPriceSearch:vi.fn(),marketPriceSearches:vi.fn(),overrideMarketPriceCandidate:vi.fn(),updateMarketPriceOutlierPolicy:vi.fn(),confirmMarketPriceSearch:vi.fn(),retryMarketPriceSearch:vi.fn(),cancelMarketPriceSearch:vi.fn(),repeatMarketPriceSearch:vi.fn(),
 }));
+const ebayApi=vi.hoisted(()=>({create:vi.fn(),get:vi.fn(),operationResult:vi.fn()}));
+vi.mock("@/lib/api/ebay-market-price",()=>({ebayMarketPriceResources:ebayApi}));
 
 vi.mock("next/navigation",()=>({
   usePathname:()=>"/market-price",
@@ -25,14 +27,136 @@ const options={conditions:[
   {value:"compare" as const,label:"両方を比較",description:"取得元ごとに比較します",enabled:true,limitations:["中央値は混ぜません"]},
 ],limits:{imageCount:5 as const,imageBytes:10_485_760,totalImageBytes:52_428_800}};
 
-afterEach(()=>cleanup());
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
 beforeEach(()=>{
+  window.sessionStorage.clear();
   state.view="input";state.searchId="";state.compareSearchId="";state.push.mockReset();state.replace.mockReset();
   Object.values(api).forEach(mock=>mock.mockReset());
+  Object.values(ebayApi).forEach(mock=>mock.mockReset());
   api.marketPriceOptions.mockResolvedValue(options);
 });
 
 describe("SCR-021 market price workflow",()=>{
+  it("requests English AI support only after explicit selection and does not start an eBay search",async()=>{
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.createMarketPriceIdentification.mockResolvedValue({id:"synthetic-english-identification"});
+    api.analyzeMarketPriceIdentification.mockResolvedValue({jobId:"synthetic-english-job",status:"analyzing"});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/手入力＋AI補助/}));
+    await userEvent.type(screen.getByLabelText(/商品名/),"合成カメラ");
+    await userEvent.type(screen.getByLabelText("型番"),"EOS R6");
+    await userEvent.click(screen.getByRole("checkbox",{name:"eBay向けの英語検索語を提案する"}));
+    await userEvent.click(screen.getByRole("button",{name:/検索条件を確認/}));
+    await waitFor(()=>expect(api.analyzeMarketPriceIdentification).toHaveBeenCalledWith("synthetic-english-identification","en"));
+    expect(ebayApi.create).not.toHaveBeenCalled();
+    expect(api.createMarketPriceIdentification).toHaveBeenCalledWith(expect.objectContaining({productName:"合成カメラ",modelNumber:"EOS R6"}));
+  });
+  it("does not offer English AI support when the eBay feature is unavailable",async()=>{
+    render(<MarketPriceExperience/>);
+    await screen.findByRole("radio",{name:/手入力＋AI補助/});
+    expect(screen.queryByRole("checkbox",{name:"eBay向けの英語検索語を提案する"})).not.toBeInTheDocument();
+  });
+  it("starts eBay with confirmed markets and retries a lost response with the same operation",async()=>{
+    state.view="identify";state.searchId="synthetic-identification";
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.marketPriceIdentification.mockResolvedValue({id:state.searchId,lockVersion:2,status:"confirmation_required",
+      input:{productName:"Synthetic camera",modelNumber:"X1",category:null,brand:null,attributes:{},conditions:["good"],excludeKeywords:[],
+        searchQueries:[{id:"query-ebay",keyword:"Synthetic camera X1",decision:"accepted",source:"user",breadth:"standard"}]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]}});
+    api.updateMarketPriceIdentification.mockResolvedValue({lockVersion:3});
+    api.confirmMarketPriceIdentification.mockResolvedValue({lockVersion:4});
+    ebayApi.create.mockRejectedValueOnce(new Error("synthetic response lost")).mockResolvedValueOnce({searchId:"synthetic-ebay-search",reservedCredits:8});
+    ebayApi.get.mockResolvedValue({id:"synthetic-ebay-search"});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/eBay（Soldgraph/}));
+    expect(screen.getByRole("button",{name:"eBay検索を開始"})).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox",{name:"対象市場・状態と最大消費枠を確認しました"}));
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("synthetic response lost");
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    await waitFor(()=>expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=synthetic-ebay-search&source=ebay",{scroll:false}));
+    expect(ebayApi.create.mock.calls[0]).toEqual(ebayApi.create.mock.calls[1]);
+    expect(ebayApi.create.mock.calls[0]![0]).toMatchObject({markets:["us","uk","ca","au","de","fr","it","es"],conditions:["used"],consumptionConfirmed:true,selectedSearchQueryId:"query-ebay"});
+    expect(api.updateMarketPriceIdentification).toHaveBeenCalledTimes(1);
+    expect(api.confirmMarketPriceIdentification).toHaveBeenCalledTimes(1);
+    expect(api.createMarketPriceSearch).not.toHaveBeenCalled();
+  });
+  it("restores an initial search after reload without confirming or purchasing it again",async()=>{
+    state.view="identify";state.searchId="synthetic-identification";
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.marketPriceIdentification.mockResolvedValue({id:state.searchId,lockVersion:2,status:"confirmation_required",
+      input:{productName:"Synthetic camera",modelNumber:"X1",category:null,brand:null,attributes:{},conditions:["good"],excludeKeywords:[],searchQueries:[{id:"query-ebay",keyword:"Synthetic camera X1",decision:"accepted",source:"user",breadth:"standard"}]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]}});
+    api.updateMarketPriceIdentification.mockResolvedValue({lockVersion:3});api.confirmMarketPriceIdentification.mockResolvedValue({lockVersion:4});
+    ebayApi.create.mockRejectedValueOnce(new Error("synthetic response lost"));
+    const first=render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/eBay（Soldgraph/}));
+    await userEvent.click(screen.getByRole("checkbox",{name:"対象市場・状態と最大消費枠を確認しました"}));
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    await screen.findByRole("button",{name:"eBay検索の開始結果を確認"});
+    const raw=window.sessionStorage.getItem("hanamaru.ebay.pending:synthetic-identification")!,metadata=JSON.parse(raw);
+    expect(Object.keys(metadata).sort()).toEqual(["action","key","searchId","startedAt"]);expect(metadata.action).toBe("create");expect(raw).not.toContain("Synthetic camera");
+    first.unmount();ebayApi.operationResult.mockResolvedValue({status:"succeeded",action:"create",searchId:"synthetic-created-search"});ebayApi.get.mockResolvedValue({id:"synthetic-created-search"});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("button",{name:"eBay検索の開始結果を確認"}));
+    await waitFor(()=>expect(state.replace).toHaveBeenCalledWith("/market-price?view=progress&searchId=synthetic-created-search&source=ebay",{scroll:false}));
+    expect(ebayApi.operationResult).toHaveBeenCalledWith(metadata.key,"create");expect(ebayApi.create).toHaveBeenCalledTimes(1);
+    expect(api.updateMarketPriceIdentification).toHaveBeenCalledTimes(1);expect(api.confirmMarketPriceIdentification).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem("hanamaru.ebay.pending:synthetic-identification")).toBeNull();
+  });
+  it("retains an expired unknown initial operation without buying a replacement search",async()=>{
+    state.view="identify";state.searchId="synthetic-identification";
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.marketPriceIdentification.mockResolvedValue({id:state.searchId,lockVersion:2,status:"confirmed",
+      input:{productName:"Synthetic camera",modelNumber:"X1",category:null,brand:null,attributes:{},conditions:["good"],excludeKeywords:[],searchQueries:[]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]}});
+    window.sessionStorage.setItem("hanamaru.ebay.pending:synthetic-identification",JSON.stringify({key:crypto.randomUUID(),searchId:state.searchId,action:"create",startedAt:Date.now()-49*60*60*1000}));
+    ebayApi.operationResult.mockResolvedValue({status:"unknown",searchId:null});render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("button",{name:"eBay検索の開始結果を確認"}));
+    expect(await screen.findByText(/操作結果の保管期間を過ぎました/)).toBeInTheDocument();
+    expect(ebayApi.create).not.toHaveBeenCalled();expect(state.replace).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("hanamaru.ebay.pending:synthetic-identification")).not.toBeNull();
+  });
+  it("only reads a known saved initial search when displaying it failed",async()=>{
+    state.view="identify";state.searchId="synthetic-identification";
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.marketPriceIdentification.mockResolvedValue({id:state.searchId,lockVersion:2,status:"confirmation_required",
+      input:{productName:"Synthetic camera",modelNumber:"X1",category:null,brand:null,attributes:{},conditions:["good"],excludeKeywords:[],searchQueries:[{id:"query-ebay",keyword:"Synthetic camera X1",decision:"accepted",source:"user",breadth:"standard"}]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]}});
+    api.updateMarketPriceIdentification.mockResolvedValue({lockVersion:3});api.confirmMarketPriceIdentification.mockResolvedValue({lockVersion:4});
+    ebayApi.create.mockResolvedValue({searchId:"synthetic-ebay-search"});
+    ebayApi.get.mockRejectedValueOnce(new Error("synthetic display lost")).mockResolvedValueOnce({id:"synthetic-ebay-search"});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/eBay（Soldgraph/}));
+    await userEvent.click(screen.getByRole("checkbox",{name:"対象市場・状態と最大消費枠を確認しました"}));
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("synthetic display lost");
+    expect(screen.getByText(/検索受付は保存済みですが/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索の開始結果を確認"}));
+    await waitFor(()=>expect(state.replace).toHaveBeenCalled());
+    expect(ebayApi.create).toHaveBeenCalledTimes(1);expect(ebayApi.operationResult).not.toHaveBeenCalled();
+    expect(ebayApi.get).toHaveBeenCalledTimes(2);expect(api.confirmMarketPriceIdentification).toHaveBeenCalledTimes(1);
+    expect(window.sessionStorage.getItem("hanamaru.ebay.pending:synthetic-identification")).toBeNull();
+  });
+  it("does not purchase an initial search when metadata storage is unavailable",async()=>{
+    state.view="identify";state.searchId="synthetic-identification";
+    api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
+    api.marketPriceIdentification.mockResolvedValue({id:state.searchId,lockVersion:2,status:"confirmation_required",
+      input:{productName:"Synthetic camera",modelNumber:"X1",category:null,brand:null,attributes:{},conditions:["good"],excludeKeywords:[],searchQueries:[{id:"query-ebay",keyword:"Synthetic camera X1",decision:"accepted",source:"user",breadth:"standard"}]},
+      suggestions:{productCandidates:[],searchQueries:[],excludeKeywords:[],suggestedConditions:[],warnings:[]}});
+    api.updateMarketPriceIdentification.mockResolvedValue({lockVersion:3});api.confirmMarketPriceIdentification.mockResolvedValue({lockVersion:4});
+    const storage=vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw new Error("synthetic storage denied");});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("radio",{name:/eBay（Soldgraph/}));
+    await userEvent.click(screen.getByRole("checkbox",{name:"対象市場・状態と最大消費枠を確認しました"}));
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("操作キーを一時保存できない");
+    expect(ebayApi.create).not.toHaveBeenCalled();
+    storage.mockRestore();ebayApi.create.mockResolvedValue({searchId:"synthetic-ebay-search"});ebayApi.get.mockResolvedValue({id:"synthetic-ebay-search"});
+    await userEvent.click(screen.getByRole("button",{name:"eBay検索を開始"}));
+    await waitFor(()=>expect(state.replace).toHaveBeenCalled());
+    expect(ebayApi.create).toHaveBeenCalledTimes(1);expect(api.confirmMarketPriceIdentification).toHaveBeenCalledTimes(1);
+  });
   it("offers all three input paths and sends the direct path without AI",async()=>{
     api.createMarketPriceIdentification.mockResolvedValue({id:"identification-1",lockVersion:1});
     render(<MarketPriceExperience/>);

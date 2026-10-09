@@ -73,6 +73,7 @@ export interface SpeechProvider {
 }
 export interface AiProvider {
   identifyMarketProduct(input:{
+    searchLanguage?:"ja"|"en";
     inputMode:"image_assisted"|"manual_assisted";
     productName:string;
     category:string|null;
@@ -132,4 +133,4 @@ export interface DriveProvider {
   openFile(input:{accessToken:string;fileId:string}):Promise<{source:Readable;mimeType:string;sizeBytes:number;sourceVersion:string|null;modifiedTime:string|null}>;
 }
 export interface TokenCipher { keyVersion:string; encrypt(plainText:string):Buffer; decrypt(cipherText:Buffer):string; }
-export interface PlatformProviders { storage: StorageProvider; tasks: TaskProvider; speech: SpeechProvider; ai: AiProvider; drive: DriveProvider; marketPriceSource:MarketPriceSourceProvider; mode: "local"|"local-connected"|"gcp"; }
+export interface PlatformProviders { storage: StorageProvider; tasks: TaskProvider; speech: SpeechProvider; ai: AiProvider; drive: DriveProvider; marketPriceSource:MarketPriceSourceProvider; soldgraph?:(import("@hanamaru/contracts").SoldgraphPageProvider & {usage?:()=>Promise<import("@hanamaru/contracts").SoldgraphUsage>})|undefined; mode: "local"|"local-connected"|"gcp"; }

@@ -44,7 +44,9 @@ pnpm --filter @hanamaru/database seed:dev
 pnpm --filter @hanamaru/database content:import
 pnpm --filter @hanamaru/database test:integration
 pnpm --filter @hanamaru/worker test
-pnpm --filter @hanamaru/api test
+# API integration files share seeded organizations and intentionally toggle flags.
+# Serialize files so one suite cannot disable another suite's authorization fixture.
+pnpm --filter @hanamaru/api exec vitest run --no-file-parallelism --maxWorkers=1
 pnpm --filter @hanamaru/api build
 pnpm --filter @hanamaru/worker build
 

@@ -7,6 +7,7 @@ import { Readable,Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {reviewDimensions,type AiProvider,type DriveProvider,type MarketPriceSourceProvider,type PlatformProviders,type ReviewDimension,type SpeechProvider,type StorageProvider,type TaskProvider,type UploadDeclaration } from "./types.js";
 import { probeAudioStream,probeVideoStream } from "./media.js";
+import { createSoldgraphFixtureProvider } from "./soldgraph-fixture.js";
 
 const storageRoot=()=>process.env.LOCAL_STORAGE_DIR??join(tmpdir(),"hanamaru-local-storage");
 const objectPath=(objectName:string)=>join(storageRoot(),`${createHash("sha256").update(objectName).digest("hex")}.bin`);
@@ -116,9 +117,9 @@ class LocalAi implements AiProvider {
     if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: 商品特定AI補助にはPROVIDER_MODE=local-connectedが必要です");
     const productName=input.productName||"匿名デモ カメラ ボディ";const brand=input.brand||"Canon";const modelNumber=input.modelNumber||"EOS R6";
     return{model:"test-deterministic-v1",productCandidates:[{id:"candidate-1",productName,category:input.category||"カメラ",brand,modelNumber,attributes:{...input.attributes,構成:"ボディのみ"},confidence:.94,decision:"pending" as const}],searchQueries:[
-      {id:"query-strict",keyword:`${brand} ${modelNumber} ボディ`,breadth:"strict" as const,source:"ai" as const,decision:"pending" as const},
+      {id:"query-strict",keyword:`${brand} ${modelNumber} ${input.searchLanguage==="en"?"body":"ボディ"}`,breadth:"strict" as const,source:"ai" as const,decision:"pending" as const},
       {id:"query-standard",keyword:`${brand} ${modelNumber}`,breadth:"standard" as const,source:"ai" as const,decision:"pending" as const},
-      {id:"query-broad",keyword:`${modelNumber} カメラ`,breadth:"broad" as const,source:"ai" as const,decision:"pending" as const},
+      {id:"query-broad",keyword:`${modelNumber} ${input.searchLanguage==="en"?"camera":"カメラ"}`,breadth:"broad" as const,source:"ai" as const,decision:"pending" as const},
     ],excludeKeywords:[...new Set([...input.excludeKeywords,"ジャンク","部品取り"])],suggestedConditions:input.confirmedConditions,warnings:input.images.length?["画像から読み取れない付属品は検索条件へ追加していません"]:[]};
   }
   async planYahooSearch(input:Parameters<AiProvider["planYahooSearch"]>[0]){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: 相場検索AI補助にはPROVIDER_MODE=local-connectedが必要です");return{model:"test-deterministic-v1",suggestion:{selectedKeyword:input.selectedKeyword,categoryRegistryKey:input.categoryCandidates[0]?.key??null,brandRegistryKey:input.brandCandidates[0]?.key??null,suggestedConditions:input.confirmedConditions,confidence:.9,warnings:[]}};}
@@ -204,4 +205,4 @@ function localAucfanMarketPriceJson(request:Parameters<NonNullable<MarketPriceSo
   const items=request.page>1||request.keyword.includes("fixture empty")?[]:prices.map((price,index)=>({title:index===prices.length-1?`${request.keyword} ジャンク`:`${request.keyword} ボディ ${index+1}`,time:new Date(Date.now()-(offset+index+1)*86_400_000).toISOString().slice(0,10).replaceAll("-",""),bid:index+1,price,start_price:1000,thumbnail:"",siteurl:`https://aucfan.com/intro/q-${request.period}-${index+1}`,auction_id:`fixture-${request.period}-${String(index+1).padStart(3,"0")}`,sitecode:"yahoo",seller_id:"fixture",seller_type:"general",item_status:index%3===0?"new":"used"}));
   return JSON.stringify({hit_count:items.length,items,max_page_number:1});
 }
-export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),marketPriceSource:{async fetchPage(url){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Yahoo相場取得にはPROVIDER_MODE=local-connectedが必要です");return{status:200,body:localMarketPriceHtml(url),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};},async fetchAucfanPage(request){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: オークファンAPIにはローカルfixtureまたは正式な接続設定が必要です");return{status:200,body:localAucfanMarketPriceJson(request),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};}},mode:"local"}; }
+export function createLocalProviders():PlatformProviders { return {storage:new LocalStorage(),tasks:new LocalTasks(),speech:new LocalSpeech(),ai:new LocalAi(),drive:new LocalDrive(),...(fixtureMode()?{soldgraph:createSoldgraphFixtureProvider()}:{}),marketPriceSource:{async fetchPage(url){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: Yahoo相場取得にはPROVIDER_MODE=local-connectedが必要です");return{status:200,body:localMarketPriceHtml(url),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};},async fetchAucfanPage(request){if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: オークファンAPIにはローカルfixtureまたは正式な接続設定が必要です");return{status:200,body:localAucfanMarketPriceJson(request),retryAfterSeconds:null,fetchedAt:new Date().toISOString()};}},mode:"local"}; }

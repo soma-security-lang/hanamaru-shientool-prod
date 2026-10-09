@@ -27,6 +27,7 @@ const jobTypes:Record<string,DisplayLabel>={
   transcribe:item("文字起こし","録音を文字に変換します"),review:item("AI振り返り生成","会話から振り返りを作成します"),
   drive_import:item("Google Drive音声取込","選択した録音を取り込みます"),retention_scan:item("保存期限確認","保存期限を迎えたデータを確認します"),
   deletion:item("削除処理","承認済みの削除要求を処理します"),content_import:item("コンテンツ取込","既存コンテンツを取り込みます"),
+  market_price_ebay_search:item("eBay相場取得","選択した市場の販売実績を取得します"),
 };
 const jobStates:Record<string,DisplayLabel>={
   queued:item("受付済み","処理開始を待っています","info"),running:item("処理中","ページを閉じても処理は続きます","info"),
@@ -38,6 +39,7 @@ const entityTypes:Record<string,DisplayLabel>={
   visit:item("訪問案件","訪問単位の処理"),document:item("訪問情報PDF","アップロードされたPDF"),recording:item("録音","訪問時の音声"),
   transcript:item("文字起こし","音声から作成した会話記録"),review:item("振り返り","AIが作成した振り返り"),content:item("コンテンツ","現場知識または研修内容"),
   deletion_request:item("削除要求","案件データの削除依頼"),organization:item("組織","組織共通の処理"),
+  ebay_market_price_search:item("eBay相場検索","海外販売実績の参考相場検索"),
 };
 const membershipStates:Record<string,DisplayLabel>={
   active:item("利用中","ログインできます","success"),invited:item("招待済み","初回ログインを待っています","info"),

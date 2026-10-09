@@ -14,6 +14,7 @@ describe("operations scan",()=>{
     expect(String(system.mock.calls[0]?.[0])).toContain("NOT EXISTS(SELECT 1 FROM transcripts");
     expect(String(system.mock.calls[0]?.[0])).toContain("MARKET_PRICE_STALLED");
     expect(String(system.mock.calls[0]?.[0])).toContain("MARKET_PRICE_BLOCKED");
+    expect(String(system.mock.calls[0]?.[0])).toContain("soldgraph_operational_candidates()");
     expect(alerts).toEqual([{organizationId:"org",jobId:"job",jobType:"transcribe",failureClass:"STT_HEARTBEAT_STALE",severity:"warning",attempt:2,maxAttempts:200,oldestAgeSeconds:240}]);
     expect(statements.some(sql=>sql.includes("UPDATE operational_alerts SET status='resolved'"))).toBe(true);
     expect(statements.some(sql=>sql.includes("INSERT INTO operational_alerts"))).toBe(true);

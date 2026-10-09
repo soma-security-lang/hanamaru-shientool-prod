@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+export * from "./soldgraph.js";
+export * from "./soldgraph-workflow.js";
+export * from "./ebay-product-match.js";
 import type {
   GeneratedYahooSearchUrl,
   AucfanSearchPeriod,
@@ -519,6 +522,8 @@ export interface MarketPriceEvaluationSummary{
   baselineZeroResultRate:number;
   enhancedZeroResultRate:number;
 }
+
+export {parseSoldgraphUsage,soldgraphAvailableAllowance} from "./soldgraph-usage.js";
 
 export function summarizeMarketPriceEvaluation(cases:readonly MarketPriceEvaluationCase[]):MarketPriceEvaluationSummary{
   if(cases.length<30)throw new YahooClosedSearchContractError("EVALUATION_SAMPLE_TOO_SMALL","at least 30 anonymized products are required");

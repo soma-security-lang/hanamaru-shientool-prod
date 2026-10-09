@@ -8,9 +8,14 @@ import type {MarketPriceCandidateDto,MarketPriceIdentificationDto,MarketPriceIde
 import {ApiClientError} from "@/lib/api/client";
 import {resources} from "@/lib/api/resources";
 import styles from "./MarketPriceExperience.module.css";
+import { EbaySearchControls, initialEbaySelection } from "./EbaySearchControls";
+import { EbaySearchDisplay } from "./EbaySearchDisplay";
+import { EbaySearchHistory } from "./EbaySearchHistory";
+import { ebayMarketPriceResources } from "@/lib/api/ebay-market-price";
+import {loadEbayPending,saveEbayPending,clearEbayPending,type EbayPendingOperation} from "./ebay-operation-recovery";
 
 type View="input"|"identify"|"progress"|"candidates"|"result"|"history";
-type Draft={inputMode:MarketPriceInputMode;productName:string;category:string;brand:string;modelNumber:string;searchKeyword:string;excludeKeywords:string;conditions:ProductCondition[]};
+type Draft={inputMode:MarketPriceInputMode;productName:string;category:string;brand:string;modelNumber:string;searchKeyword:string;excludeKeywords:string;conditions:ProductCondition[];englishSearchSupport?:boolean};
 type Navigate=(view:View,id?:string,mode?:"push"|"replace",compareId?:string)=>void;
 
 const views:ReadonlyArray<{value:View;label:string}>=[
@@ -56,6 +61,7 @@ export function MarketPriceExperience(){
   const view=(views.some(item=>item.value===params.get("view"))?params.get("view"):"input") as View;
   const searchId=params.get("searchId")??"";
   const compareSearchId=params.get("compareSearchId")??"";
+  const isEbay=params.get("source")==="ebay";
   const activeStepIndex=Math.max(0,views.slice(0,5).findIndex(item=>item.value===view));
   const [draft,setDraft]=useState<Draft>(initialDraft);
   const [files,setFiles]=useState<File[]>([]);
@@ -82,19 +88,21 @@ export function MarketPriceExperience(){
   function go(next:View,id?:string,mode:"push"|"replace"="push",compareId?:string){
     const nextParams=new URLSearchParams();nextParams.set("view",next);if(id)nextParams.set("searchId",id);
     const paired=compareId??(id?compareSearchId:"");if(paired)nextParams.set("compareSearchId",paired);
+    if(isEbay&&["progress","candidates","result","history"].includes(next))nextParams.set("source","ebay");
     router[mode](`${pathname}?${nextParams.toString()}`,{scroll:false});
   }
   const common={go,searchId,compareSearchId,options,setGlobalError:setError};
   return <section className={styles.feature}>
-    <header className={styles.title}><div><span>参考相場・直近90日</span><h1>買取相場（仮）</h1><p>商品と検索条件を確認し、採用する落札候補から相場を確定します。</p></div><button type="button" className={styles.historyButton} aria-label="検索履歴" onClick={()=>go("history")}><History size={18}/><span className={styles.historyText}>検索履歴</span></button></header>
-    {view!=="history"?<><p className={styles.mobileStepSummary}>手順 {activeStepIndex+1}/5：{views[activeStepIndex]?.label}</p><nav className={styles.steps} aria-label="相場検索の手順">{views.slice(0,5).map((item,index)=><button type="button" key={item.value} aria-current={view===item.value?"step":undefined} data-active={view===item.value} data-complete={index<activeStepIndex} onClick={()=>{if(item.value==="input")go("input");else if(searchId)go(item.value,searchId);}} disabled={item.value!=="input"&&!searchId}><span className={styles.stepNumber}>{index<activeStepIndex?<Check size={14}/>:index+1}</span><span className={styles.stepLabel}>{item.label}</span></button>)}</nav></>:null}
+    <header className={styles.title}><div><span>{isEbay?"eBay参考相場・取得ページ標本":"参考相場・直近90日"}</span><h1>買取相場（仮）</h1><p>商品と検索条件を確認し、採用する落札候補から相場を確定します。</p></div><button type="button" className={styles.historyButton} aria-label="検索履歴" onClick={()=>go("history")}><History size={18}/><span className={styles.historyText}>検索履歴</span></button></header>
+    {view!=="history"?<><p className={styles.mobileStepSummary}>手順 {activeStepIndex+1}/5：{views[activeStepIndex]?.label}</p><nav className={styles.steps} aria-label="相場検索の手順">{views.slice(0,5).map((item,index)=><button type="button" key={item.value} aria-current={view===item.value?"step":undefined} data-active={view===item.value} data-complete={index<activeStepIndex} onClick={()=>{if(item.value==="input")go("input");else if(searchId)go(item.value,searchId);}} disabled={(item.value!=="input"&&!searchId)||(isEbay&&item.value==="identify")}><span className={styles.stepNumber}>{index<activeStepIndex?<Check size={14}/>:index+1}</span><span className={styles.stepLabel}>{item.label}</span></button>)}</nav></>:null}
     {error?<div className={styles.error} role="alert"><AlertTriangle size={22}/><span><strong>処理を完了できませんでした</strong><small>{error}</small></span><button type="button" aria-label="エラーを閉じる" onClick={()=>setError("")}><X size={18}/></button></div>:null}
     {view==="input"?<InputView draft={draft} setDraft={setDraft} files={files} setFiles={setFiles} options={options} busy={busy} setBusy={setBusy} go={go} setError={setError}/>:null}
-    {view==="identify"?<IdentificationView {...common}/>:null}
-    {view==="progress"?<ProgressView {...common}/>:null}
-    {view==="candidates"?<CandidatesView {...common}/>:null}
-    {view==="result"?<ResultView {...common}/>:null}
-    {view==="history"?<HistoryView go={go}/>:null}
+    {view==="identify"?<IdentificationView {...common} onEbayStarted={id=>router.replace(`${pathname}?view=progress&searchId=${encodeURIComponent(id)}&source=ebay`,{scroll:false})}/>:null}
+    {isEbay&&["progress","candidates","result"].includes(view)?<EbaySearchDisplay key={searchId} searchId={searchId} view={view as "progress"|"candidates"|"result"} onNavigate={next=>go(next,searchId)} onRepeat={id=>go("progress",id)} onError={setError}/>:null}
+    {!isEbay&&view==="progress"?<ProgressView {...common}/>:null}
+    {!isEbay&&view==="candidates"?<CandidatesView {...common}/>:null}
+    {!isEbay&&view==="result"?<ResultView {...common}/>:null}
+    {view==="history"?<><nav aria-label="履歴の取得元"><button type="button" className={styles.secondaryButton} onClick={()=>router.push(`${pathname}?view=history`,{scroll:false})}>Yahoo・オークファン履歴</button>{options?.ebay?.enabled?<button type="button" className={styles.secondaryButton} onClick={()=>router.push(`${pathname}?view=history&source=ebay`,{scroll:false})}>eBay履歴</button>:null}</nav>{isEbay?<EbaySearchHistory onError={setError} onOpen={(id,next)=>go(next,id)}/>:<HistoryView go={go}/>}</>:null}
   </section>;
 }
 
@@ -119,7 +127,7 @@ function InputView({draft,setDraft,files,setFiles,options,busy,setBusy,go,setErr
       const query=draft.searchKeyword.trim()?{id:randomQueryId(),keyword:draft.searchKeyword.trim(),breadth:"standard",source:"user",decision:draft.inputMode==="manual_direct"?"accepted":"pending"}:undefined;
       const identification=await resources.createMarketPriceIdentification({inputMode:draft.inputMode,productName:draft.productName,category:draft.category||null,brand:draft.brand||null,modelNumber:draft.modelNumber||null,attributes:{},searchQueries:query?[query]:[],excludeKeywords:splitKeywords(draft.excludeKeywords),conditions:draft.conditions});
       for(const file of files)await resources.uploadMarketPriceImage(identification.id,file);
-      if(draft.inputMode!=="manual_direct")await resources.analyzeMarketPriceIdentification(identification.id);
+      if(draft.inputMode!=="manual_direct")await resources.analyzeMarketPriceIdentification(identification.id,draft.englishSearchSupport&&options?.ebay?.enabled?"en":undefined);
       go("identify",identification.id,"replace");
     }catch(reason){setError(errorMessage(reason));}finally{setBusy(false);}}
   return <form className={styles.inputLayout} onSubmit={submit} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}} onKeyDown={event=>{if(event.key==="Enter"&&(composing.current||event.nativeEvent.isComposing))event.preventDefault();}}>
@@ -128,27 +136,99 @@ function InputView({draft,setDraft,files,setFiles,options,busy,setBusy,go,setErr
     </section>
     <section className={styles.panel}><header><span>商品情報</span><h2>{draft.inputMode==="image_assisted"?"分かる範囲で補足":"商品情報を入力"}</h2></header><div className={styles.formGrid}><label className={styles.wide}>商品名<span>{draft.inputMode!=="image_assisted"?"必須":"任意"}</span><input value={draft.productName} onChange={event=>setDraft(current=>({...current,productName:event.target.value}))} placeholder="例：Canon EOS R6 ボディ" required={draft.inputMode!=="image_assisted"}/></label><label>ブランド<input value={draft.brand} onChange={event=>setDraft(current=>({...current,brand:event.target.value}))} placeholder="例：Canon"/></label><label>型番<input value={draft.modelNumber} onChange={event=>setDraft(current=>({...current,modelNumber:event.target.value}))} placeholder="例：EOS R6"/></label><label>カテゴリ<input value={draft.category} onChange={event=>setDraft(current=>({...current,category:event.target.value}))} placeholder="例：デジタルカメラ"/></label><label>検索キーワード<span>任意</span><input value={draft.searchKeyword} onChange={event=>setDraft(current=>({...current,searchKeyword:event.target.value}))} placeholder="AI補助の場合も指定可能"/></label><label className={styles.wide}>除外キーワード<span>任意・カンマ区切り</span><input value={draft.excludeKeywords} onChange={event=>setDraft(current=>({...current,excludeKeywords:event.target.value}))} placeholder="ジャンク、部品、箱のみ"/></label></div></section>
     <section className={`${styles.panel} ${styles.conditionsPanel}`}><header><span>商品状態</span><h2>検索対象に含める状態 <em>※必須</em></h2><p>複数選択できます。AIの提案は次の画面で確認し、自動では追加されません。</p></header><div className={styles.guidance}><Info size={20}/><p>状態が分からない場合は「指定なし」を選択してください。選択した状態はYahoo!オークションの取得条件に使われます。</p></div><fieldset><legend className={styles.visuallyHidden}>商品状態</legend>{(options?.conditions??[]).map(item=><label key={item.value} data-selected={draft.conditions.includes(item.value)}><input type="checkbox" checked={draft.conditions.includes(item.value)} onChange={()=>toggleCondition(item.value)}/><span>{item.label}</span></label>)}</fieldset></section>
+    {options?.ebay?.enabled&&draft.inputMode!=="manual_direct"?<section className={styles.panel}><h2>海外検索のAI補助</h2><label><input type="checkbox" checked={Boolean(draft.englishSearchSupport)} onChange={event=>setDraft(current=>({...current,englishSearchSupport:event.target.checked}))}/>eBay向けの英語検索語を提案する</label><p>入力した型番・容量・付属品を保持した候補を確認します。AIはeBayを検索しません。検索語を1本選び、対象市場と消費枠を確認してから取得します。</p></section>:null}
     <footer className={styles.stickyAction}><span>{draft.inputMode==="manual_direct"?"入力内容を確認してから取得します":"AIの提案を確認してから取得します"}</span><button className={styles.primaryButton} disabled={busy}>{busy?<LoaderCircle className={styles.spin} size={18}/>:null}{busy?"準備中…":"検索条件を確認"}<ArrowRight size={18}/></button></footer>
   </form>;
 }
 
-function IdentificationView({searchId,options,go,setGlobalError}:{searchId:string;options?:MarketPriceOptionsDto;go:Navigate;setGlobalError:(value:string)=>void}){
-  const [item,setItem]=useState<MarketPriceIdentificationDto>();const [fields,setFields]=useState<MarketPriceIdentificationFields>();const [busy,setBusy]=useState(false);const [sourceMode,setSourceMode]=useState<MarketPriceSearchMode>("yahoo");const [searchBasis,setSearchBasis]=useState<MarketPriceSearchBasis>("keyword");
+function IdentificationView({searchId,options,go,setGlobalError,onEbayStarted}:{searchId:string;options?:MarketPriceOptionsDto;go:Navigate;setGlobalError:(value:string)=>void;onEbayStarted:(id:string)=>void}){
+  const [item,setItem]=useState<MarketPriceIdentificationDto>();const [fields,setFields]=useState<MarketPriceIdentificationFields>();const [busy,setBusy]=useState(false);const [sourceMode,setSourceMode]=useState<MarketPriceSearchMode|"ebay">("yahoo");const [searchBasis,setSearchBasis]=useState<MarketPriceSearchBasis>("keyword");
+  const [ebaySelection,setEbaySelection]=useState(initialEbaySelection);
+  const ebayOperation=useRef<{key:string;input:Parameters<typeof ebayMarketPriceResources.create>[0];fieldsHash:string;resultSearchId?:string}|null>(null);
+  const pendingEbay=useRef<EbayPendingOperation|null>(null);
+  const ebayRecoveryUnavailable=useRef(false);
+  const [ebayRecovery,setEbayRecovery]=useState("");
+  useEffect(()=>{
+    let active=true,message="",restoreEbay=false;
+    ebayOperation.current=null;pendingEbay.current=null;ebayRecoveryUnavailable.current=false;
+    try{
+      const pending=loadEbayPending(searchId);
+      if(pending){
+        if(pending.action!=="create")throw new Error("INVALID_CREATE_METADATA");
+        pendingEbay.current=pending;restoreEbay=true;message="前回の検索受付が未確認です。新しい検索を重ねず、開始結果を確認してください。";
+      }
+    }catch{ebayRecoveryUnavailable.current=true;message="検索受付の操作記録を確認できません。新しい検索を開始せず、保存状況を運用担当者へ確認してください。";}
+    queueMicrotask(()=>{if(active){setEbayRecovery(message);if(restoreEbay)setSourceMode("ebay");}});
+    return()=>{active=false;};
+  },[searchId]);
   const load=useCallback(async()=>{if(!searchId)return;try{const value=await resources.marketPriceIdentification(searchId);setItem(value);setFields(current=>current??value.input);if(value.status==="analyzing")return false;return true;}catch(reason){setGlobalError(errorMessage(reason));return true;}},[searchId,setGlobalError]);
   useEffect(()=>{let active=true;let timer=0;async function poll(){const done=await load();if(active&&!done)timer=window.setTimeout(poll,document.visibilityState==="visible"?2000:10000);}void poll();return()=>{active=false;window.clearTimeout(timer);};},[load]);
   if(!searchId)return <EmptyState title="商品特定IDがありません" body="商品入力からやり直してください。" action={()=>go("input")}/>;
   if(!item||!fields)return <LoadingState title="商品情報を読み込んでいます"/>;
   if(item.status==="analyzing")return <LoadingState title="AIが商品と検索条件を整理しています" body="画面を閉じても処理は続きます。完了時に自動で表示を更新します。"/>;
   const identification=item;const currentFields=fields;
+  async function startEbay(){
+    if(busy)return;
+    if(ebayRecoveryUnavailable.current||(pendingEbay.current&&!ebayOperation.current)){setGlobalError("前回の開始結果を先に確認してください。新しい検索は開始していません。");return;}
+    if(ebayOperation.current?.resultSearchId){await recoverEbay();return;}
+    if(pendingEbay.current&&Date.now()-pendingEbay.current.startedAt>=48*60*60*1000){setEbayRecovery("操作結果の保管期間を過ぎました。新しい検索の前に運用担当者へ確認してください。");return;}
+    if(!options?.ebay?.enabled||!ebaySelection.consumptionConfirmed||!ebaySelection.markets.length||!ebaySelection.conditions.length){setGlobalError("eBayの対象市場・状態・最大消費枠を確認してください。");return;}
+    const selected=currentFields.searchQueries.filter(query=>query.decision==="accepted");
+    if(searchBasis==="keyword"&&selected.length!==1){setGlobalError("検索キーワードを1件だけ選択してください。");return;}
+    if(searchBasis==="model_number"&&!currentFields.modelNumber?.trim()){setGlobalError("型番を入力してください。");return;}
+    const request={...ebaySelection,identificationId:searchId,selectedSearchQueryId:searchBasis==="keyword"?selected[0]!.id:null,searchBasis};
+    if(ebayOperation.current&&(JSON.stringify(request)!==JSON.stringify(ebayOperation.current.input)||JSON.stringify(currentFields)!==ebayOperation.current.fieldsHash)){setGlobalError("前の検索結果が未確認です。同じ条件へ戻して確認し、新しい検索を重ねないでください。");return;}
+    setBusy(true);setGlobalError("");
+    try{
+      if(!ebayOperation.current){
+        const updated=await resources.updateMarketPriceIdentification(searchId,identification.lockVersion,currentFields,identification.suggestions.productCandidates);
+        await resources.confirmMarketPriceIdentification(searchId,updated.lockVersion);
+        ebayOperation.current={key:crypto.randomUUID(),input:request,fieldsHash:JSON.stringify(currentFields)};
+      }
+      const metadata=pendingEbay.current??{key:ebayOperation.current.key,searchId,action:"create",startedAt:Date.now()};
+      if(!saveEbayPending(metadata))throw new Error("操作キーを一時保存できないため、eBay検索は開始していません。ブラウザの設定を確認してください。");
+      pendingEbay.current=metadata;
+      const created=await ebayMarketPriceResources.create(ebayOperation.current.input,ebayOperation.current.key);
+      if(typeof created?.searchId!=="string"||!created.searchId)throw new Error("検索の受付結果を確認できません。新しい検索を重ねず、開始結果を確認してください。");
+      ebayOperation.current.resultSearchId=created.searchId;
+      const saved=await ebayMarketPriceResources.get(created.searchId);
+      if(saved.id!==created.searchId)throw new Error("保存された検索対象を確認できません。開始結果を確認してください。");
+      pendingEbay.current=null;ebayOperation.current=null;clearEbayPending(searchId);setEbayRecovery("");
+      onEbayStarted(created.searchId);
+    }catch(reason){
+      if(!ebayOperation.current?.resultSearchId&&reason instanceof ApiClientError&&[400,403,404,409,422].includes(reason.status)){
+        pendingEbay.current=null;ebayOperation.current=null;clearEbayPending(searchId);setEbayRecovery("検索受付は拒否されました。商品情報と取得条件を再確認してください。");
+      }else if(pendingEbay.current)setEbayRecovery(ebayOperation.current?.resultSearchId?"検索受付は保存済みですが表示取得に失敗しました。新しい検索を作らず開始結果を確認してください。":"検索受付が未確認です。同じ操作の開始結果を確認してください。");
+      setGlobalError(errorMessage(reason));
+    }finally{setBusy(false);}
+  }
+  async function recoverEbay(){
+    if(busy)return;
+    const pending=pendingEbay.current;
+    if(!pending)return;
+    setBusy(true);setGlobalError("");
+    try{
+      const known=ebayOperation.current?.resultSearchId;
+      const result=known?{status:"succeeded",searchId:known}:await ebayMarketPriceResources.operationResult(pending.key,"create");
+      if(result.status!=="succeeded"||!result.searchId){
+        setEbayRecovery(Date.now()-pending.startedAt>=48*60*60*1000?"操作結果の保管期間を過ぎました。新規検索する前に運用担当者へ確認してください。":"開始結果はまだ確認できません。新しい検索を重ねず、しばらくして同じ操作を再確認してください。");return;
+      }
+      const saved=await ebayMarketPriceResources.get(result.searchId);
+      if(saved.id!==result.searchId)throw new Error("保存された検索対象が一致しません。運用担当者へ確認してください。");
+      pendingEbay.current=null;ebayOperation.current=null;clearEbayPending(searchId);setEbayRecovery("");onEbayStarted(result.searchId);
+    }catch(reason){setGlobalError(errorMessage(reason));}finally{setBusy(false);}
+  }
   const setQuery=(selected:MarketPriceSearchQuery)=>setFields(current=>current?({...current,searchQueries:[...current.searchQueries,...identification.suggestions.searchQueries.filter(candidate=>!current.searchQueries.some(existing=>existing.id===candidate.id))].map(query=>({...query,decision:query.id===selected.id?"accepted":"rejected"}))}):current);
   const candidates=identification.suggestions.productCandidates;
   function decideCandidate(candidate:MarketPriceProductCandidate,decision:"accepted"|"rejected"){
     setItem(current=>current?({...current,suggestions:{...current.suggestions,productCandidates:current.suggestions.productCandidates.map(item=>({...item,decision:item.id===candidate.id?decision:decision==="accepted"?"rejected":item.decision}))}}):current);
     if(decision==="accepted")setFields(current=>current?({...current,productName:candidate.productName,category:candidate.category,brand:candidate.brand,modelNumber:candidate.modelNumber,attributes:candidate.attributes}):current);
   }
-  async function confirm(){setGlobalError("");const selected=currentFields.searchQueries.filter(query=>query.decision==="accepted");if(searchBasis==="keyword"&&selected.length!==1){setGlobalError("検索キーワードを1件だけ選択してください。");return;}if(searchBasis==="model_number"&&!currentFields.modelNumber?.trim()){setGlobalError("型番を入力してから型番優先検索を選択してください。");return;}if(!currentFields.conditions.length){setGlobalError("商品の状態を1件以上選択してください。");return;}const selectedSource=options?.sources.find(source=>source.value===sourceMode);if(!selectedSource?.enabled){setGlobalError("選択した取得元は現在利用できません。");return;}setBusy(true);try{const updated=await resources.updateMarketPriceIdentification(searchId,identification.lockVersion,currentFields,candidates);await resources.confirmMarketPriceIdentification(searchId,updated.lockVersion);const base={identificationId:searchId,selectedSearchQueryId:searchBasis==="keyword"?selected[0]!.id:null,searchBasis,conditions:currentFields.conditions,outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5}};if(sourceMode==="compare"){const [yahoo,aucfan]=await Promise.allSettled([resources.createMarketPriceSearch({...base,sourceProvider:"yahoo_scrape"}),resources.createMarketPriceSearch({...base,sourceProvider:"aucfan_api"})]);if(yahoo.status==="fulfilled"&&aucfan.status==="fulfilled"){go("progress",yahoo.value.searchId,"replace",aucfan.value.searchId);return;}if(yahoo.status==="fulfilled"){setGlobalError("オークファンの検索を開始できなかったため、ヤフオクの結果だけを表示します。");go("progress",yahoo.value.searchId,"replace");return;}if(aucfan.status==="fulfilled"){setGlobalError("ヤフオクの検索を開始できなかったため、オークファンの結果だけを表示します。");go("progress",aucfan.value.searchId,"replace");return;}throw yahoo.reason;}const created=await resources.createMarketPriceSearch({...base,sourceProvider:sourceMode==="aucfan"?"aucfan_api":"yahoo_scrape"});go("progress",created.searchId,"replace");}catch(reason){setGlobalError(errorMessage(reason));await load();}finally{setBusy(false);}}
+  async function confirm(){if(sourceMode==="ebay"){await startEbay();return;}setGlobalError("");const selected=currentFields.searchQueries.filter(query=>query.decision==="accepted");if(searchBasis==="keyword"&&selected.length!==1){setGlobalError("検索キーワードを1件だけ選択してください。");return;}if(searchBasis==="model_number"&&!currentFields.modelNumber?.trim()){setGlobalError("型番を入力してから型番優先検索を選択してください。");return;}if(!currentFields.conditions.length){setGlobalError("商品の状態を1件以上選択してください。");return;}const selectedSource=options?.sources.find(source=>source.value===sourceMode);if(!selectedSource?.enabled){setGlobalError("選択した取得元は現在利用できません。");return;}setBusy(true);try{const updated=await resources.updateMarketPriceIdentification(searchId,identification.lockVersion,currentFields,candidates);await resources.confirmMarketPriceIdentification(searchId,updated.lockVersion);const base={identificationId:searchId,selectedSearchQueryId:searchBasis==="keyword"?selected[0]!.id:null,searchBasis,conditions:currentFields.conditions,outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5}};if(sourceMode==="compare"){const [yahoo,aucfan]=await Promise.allSettled([resources.createMarketPriceSearch({...base,sourceProvider:"yahoo_scrape"}),resources.createMarketPriceSearch({...base,sourceProvider:"aucfan_api"})]);if(yahoo.status==="fulfilled"&&aucfan.status==="fulfilled"){go("progress",yahoo.value.searchId,"replace",aucfan.value.searchId);return;}if(yahoo.status==="fulfilled"){setGlobalError("オークファンの検索を開始できなかったため、ヤフオクの結果だけを表示します。");go("progress",yahoo.value.searchId,"replace");return;}if(aucfan.status==="fulfilled"){setGlobalError("ヤフオクの検索を開始できなかったため、オークファンの結果だけを表示します。");go("progress",aucfan.value.searchId,"replace");return;}throw yahoo.reason;}const created=await resources.createMarketPriceSearch({...base,sourceProvider:sourceMode==="aucfan"?"aucfan_api":"yahoo_scrape"});go("progress",created.searchId,"replace");}catch(reason){setGlobalError(errorMessage(reason));await load();}finally{setBusy(false);}}
   const allQueries=[...currentFields.searchQueries,...identification.suggestions.searchQueries.filter(candidate=>!currentFields.searchQueries.some(existing=>existing.id===candidate.id))];
   return <div className={styles.identifyLayout}>
+    {ebayRecovery?<section className={styles.panel} role="status"><p>{ebayRecovery}</p><button type="button" className={styles.secondaryButton} disabled={busy||!pendingEbay.current} onClick={()=>void recoverEbay()}>eBay検索の開始結果を確認</button></section>:null}
+    {options?.ebay?.enabled?<section className={styles.panel}><label><input type="radio" name="sourceMode" checked={sourceMode==="ebay"} onChange={()=>setSourceMode("ebay")}/>eBay（Soldgraph・海外8市場）</label>{sourceMode==="ebay"?<><EbaySearchControls value={ebaySelection} onChange={setEbaySelection}/><button type="button" className={styles.primaryButton} disabled={busy||!ebaySelection.consumptionConfirmed||ebayRecoveryUnavailable.current||Boolean(pendingEbay.current&&!ebayOperation.current)} onClick={()=>void startEbay()}>{busy?"検索を開始しています":"eBay検索を開始"}</button>{ebayOperation.current?<p>再送する場合は同じ条件・同じキーを使います。再読込後は入力本文を再送せず、開始結果だけを確認します。</p>:null}</>:null}</section>:null}
     <section className={styles.panel}><header><span>利用者入力</span><h2>商品情報</h2><p>AI提案を採用しても、ここで自由に修正できます。</p></header><div className={styles.formStack}><label>商品名<input value={fields.productName} onChange={event=>setFields({...fields,productName:event.target.value})}/></label><label>ブランド<input value={fields.brand??""} onChange={event=>setFields({...fields,brand:event.target.value||null})}/></label><label>型番<input value={fields.modelNumber??""} onChange={event=>setFields({...fields,modelNumber:event.target.value||null})}/></label><label>カテゴリ<input value={fields.category??""} onChange={event=>setFields({...fields,category:event.target.value||null})}/></label><label>除外キーワード<input value={fields.excludeKeywords.join("、")} onChange={event=>setFields({...fields,excludeKeywords:splitKeywords(event.target.value)})}/></label></div><fieldset className={styles.compactConditions}><legend>商品状態</legend>{options?.conditions.map(option=><label key={option.value}><input type="checkbox" checked={fields.conditions.includes(option.value)} onChange={()=>{const next=option.value==="unspecified"?["unspecified" as const]:fields.conditions.includes(option.value)?fields.conditions.filter(value=>value!==option.value):[...fields.conditions.filter(value=>value!=="unspecified"),option.value];setFields({...fields,conditions:next.length?next:["unspecified"]});}}/>{option.label}</label>)}</fieldset></section>
     <section className={styles.panel}><header><span>AI補助</span><h2>商品候補</h2><p>提案は自動適用されません。採用・編集・却下を利用者が決めます。</p></header>{candidates.length?<div className={styles.suggestionList}>{candidates.map(candidate=><article key={candidate.id} data-decision={candidate.decision}><div><strong>{candidate.productName}</strong><small>{[candidate.brand,candidate.modelNumber,candidate.category].filter(Boolean).join(" / ")}</small><span>確度 {Math.round(candidate.confidence*100)}%・{candidate.decision==="accepted"?"採用済み":candidate.decision==="rejected"?"却下済み":"未確認"}</span></div><div className={styles.suggestionActions}><button type="button" onClick={()=>decideCandidate(candidate,"accepted")}>{candidate.decision==="accepted"?"採用中":"採用して編集"}</button><button type="button" onClick={()=>decideCandidate(candidate,"rejected")}>却下</button></div></article>)}</div>:<p className={styles.muted}>商品候補はありません。左の入力内容を使用します。</p>}{item.suggestions.warnings.map(warning=><p className={styles.warningText} key={warning}><AlertTriangle size={17}/>{warning}</p>)}</section>
     <section className={styles.panel}><header><span>検索条件</span><h2>調べ方を選択</h2><p>検索キーワードまたは確認済みの型番を使い、取得元を切り替えて検証できます。</p></header><fieldset className={styles.searchBasisPicker}><legend>検索方法</legend><label data-selected={searchBasis==="keyword"}><input type="radio" name="searchBasis" checked={searchBasis==="keyword"} onChange={()=>setSearchBasis("keyword")}/><span><strong>キーワードで検索</strong><small>商品名やブランドを含む検索語から幅広く候補を取得します</small></span></label><label data-selected={searchBasis==="model_number"} data-disabled={!fields.modelNumber?.trim()}><input type="radio" name="searchBasis" checked={searchBasis==="model_number"} disabled={!fields.modelNumber?.trim()} onChange={()=>setSearchBasis("model_number")}/><span><strong>型番を優先して検索</strong><small>{fields.modelNumber?.trim()?`「${fields.modelNumber.trim()}」が一致する商品だけを集計します`:"商品情報の型番を入力すると選択できます"}</small></span></label></fieldset>{searchBasis==="keyword"?<><div className={styles.queryList}>{allQueries.map(query=><label key={query.id} data-selected={query.decision==="accepted"}><input type="radio" name="query" checked={query.decision==="accepted"} onChange={()=>setQuery(query)}/><span><strong>{query.keyword}</strong><small>{query.source==="ai"?"AI提案":query.source==="edited"?"編集済み":"利用者入力"}・{query.breadth==="strict"?"厳密":query.breadth==="broad"?"広め":"標準"}</small></span></label>)}</div>{fields.searchQueries.filter(query=>query.decision==="accepted").map(query=><label className={styles.editQuery} key={query.id}>選択中の検索キーワード<input value={query.keyword} onChange={event=>setFields({...fields,searchQueries:fields.searchQueries.map(item=>item.id===query.id?{...item,keyword:event.target.value,source:"edited"}:item)})}/></label>)}</>:<div className={styles.modelNumberNotice}><CheckCircle2 size={20}/><span><strong>照合する型番</strong><small>{fields.modelNumber}</small></span></div>}<fieldset className={styles.sourcePicker}><legend>取得元</legend>{options?.sources.map(source=><label key={source.value} data-selected={sourceMode===source.value} data-disabled={!source.enabled}><input type="radio" name="sourceMode" checked={sourceMode===source.value} disabled={!source.enabled} onChange={()=>setSourceMode(source.value)}/><span><strong>{source.label}</strong><small>{source.description}</small></span></label>)}</fieldset>{options?.sources.find(source=>source.value===sourceMode)?.limitations.map(limitation=><p className={styles.sourceLimitation} key={limitation}><Info size={17}/>{limitation}</p>)}</section>

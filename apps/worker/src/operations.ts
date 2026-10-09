@@ -64,13 +64,15 @@ WITH candidates AS (
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'MARKET_PRICE_STALLED','warning',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(heartbeat_at,started_at,updated_at))::int)
-    FROM jobs WHERE job_type='market_price_search' AND status='running'
+    FROM jobs WHERE job_type IN ('market_price_search','market_price_ebay_search') AND status='running'
      AND COALESCE(heartbeat_at,started_at,updated_at)<now()-interval '3 minutes'
   UNION ALL
   SELECT j.organization_id,j.requested_by_membership_id,j.id,j.job_type,'MARKET_PRICE_BLOCKED','critical',j.attempt_count,j.max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(s.completed_at,s.updated_at))::int)
     FROM jobs j JOIN market_price_searches s ON s.organization_id=j.organization_id AND s.job_id=j.id
    WHERE j.job_type='market_price_search' AND s.status='blocked'
+  UNION ALL
+  SELECT * FROM soldgraph_operational_candidates()
 )
 SELECT * FROM candidates ORDER BY organization_id,job_id,failure_class`;
 

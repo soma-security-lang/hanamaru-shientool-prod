@@ -12,6 +12,10 @@ describe("UI vocabulary",()=>{
   it.each(["in_review","approved","rejected"])("labels approval state %s",value=>expect(approvalStateLabel(value).label).not.toBe(value));
   it.each(["active","invited","suspended"])("labels membership state %s",value=>expect(membershipStateLabel(value).label).not.toBe(value));
   it("labels known job and entity types",()=>{expect(jobTypeLabel("transcribe").label).toBe("文字起こし");expect(entityTypeLabel("recording").label).toBe("録音");});
+  it("labels eBay acquisition jobs and their targets without exposing search content",()=>{
+    expect(jobTypeLabel("market_price_ebay_search")).toMatchObject({label:"eBay相場取得",tone:"neutral"});
+    expect(entityTypeLabel("ebay_market_price_search")).toMatchObject({label:"eBay相場検索",tone:"neutral"});
+  });
   it("fails visibly without using a raw value as the primary label",()=>{expect(unknownValueLabel("処理状態","future_state")).toMatchObject({label:"未定義の状態",tone:"warning"});});
   it("replaces implementation wording in API-provided business text",()=>{
     expect(businessText("承認batch")).toBe("承認対象セット");

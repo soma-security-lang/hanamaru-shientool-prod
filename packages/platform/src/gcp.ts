@@ -1,4 +1,5 @@
 import { createHash,randomUUID } from "node:crypto";
+import { ENGLISH_MARKET_QUERY_INSTRUCTION, validateEnglishMarketQueries } from "./market-search-language.js";
 import { Storage,type Bucket,type FileMetadata } from "@google-cloud/storage";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { GoogleGenAI,type Part } from "@google/genai";
@@ -17,6 +18,7 @@ import { normalizeReviewOutput, normalizeRoleplayOutput, parseModelJson } from "
 import {reviewDimensions,type ReviewDimension} from "./types.js";
 import { createGoogleSpeechProvider } from "./google-speech.js";
 import { createLocalProviders } from "./local.js";
+import { createConfiguredSoldgraphProvider } from "./soldgraph.js";
 import { probeAudioSource,probeVideoSource } from "./media.js";
 import { parseYahooClosedSearchUrl } from "@hanamaru/market-price";
 import type { MarketPriceSourceProvider } from "./types.js";
@@ -237,19 +239,24 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
       const querySchema={type:"OBJECT",required:["keyword","breadth"],properties:{keyword:{type:"STRING"},breadth:{type:"STRING",enum:["strict","standard","broad"]}}};
       const schema={type:"OBJECT",required:["productCandidates","searchQueries","excludeKeywords","suggestedConditions","warnings"],properties:{productCandidates:{type:"ARRAY",maxItems:3,items:candidateSchema},searchQueries:{type:"ARRAY",minItems:1,maxItems:3,items:querySchema},excludeKeywords:{type:"ARRAY",maxItems:20,items:{type:"STRING"}},suggestedConditions:{type:"ARRAY",items:{type:"STRING",enum:input.confirmedConditions}},warnings:{type:"ARRAY",maxItems:10,items:{type:"STRING"}}}};
       const safeInput={inputMode:input.inputMode,productName:input.productName,category:input.category,brand:input.brand,modelNumber:input.modelNumber,attributes:input.attributes,excludeKeywords:input.excludeKeywords,confirmedConditions:input.confirmedConditions};
-      const instruction=`買取相場検索を補助するため、商品候補を最大3件、Yahoo落札相場で使う検索語を厳密・標準・広めで最大3件提案してください。画像と利用者入力に見える事実だけを使い、価格やYahoo ID、URLを生成しないでください。利用者の入力を確定値として上書きせず、不明はnullにしてください。商品状態はconfirmedConditionsに含まれる値だけを返し、自動適用しません。出力は指定JSONだけです。\n入力:${JSON.stringify(safeInput)}`;
+      const instruction=`買取相場検索を補助するため、商品候補を最大3件提案してください。${input.searchLanguage==="en"?ENGLISH_MARKET_QUERY_INSTRUCTION:"Yahoo落札相場で使う検索語を厳密・標準・広めで最大3件提案してください。"}画像と利用者入力に見える事実だけを使い、価格やYahoo ID、URLを生成しないでください。利用者の入力を確定値として上書きせず、不明はnullにしてください。商品状態はconfirmedConditionsに含まれる値だけを返し、自動適用しません。出力は指定JSONだけです。\n入力:${JSON.stringify(safeInput)}`;
       const parts:Part[]=[{text:instruction},...input.images.map(image=>({inlineData:{data:image.content.toString("base64"),mimeType:image.mimeType}} satisfies Part))];
       const validate=(parsed:Record<string,unknown>)=>{
         const productCandidates=(Array.isArray(parsed.productCandidates)?parsed.productCandidates:[]).slice(0,3).map((raw,index)=>{const item=raw&&typeof raw==="object"?raw as Record<string,unknown>:{};const productName=String(item.productName??"").normalize("NFKC").trim();if(!productName||productName.length>300)throw new Error("PROVIDER_PERMANENT: market product name is invalid");const confidence=Number(item.confidence);if(!Number.isFinite(confidence)||confidence<0||confidence>1)throw new Error("PROVIDER_PERMANENT: market product confidence is invalid");const attributes=item.attributes&&typeof item.attributes==="object"&&!Array.isArray(item.attributes)?Object.fromEntries(Object.entries(item.attributes as Record<string,unknown>).slice(0,20).map(([key,value])=>[key.slice(0,80),String(value).slice(0,300)])):{};return{id:`candidate-${index+1}`,productName,category:item.category==null?null:String(item.category).slice(0,300),brand:item.brand==null?null:String(item.brand).slice(0,300),modelNumber:item.modelNumber==null?null:String(item.modelNumber).slice(0,200),attributes,confidence,decision:"pending" as const};});
         if(!productCandidates.length)throw new Error("PROVIDER_PERMANENT: market product candidates are empty");
         const searchQueries=(Array.isArray(parsed.searchQueries)?parsed.searchQueries:[]).slice(0,3).map((raw,index)=>{const item=raw&&typeof raw==="object"?raw as Record<string,unknown>:{};const keyword=String(item.keyword??"").normalize("NFKC").replace(/\s+/gu," ").trim();const breadth=String(item.breadth??"");if(!keyword||keyword.length>200||!["strict","standard","broad"].includes(breadth))throw new Error("PROVIDER_PERMANENT: market search query is invalid");return{id:`query-${index+1}`,keyword,breadth:breadth as "strict"|"standard"|"broad",source:"ai" as const,decision:"pending" as const};});
         if(!searchQueries.length)throw new Error("PROVIDER_PERMANENT: market search queries are empty");
+        if(input.searchLanguage==="en")validateEnglishMarketQueries(searchQueries.map(query=>query.keyword),input.modelNumber);
         const excludeKeywords=Array.isArray(parsed.excludeKeywords)?[...new Set(parsed.excludeKeywords.map(value=>String(value).normalize("NFKC").trim()).filter(Boolean))].slice(0,20):[];
         const suggestedConditions=Array.isArray(parsed.suggestedConditions)?[...new Set(parsed.suggestedConditions.map(String))]:[];if(suggestedConditions.some(condition=>!input.confirmedConditions.includes(condition as never)))throw new Error("PROVIDER_PERMANENT: unconfirmed market condition suggested");
         const warnings=Array.isArray(parsed.warnings)?parsed.warnings.map(String).map(value=>value.trim()).filter(Boolean).slice(0,10):[];
         return{model:config.model,productCandidates,searchQueries,excludeKeywords,suggestedConditions:suggestedConditions as typeof input.confirmedConditions,warnings};
       };
-      try{return validate(await generate(parts,schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);}catch(first){if(first instanceof Error&&!first.message.includes("market "))throw first;return validate(await generate([{text:`${instruction}\n前回は出力契約違反でした。許可された値だけでJSONを再生成してください。`},...parts.slice(1)],schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);}
+      try{return validate(await generate(parts,schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);}catch(first){
+        const contractError=first instanceof Error&&(first.message.includes("market ")||first.message==="PROVIDER_PERMANENT: model returned invalid JSON"||first.message==="PROVIDER_PERMANENT: model output is not an object");
+        if(!contractError)throw first;
+        return validate(await generate([{text:`${instruction}\n前回は出力契約違反でした。許可された値だけでJSONを再生成してください。`},...parts.slice(1)],schema,{temperature:0,maxOutputTokens:2048}) as Record<string,unknown>);
+      }
     },
     async planYahooSearch(input){
       const categoryKeys=input.categoryCandidates.map(candidate=>candidate.key);
@@ -502,6 +509,7 @@ export function createLocalConnectedProviders():PlatformProviders {
     ai:createGoogleAiProvider(googleAiConfig(required("STT_INPUT_BUCKET"))),
     drive:createGoogleDriveProvider(googleDriveConfig()),
     marketPriceSource:createYahooMarketPriceSourceProvider(),
+    soldgraph:createConfiguredSoldgraphProvider(process.env,globalThis.fetch),
   };
 }
 
@@ -517,5 +525,6 @@ export function createGcpProviders():PlatformProviders {
     ai:createGoogleAiProvider(googleAiConfig(bucket)),
     drive:createGoogleDriveProvider(googleDriveConfig()),
     marketPriceSource:createYahooMarketPriceSourceProvider(),
+    soldgraph:createConfiguredSoldgraphProvider(process.env,globalThis.fetch),
   };
 }

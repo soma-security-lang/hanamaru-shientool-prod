@@ -613,6 +613,7 @@ export class BackendService {
     action: string,
     resourceType: string,
     operation: (tx: RepositoryTransaction) => Promise<WriteResult>,
+    authorizeReplay?: (tx:RepositoryTransaction,resourceId:string|null) => Promise<void>,
   ): Promise<WriteResult> {
     if (!key || key.length > 200)
       throw new ApiProblem(
@@ -625,7 +626,7 @@ export class BackendService {
       const result = await this.repository.withContext(ctx, async (tx) => {
         // Expense retries may arrive before the first response. Serialize only
         // identical operation keys so the second request observes the saved result.
-        if (endpoint.startsWith("expense.")) {
+        if (endpoint.startsWith("expense.") || endpoint.startsWith("ebay.")) {
           await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
             `${ctx.organizationId}:${ctx.membershipId}:${endpoint}`, key,
           ]);
@@ -634,8 +635,9 @@ export class BackendService {
           request_hash: string;
           response_status: number;
           response_body_redacted: unknown;
+          resource_id: string|null;
         }>(
-          `SELECT request_hash,response_status,response_body_redacted FROM idempotency_records WHERE organization_id=$1 AND membership_id=$2 AND endpoint_key=$3 AND idempotency_key=$4 AND expires_at>now()`,
+          `SELECT request_hash,response_status,response_body_redacted,resource_id FROM idempotency_records WHERE organization_id=$1 AND membership_id=$2 AND endpoint_key=$3 AND idempotency_key=$4 AND expires_at>now()`,
           [ctx.organizationId, ctx.membershipId, endpoint, key],
         );
         const cached = existing.rows[0];
@@ -646,6 +648,7 @@ export class BackendService {
               409,
               "同じ操作キーで異なる内容が送信されました",
             );
+          if(authorizeReplay)await authorizeReplay(tx,cached.resource_id);
           return {
             status: cached.response_status,
             body: camel(cached.response_body_redacted),
@@ -2414,10 +2417,17 @@ export class BackendService {
 
   async analyzeMarketPriceIdentification(ctx:RequestContext,id:string,key:string|undefined,b:Json){
     const access=this.marketPriceAccess(ctx,"market_price:search");
+    if(Object.keys(b).some(name=>name!=="searchLanguage")||![undefined,"ja","en"].includes(b.searchLanguage as string|undefined))throw invalid("検索語の言語指定を確認してください");
+    const searchLanguage=b.searchLanguage==="en"?"en":"ja";
     return this.write(ctx,"market_price.identification.analyze",key,b,"market_price.identification.analysis_requested","market_price_identification",async tx=>{
+      if(searchLanguage==="en"){
+        const flags=await tx.query<{enabled:boolean}>("SELECT enabled FROM feature_flags WHERE organization_id=$1 AND flag_key='market_price_ebay' AND (expires_at IS NULL OR expires_at>now())",[ctx.organizationId]);
+        if(!flags.rows[0]?.enabled)throw notFound();
+      }
       const found=await tx.query<any>(`SELECT input_mode,input_redacted FROM market_price_identifications WHERE organization_id=$1 AND id=$2 AND status IN ('draft','failed','suggestion_ready','confirmation_required') AND expires_at>now() AND ($3::boolean OR branch_id=ANY($4::uuid[]) OR ($5::boolean AND created_by_membership_id=$6)) FOR UPDATE`,[ctx.organizationId,id,access.organization,access.branchIds,access.self,ctx.membershipId]);if(!found.rows[0])throw notFound();
       if(found.rows[0].input_mode==="image_assisted"){const images=await tx.query("SELECT 1 FROM market_price_images WHERE organization_id=$1 AND identification_id=$2 AND deleted_at IS NULL LIMIT 1",[ctx.organizationId,id]);if(!images.rowCount)throw invalid("商品画像を1枚以上追加してください");}
-      const jobId=randomUUID();await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_identification','market_price_identification',$3,$4,$5,$6,2,$7)",[jobId,ctx.organizationId,id,key,sha(JSON.stringify({identificationId:id})),{identificationId:id},ctx.membershipId]);await tx.query("UPDATE market_price_identifications SET status='analyzing',job_id=$3,failure_class=NULL WHERE organization_id=$1 AND id=$2",[ctx.organizationId,id,jobId]);await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_identification"},`job:${jobId}`]);return{status:202,body:{id,jobId,status:"analyzing",statusUrl:`/api/v1/market-price/identifications/${id}`},resourceId:id};
+      const jobInput={identificationId:id,searchLanguage};
+      const jobId=randomUUID();await tx.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,idempotency_key,input_hash,input_redacted,max_attempts,requested_by_membership_id) VALUES($1,$2,'market_price_identification','market_price_identification',$3,$4,$5,$6,2,$7)",[jobId,ctx.organizationId,id,key,sha(JSON.stringify(jobInput)),jobInput,ctx.membershipId]);await tx.query("UPDATE market_price_identifications SET status='analyzing',job_id=$3,failure_class=NULL WHERE organization_id=$1 AND id=$2",[ctx.organizationId,id,jobId]);await tx.query("INSERT INTO outbox_events(organization_id,event_type,aggregate_type,aggregate_id,payload_redacted,deduplication_key) VALUES($1,'job.dispatch','job',$2,$3,$4)",[ctx.organizationId,jobId,{job_id:jobId,job_type:"market_price_identification"},`job:${jobId}`]);return{status:202,body:{id,jobId,status:"analyzing",statusUrl:`/api/v1/market-price/identifications/${id}`},resourceId:id};
     });
   }
 
@@ -2532,7 +2542,7 @@ export class BackendService {
       const rows=await tx.query<{dimension:"category"|"brand";registry_key:string;canonical_name:string}>("SELECT dimension,registry_key,canonical_name FROM market_price_source_mappings WHERE organization_id=$1 AND status IN ('CONFIRMED','COMPATIBLE') AND (expires_at IS NULL OR expires_at>now()) ORDER BY dimension,canonical_name",[ctx.organizationId]);
       const labels:Record<ProductCondition,string>={unused:"未使用",near_unused:"未使用に近い",good:"目立った傷や汚れなし",fair:"やや傷や汚れあり",poor:"傷や汚れあり",very_poor:"全体的に状態が悪い",unspecified:"指定しない"};
       const aucfanEnabled=Boolean(flags.market_price_aucfan);const comparisonEnabled=aucfanEnabled&&Boolean(flags.market_price_comparison);
-      return{conditions:productConditions.map(value=>({value,label:labels[value]})),categories:rows.rows.filter(row=>row.dimension==="category").map(row=>({key:row.registry_key,label:row.canonical_name})),brands:rows.rows.filter(row=>row.dimension==="brand").map(row=>({key:row.registry_key,label:row.canonical_name})),sources:[{value:"yahoo",label:"ヤフオク",description:"現行の落札相場を検索します",enabled:true,limitations:[]},{value:"aucfan",label:"オークファン",description:"オークファンAPIの落札データを検索します",enabled:aucfanEnabled,limitations:["過去分は月100件の提供上限があります","商品状態は新品・中古の区分です"]},{value:"compare",label:"両方を比較",description:"同じ確認済み条件で2つの取得元を個別に検索します",enabled:comparisonEnabled,limitations:["結果と中央値は取得元ごとに表示します"]}],limits:{imageCount:5,imageBytes:10_485_760,totalImageBytes:52_428_800}};
+      return{ebay:{enabled:Boolean(flags.market_price_ebay)&&Boolean(process.env.SOLDGRAPH_ACCOUNT_ID)},conditions:productConditions.map(value=>({value,label:labels[value]})),categories:rows.rows.filter(row=>row.dimension==="category").map(row=>({key:row.registry_key,label:row.canonical_name})),brands:rows.rows.filter(row=>row.dimension==="brand").map(row=>({key:row.registry_key,label:row.canonical_name})),sources:[{value:"yahoo",label:"ヤフオク",description:"現行の落札相場を検索します",enabled:true,limitations:[]},{value:"aucfan",label:"オークファン",description:"オークファンAPIの落札データを検索します",enabled:aucfanEnabled,limitations:["過去分は月100件の提供上限があります","商品状態は新品・中古の区分です"]},{value:"compare",label:"両方を比較",description:"同じ確認済み条件で2つの取得元を個別に検索します",enabled:comparisonEnabled,limitations:["結果と中央値は取得元ごとに表示します"]}],limits:{imageCount:5,imageBytes:10_485_760,totalImageBytes:52_428_800}};
     });
   }
 

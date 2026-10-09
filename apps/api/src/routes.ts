@@ -4,6 +4,7 @@ import type { BackendService } from "./service.js";
 import { denied } from "./errors.js";
 import { ExpenseService } from "./expense.js";
 import {ExpenseCashService} from "./expense-cash.js";
+import { EbayMarketPriceService } from "./ebay-market-price.js";
 
 const body=(request:FastifyRequest)=>(request.body&&typeof request.body==="object"&&!Buffer.isBuffer(request.body)?request.body:{}) as Record<string,unknown>;
 const query=(request:FastifyRequest)=>(request.query??{}) as Record<string,unknown>;
@@ -13,6 +14,19 @@ async function send(reply:FastifyReply,promise:Promise<{status:number;body:unkno
 export async function registerRoutes(app:FastifyInstance,service:BackendService){
   const expense=new ExpenseService(service);
   const expenseCash=new ExpenseCashService(service);
+  const ebay=new EbayMarketPriceService(service);
+  app.get<{Params:{key:string}}>('/api/v1/market-price/ebay/operations/:key',async r=>ebay.operationResult(r.auth,r.params.key,query(r).action));
+  app.get('/api/v1/market-price/ebay/searches',async r=>ebay.list(r.auth));
+  app.post('/api/v1/market-price/ebay/searches',async(r,reply)=>send(reply,ebay.create(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id',async r=>ebay.get(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/next-page',async(r,reply)=>send(reply,ebay.nextPage(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/confirm',async(r,reply)=>send(reply,ebay.confirm(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/cancel',async(r,reply)=>send(reply,ebay.cancel(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/retry',async(r,reply)=>send(reply,ebay.retry(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/resume',async(r,reply)=>send(reply,ebay.resume(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/repeat',async(r,reply)=>send(reply,ebay.repeat(r.auth,r.params.id,key(r),body(r))));
+  app.patch<{Params:{id:string;candidateId:string}}>('/api/v1/market-price/ebay/searches/:id/candidates/:candidateId',async(r,reply)=>send(reply,ebay.candidate(r.auth,r.params.id,r.params.candidateId,key(r),body(r))));
+  app.patch<{Params:{id:string}}>('/api/v1/market-price/ebay/searches/:id/outlier-policy',async(r,reply)=>send(reply,ebay.outlierPolicy(r.auth,r.params.id,key(r),body(r))));
   app.get('/api/v1/expense-branch-options',async r=>expenseCash.options(r.auth));
   app.get('/api/v1/expense-branch-days',async r=>expenseCash.list(r.auth,String(query(r).branchId??''),String(query(r).businessDate??'')));
   app.post('/api/v1/expense-branch-days',async(r,reply)=>send(reply,expenseCash.create(r.auth,key(r),body(r))));

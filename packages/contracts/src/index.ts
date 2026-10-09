@@ -188,6 +188,7 @@ export interface Job {
     | "review"
     | "market_price_identification"
     | "market_price_search"
+    | "market_price_ebay_search"
     | "delete"
     | "retention_scan";
   entityType: string;
@@ -424,6 +425,8 @@ export interface MarketPriceResultDto extends MarketPriceStatisticsDto {
 }
 
 export interface MarketPriceOptionsDto {
+  /** Separate from the existing JPY source modes. Absence means unavailable. */
+  ebay?: { enabled: boolean };
   conditions: Array<{ value: ProductCondition; label: string }>;
   categories: Array<{ key: string; label: string }>;
   brands: Array<{ key: string; label: string }>;
@@ -665,3 +668,4 @@ export interface AuditEvent {
   metadataRedacted: Record<string, unknown>;
   eventHash: string;
 }
+export * from "./soldgraph.js";

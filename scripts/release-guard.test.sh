@@ -210,6 +210,27 @@ common_release_env=(
   LIVE_E2E_AUDIO_PATH="$input_dir/audio"
 )
 env "${common_release_env[@]}" "$release_script" | grep -q 'Release input preflight: PASS'
+grep -q 'set -- e2e/ebay-live-readonly.spec.ts' "$release_script"
+# Extract only the command function: never execute the deployment script itself.
+awk '/^run_live_e2e/ {printing=1} printing {print} printing && /^}$/ {exit}' "$release_script" > "$input_dir/live-e2e-command.sh"
+[[ -s "$input_dir/live-e2e-command.sh" ]]
+source "$input_dir/live-e2e-command.sh"
+pnpm(){ printf '%s\n' "$@"; }
+ebay_readback_required=false
+readback_disabled_command="$(run_live_e2e)"
+[[ "$readback_disabled_command" == *'e2e/real-stack.spec.ts'* && "$readback_disabled_command" != *'e2e/ebay-live-readonly.spec.ts'* ]]
+ebay_readback_required=true
+readback_enabled_command="$(run_live_e2e)"
+[[ "$readback_enabled_command" == *'e2e/real-stack.spec.ts'* && "$readback_enabled_command" == *'e2e/ebay-live-readonly.spec.ts'* ]]
+unset -f pnpm
+env "${common_release_env[@]}" EBAY_RELEASE_READBACK_REQUIRED=true E2E_INCLUDE_WEBKIT=1 LIVE_EBAY_SYNTHETIC_SCOPE_CONFIRMED=1 \
+  LIVE_EBAY_CONFIRMED_SEARCH_ID=00000000-0000-4000-8000-000000000067 LIVE_EBAY_EXPECTED_MEMBERSHIP_ID=00000000-0000-4000-8000-000000000101 \
+  "$release_script" | grep -q 'Release input preflight: PASS'
+! env "${common_release_env[@]}" EBAY_RELEASE_READBACK_REQUIRED=unknown "$release_script" >/dev/null 2>&1
+! env "${common_release_env[@]}" EBAY_RELEASE_READBACK_REQUIRED=true E2E_INCLUDE_WEBKIT=0 "$release_script" >/dev/null 2>&1
+! env "${common_release_env[@]}" EBAY_RELEASE_READBACK_REQUIRED=true E2E_INCLUDE_WEBKIT=1 LIVE_EBAY_SYNTHETIC_SCOPE_CONFIRMED=1 \
+  LIVE_EBAY_CONFIRMED_SEARCH_ID=unknown LIVE_EBAY_EXPECTED_MEMBERSHIP_ID=00000000-0000-4000-8000-000000000101 "$release_script" >/dev/null 2>&1
+echo "explicit eBay release readback is included at both live gates and rejects incomplete inputs before deployment"
 chmod 0644 "$input_dir/manager.json"
 set +e
 input_error="$(env "${common_release_env[@]}" "$release_script" 2>&1)"

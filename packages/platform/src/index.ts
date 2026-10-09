@@ -1,6 +1,8 @@
 export * from "./types.js";
+export { createSoldgraphProvider, createConfiguredSoldgraphProvider, SoldgraphProviderError, type SoldgraphFailureClass } from "./soldgraph.js";
 export { probeAudioSource,probeAudioStream,probeVideoSource,probeVideoStream,type AudioMetadata,type VideoMetadata } from "./media.js";
 export { acceptLocalUpload,acceptLocalUploadStream,createLocalProviders } from "./local.js";
+export { createSoldgraphFixtureProvider } from "./soldgraph-fixture.js";
 export { cloudRunAudience,createGcpProviders,createLocalConnectedProviders,createGcpStorageProvider,createGoogleAiProvider,createGoogleDriveProvider,createYahooMarketPriceSourceProvider } from "./gcp.js";
 export { CHIRP3_MODEL,buildChirp3BatchRequest,createGoogleSpeechProvider,parseChirp3BatchResponse } from "./google-speech.js";
 import { createGcpProviders,createLocalConnectedProviders } from "./gcp.js";

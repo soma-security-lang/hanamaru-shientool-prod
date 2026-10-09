@@ -111,6 +111,98 @@ test.beforeAll(async()=>{
 test.afterAll(async()=>api?.dispose());
 test.beforeEach(async({context})=>addRole(context));
 
+test("eBay English AI proposals preserve input and require selection before any paid search",async({browser})=>{
+  test.setTimeout(90000);
+  const context=await browser.newContext({viewport:{width:390,height:844}});
+  await addRole(context);
+  const page=await context.newPage();
+  try {
+  await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+  await page.getByRole("radio",{name:/手入力＋AI補助/}).check();
+  await page.getByLabel(/商品名/).fill("SYNTHETIC CAMERA X1 ボディ");
+  await page.getByLabel("型番",{exact:true}).fill("X1");
+  await page.getByLabel("eBay向けの英語検索語を提案する").check();
+  const analysis=page.waitForRequest(request=>request.method()==="POST"&&request.url().endsWith("/analyze"));
+  let paidSearches=0;
+  page.on("request",request=>{if(request.method()==="POST"&&request.url().endsWith("/ebay/searches"))paidSearches++;});
+  await page.getByRole("button",{name:/検索条件を確認/}).click();
+  expect((await analysis).postDataJSON()).toEqual({searchLanguage:"en"});
+  await expect(page.getByRole("button",{name:"採用して編集"}).first()).toBeVisible({timeout:60000});
+  await expect(page.getByLabel("商品名",{exact:true})).toHaveValue("SYNTHETIC CAMERA X1 ボディ");
+  expect(paidSearches).toBe(0);
+  const accessibility=await new AxeBuilder({page}).analyze();
+  expect(accessibility.violations.filter(v=>v.impact==="serious"||v.impact==="critical")).toEqual([]);
+  } finally { await context.close(); }
+});
+
+test("eBay synthetic eight-market search confirms and reloads native-currency results",async({page,browserName})=>{
+  test.setTimeout(90000);
+  await page.setViewportSize({width:390,height:844});
+  const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
+  await page.goto(`${webBase}/market-price`);await waitForResolvedScreen(page,"/market-price");
+  await page.getByRole("radio",{name:/手入力のみ/}).check();
+  await page.getByLabel(/商品名/).fill(`SYNTHETIC CAMERA ${browserName}`);
+  await page.getByLabel(/検索キーワード/).fill(`SYNTHETIC CAMERA ${browserName}`);
+  await page.getByRole("button",{name:/検索条件を確認/}).click();
+  await page.getByRole("radio",{name:"eBay（Soldgraph・海外8市場）"}).check();
+  const controls=page.getByRole("region",{name:"eBay検索条件"});
+  await expect(controls.getByText(/初回最大 8 枠/)).toBeVisible();
+  await expect(page.getByRole("button",{name:"eBay検索を開始",exact:true})).toBeDisabled();
+  await controls.getByLabel("対象市場・状態と最大消費枠を確認しました").check();
+  await page.getByRole("button",{name:"eBay検索を開始",exact:true}).click();
+  await expect(page).toHaveURL(/source=ebay/);
+  await expect(page.getByText(/消費確定 8 枠・未確定 0 枠/)).toBeVisible({timeout:60000});
+  const searchId=new URL(page.url()).searchParams.get("searchId");expect(searchId).toBeTruthy();
+  const us=page.getByRole("article").filter({has:page.getByRole("heading",{name:"米国（USD）",exact:true})});
+  await expect(us.getByRole("button",{name:"この市場の次ページを取得"})).toBeDisabled();
+  await us.getByLabel("米国の次ページに最大1枠を使用することを確認しました").check();
+  await us.getByRole("button",{name:"この市場の次ページを取得"}).click();
+  await expect(page.getByText(/消費確定 9 枠・未確定 0 枠/)).toBeVisible({timeout:60000});
+  await page.getByRole("button",{name:"候補を確認",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"eBay候補の確認",exact:true})).toBeVisible();
+  await expect(page.getByRole("button",{name:"相場結果を確定",exact:true})).toBeEnabled();
+  let confirms=0;
+  await page.route(`${apiBase}/market-price/ebay/searches/${searchId}/confirm`,async route=>{
+    confirms++;
+    const response=await route.fetch({headers:{...route.request().headers(),"x-dev-role":"manager"}});
+    expect(response.status()).toBe(201);await route.abort("failed");
+  });
+  await page.getByRole("button",{name:"相場結果を確定",exact:true}).click();
+  await expect(page.getByRole("button",{name:"操作結果を確認",exact:true})).toBeVisible();
+  await page.reload();
+  await page.getByRole("button",{name:"操作結果を確認",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"保存済みeBay相場結果",exact:true})).toBeVisible();
+  expect(confirms).toBe(1);
+  const resultUrl=page.url();await page.reload();
+  await expect(page.getByRole("heading",{name:"保存済みeBay相場結果",exact:true})).toBeVisible();
+  await expect(page.getByText(/確定版 1/)).toBeVisible();expect(page.url()).toBe(resultUrl);
+  const comparison=page.getByRole("region",{name:"取得元間の参考比較"});
+  await expect(comparison.getByText(/新規の外部検索・検索枠消費はありません/)).toBeVisible();
+  await comparison.getByRole("button",{name:"比較できる保存結果を読み込む"}).click();
+  await expect(comparison.getByLabel("国内の確定結果を選択")).toBeVisible();
+  for(const currency of ["USD","GBP","CAD","AUD","EUR"])await expect(page.getByRole("heading",{name:new RegExp(`（${currency}）`)}).first()).toBeVisible();
+  for(const width of [390,1440]){
+    await page.setViewportSize({width,height:1000});
+    const selector=comparison.getByLabel("国内の確定結果を選択");
+    expect((await selector.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await selector.evaluate(element=>parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const analysis=await new AxeBuilder({page}).analyze();expect(analysis.violations.filter(v=>v.impact==="serious"||v.impact==="critical")).toEqual([]);
+    await page.screenshot({path:resolve(screenshots,`ebay-${browserName}-${width}.png`),fullPage:true});
+  }
+  const editor=page.locator("details").filter({has:page.locator("summary").filter({hasText:"条件を編集して再検索"})});
+  await editor.locator("summary").click();
+  await editor.getByLabel("再検索の検索語",{exact:true}).fill(`SYNTHETIC CAMERA ${browserName} EDITED`);
+  await expect(editor.getByRole("button",{name:"編集した条件で新しい検索を開始"})).toBeDisabled();
+  await editor.getByLabel("対象市場・状態と最大消費枠を確認しました").check();
+  await editor.getByRole("button",{name:"編集した条件で新しい検索を開始"}).click();
+  await expect(page).not.toHaveURL(resultUrl);
+  await expect(page.getByText(/消費確定 8 枠・未確定 0 枠/)).toBeVisible({timeout:60000});
+  const old=await page.request.get(`${apiBase}/market-price/ebay/searches/${searchId}`,{headers:{"x-dev-role":"manager"}});
+  expect(old.status()).toBe(200);const saved=await old.json();expect(saved.snapshots).toHaveLength(1);expect(saved.status).toBe("confirmed");
+  expect(errors).toEqual([]);
+});
+
 test("expense day records survive reload and mobile entry keeps cash operations unavailable",async({browser,browserName})=>{
   const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context,"assessor");
   const page=await context.newPage();
@@ -283,6 +375,8 @@ test("audio registration reaches transcript confirmation and six-area AI review"
 test("operations exposes aggregate health and per-visit retention without body data",async({page})=>{
   await page.goto(`${webBase}/admin/operations`);
   await expect(page.getByRole("heading",{name:"稼働状況"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"eBay相場取得",exact:true}).first()).toBeVisible();
+  await expect(page.getByRole("cell",{name:"eBay相場検索",exact:true}).first()).toBeVisible();
   await page.getByRole("button",{name:"保存・削除"}).click();
   await page.getByLabel("保存期限を確認する案件").selectOption(visitId);
   await expect(page.getByRole("heading",{name:"案件へ実際に適用された保存期限"})).toBeVisible();

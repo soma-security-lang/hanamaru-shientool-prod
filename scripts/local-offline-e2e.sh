@@ -14,6 +14,14 @@ hanamaru_require_command curl
 hanamaru_require_command lsof
 hanamaru_require_command jq
 
+# Diagnostic runs may select one engine, but must never become the dual-browser
+# release gate. The default remains Chromium + WebKit with all scenarios.
+browser_project="${OFFLINE_E2E_PROJECT:-}"
+case "$browser_project" in
+  ""|chromium|webkit) ;;
+  *) hanamaru_fail "OFFLINE_E2E_PROJECT は chromium または webkit だけ指定できます。" ;;
+esac
+
 web_port="${OFFLINE_E2E_WEB_PORT:-3100}"
 web_dist_dir="${HANAMARU_E2E_NEXT_DIST_DIR:-.next}"
 api_port="${OFFLINE_E2E_API_PORT:-3200}"
@@ -65,6 +73,8 @@ export NODE_ENV=test
 export PROVIDER_MODE=local
 export ALLOW_DEV_AUTH=true
 export LOCAL_STORAGE_DIR="$storage_dir"
+export SOLDGRAPH_ACCOUNT_ID=00000000-0000-4000-8000-000000000067
+export SOLDGRAPH_ALLOW_EXTERNAL_REQUESTS=false
 
 migration_count="$(find packages/database/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.sql' | wc -l | tr -d ' ')"
 hanamaru_info "${migration_count} migrations、匿名seed、PoC 1,676件を一時DBへ適用します。"
@@ -74,7 +84,12 @@ pnpm --filter @hanamaru/database seed:dev >"$evidence_dir/seed.log" 2>&1
 pnpm --filter @hanamaru/database content:import >"$evidence_dir/content-import.log" 2>&1
 "$pg_bin/psql" -h "$pg_socket" -p "$postgres_port" -d hanamaru_offline_e2e -v ON_ERROR_STOP=1 \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  -c "INSERT INTO ebay_retention_policies(organization_id,content_days,approved_at,approved_by_membership_id) VALUES('00000000-0000-4000-8000-000000000001',90,now(),'00000000-0000-4000-8000-000000000101')" \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key IN ('market_price_aucfan','market_price_comparison')" \
+  -c "INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note) VALUES('00000000-0000-4000-8000-000000000001','market_price_ebay',true,'00000000-0000-4000-8000-000000000101','synthetic disposable E2E only') ON CONFLICT(organization_id,flag_key) DO UPDATE SET enabled=true,updated_at=now()" \
+  -c "INSERT INTO soldgraph_accounts(id,account_key,execution_mode,credit_budget,usage_remaining,usage_checked_at,usage_window_json) VALUES('$SOLDGRAPH_ACCOUNT_ID','synthetic-offline-only','enabled',1000,1000,now(),'{\"synthetic\":true}')" \
+  -c "INSERT INTO soldgraph_budgets(account_id,scope_type,organization_id,membership_id,period_kind,credit_limit) VALUES('$SOLDGRAPH_ACCOUNT_ID','account',NULL,NULL,'lifetime',1000),('$SOLDGRAPH_ACCOUNT_ID','organization','00000000-0000-4000-8000-000000000001',NULL,'lifetime',1000)" \
+  -c "INSERT INTO soldgraph_budgets(account_id,scope_type,organization_id,membership_id,period_kind,credit_limit) SELECT '$SOLDGRAPH_ACCOUNT_ID','membership',organization_id,id,'lifetime',1000 FROM memberships WHERE organization_id='00000000-0000-4000-8000-000000000001'" \
   >"$evidence_dir/market-price-feature.log" 2>&1
 
 hanamaru_info "API、Worker、Webを最新sourceからbuildします。"
@@ -108,11 +123,15 @@ hanamaru_wait_url "http://127.0.0.1:$worker_port/health/ready" 120 || hanamaru_f
 hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offline Web readinessに失敗しました。"
 
 playwright_arguments=(e2e/offline-stack.spec.ts --trace=retain-on-failure)
+if [[ -n "$browser_project" ]]; then
+  playwright_arguments+=(--project "$browser_project")
+  hanamaru_info "単一browserの診断実行です。正式な両browser release gateとは別扱い: $browser_project"
+fi
 if [[ -n "${OFFLINE_E2E_GREP:-}" ]]; then
   playwright_arguments+=(--grep "$OFFLINE_E2E_GREP")
   hanamaru_info "対象を絞ったoffline browser E2Eを実走します: $OFFLINE_E2E_GREP"
 else
-  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axe、正式63画像＋中核14画像＋拠点経費4画像を実走します。"
+  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axeを実走します。画像数は両browser85／Chromium限定81／WebKit限定4を要求します。"
 fi
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
@@ -125,10 +144,15 @@ OFFLINE_STACK_E2E=1 \
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
 if [[ -z "${OFFLINE_E2E_GREP:-}" ]]; then
-  [[ "$screenshot_count" == "81" ]] || hanamaru_fail "offline E2E screenshotは正式63枚＋中核14枚＋拠点経費4枚、計81枚必要です（actual: $screenshot_count）。"
-  for expense_browser in chromium webkit; do
+  expected_screenshots=85
+  evidence_browsers=(chromium webkit)
+  if [[ "$browser_project" == "chromium" ]]; then expected_screenshots=81; evidence_browsers=(chromium); fi
+  if [[ "$browser_project" == "webkit" ]]; then expected_screenshots=4; evidence_browsers=(webkit); fi
+  [[ "$screenshot_count" == "$expected_screenshots" ]] || hanamaru_fail "offline E2E screenshot数不一致（expected: $expected_screenshots, actual: $screenshot_count）。"
+  for expense_browser in "${evidence_browsers[@]}"; do
     for expense_width in 390 1440; do
       [[ -s "$evidence_dir/screenshots/expense-branch-$expense_browser-$expense_width.png" ]] || hanamaru_fail "拠点経費の画像がありません: $expense_browser/$expense_width"
+      [[ -s "$evidence_dir/screenshots/ebay-$expense_browser-$expense_width.png" ]] || hanamaru_fail "eBayの画像がありません: $expense_browser/$expense_width"
     done
   done
 fi
@@ -138,7 +162,9 @@ jq -n \
   --arg completedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --argjson screenshots "$screenshot_count" \
   --arg filter "${OFFLINE_E2E_GREP:-}" \
-  '{status:"PASS",mode:"offline-deterministic-browser-to-db",filter:(if ($filter|length)>0 then $filter else null end),gitSha:$gitSha,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
+  --arg browserProject "$browser_project" \
+  --argjson workingTreeDirty "$(if [[ -n "$(git status --porcelain)" ]]; then printf true; else printf false; fi)" \
+  '{status:(if ($filter|length)==0 and ($browserProject|length)==0 then "PASS" else "PASS_SCOPED" end),formalBrowserGatePassed:(($filter|length)==0 and ($browserProject|length)==0),browserProject:(if ($browserProject|length)>0 then $browserProject else "chromium+webkit" end),mode:"offline-deterministic-browser-to-db",filter:(if ($filter|length)>0 then $filter else null end),gitSha:$gitSha,workingTreeDirty:$workingTreeDirty,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
   >"$evidence_dir/result.json"
 
-hanamaru_info "offline browser E2E PASS: $evidence_dir"
+hanamaru_info "offline browser E2E結果: $(jq -r '.status' "$evidence_dir/result.json")。証跡: $evidence_dir"

@@ -379,6 +379,15 @@ resource "google_cloud_run_v2_service" "api" {
         name  = "PROVIDER_MODE"
         value = "gcp"
       }
+      # Non-secret shared-account binding is required for API budget reservations.
+      # API never receives the Soldgraph key or permission to contact Soldgraph.
+      dynamic "env" {
+        for_each = var.enable_soldgraph_runtime ? [var.soldgraph_account_id] : []
+        content {
+          name  = "SOLDGRAPH_ACCOUNT_ID"
+          value = env.value
+        }
+      }
       env {
         name  = "ALLOW_DEV_AUTH"
         value = "false"
@@ -584,6 +593,29 @@ resource "google_cloud_run_v2_service" "worker" {
         value = "gcp"
       }
       env {
+        name  = "SOLDGRAPH_ALLOW_EXTERNAL_REQUESTS"
+        value = tostring(var.enable_soldgraph_runtime)
+      }
+      dynamic "env" {
+        for_each = var.enable_soldgraph_runtime ? [var.soldgraph_account_id] : []
+        content {
+          name  = "SOLDGRAPH_ACCOUNT_ID"
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_soldgraph_runtime && var.enable_soldgraph_secrets ? [var.soldgraph_secret_version] : []
+        content {
+          name = "SOLDGRAPH_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.soldgraph[0].secret_id
+              version = env.value
+            }
+          }
+        }
+      }
+      env {
         name  = "GCP_PROJECT_ID"
         value = var.project_id
       }
@@ -686,8 +718,12 @@ resource "google_cloud_run_v2_service" "worker" {
       }
     }
   }
-  depends_on = [google_project_service.required]
+  depends_on = [google_project_service.required, google_secret_manager_secret_iam_member.soldgraph_worker]
   lifecycle {
+    precondition {
+      condition     = !var.enable_soldgraph_runtime || (var.enable_soldgraph_secrets && var.soldgraph_account_id != "" && var.soldgraph_secret_version != "")
+      error_message = "Soldgraph runtime requires approved account, Worker-only secret and pinned version."
+    }
     ignore_changes = [client, client_version, template[0].revision, template[0].labels, template[0].containers[0].image]
   }
 }

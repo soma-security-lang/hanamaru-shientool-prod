@@ -45,3 +45,8 @@ database_maintenance_window_enabled = true
 monthly_budget_jpy = 30000
 billing_account_id = "000000-000000-000000"
 alert_notification_emails = ["REPLACE-WITH-VERIFIED-PROJECT-OWNER@example.invalid"]
+# Soldgraph remains OFF until explicit external-call approval and DB budgets exist.
+enable_soldgraph_secrets = false
+enable_soldgraph_runtime = false
+soldgraph_account_id = ""
+soldgraph_secret_version = ""

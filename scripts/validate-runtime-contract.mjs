@@ -7,6 +7,7 @@ const root=resolve(import.meta.dirname,"..");
 const read=(path)=>readFileSync(resolve(root,path),"utf8");
 const main=read("infra/terraform/main.tf");
 const variables=read("infra/terraform/variables.tf");
+const soldgraphInfra=read("infra/terraform/soldgraph.tf");
 const tfvars=read("infra/terraform/terraform.tfvars.example");
 const webDockerfile=read("apps/web/Dockerfile");
 const cloudbuild=read("cloudbuild.yaml");
@@ -15,6 +16,19 @@ const deployWorkflow=read(".github/workflows/deploy.yml");
 const gcpPlatform=read("packages/platform/src/gcp.ts");
 
 const failures=[];
+const workerConfig=main.split('resource "google_cloud_run_v2_service" "worker" {')[1]?.split('resource "google_cloud_run_v2_job" "database_migrate" {')[0]??"";
+const apiConfig=main.split('resource "google_cloud_run_v2_service" "api" {')[1]?.split('resource "google_cloud_run_v2_service" "worker" {')[0]??"";
+for(const name of ["SOLDGRAPH_ALLOW_EXTERNAL_REQUESTS","SOLDGRAPH_ACCOUNT_ID","SOLDGRAPH_API_KEY"]){
+  if(!workerConfig.includes(`name  = "${name}"`)&&!workerConfig.includes(`name = "${name}"`))failures.push(`Worker Soldgraph contract missing: ${name}`);
+  if((name!=="SOLDGRAPH_ACCOUNT_ID"&&apiConfig.includes(name))||webDockerfile.includes(name)||cloudbuild.includes(name)||cloudbuildWeb.includes(name))failures.push(`Soldgraph credentials/communication permission must not enter API or Web builds: ${name}`);
+}
+if(!apiConfig.includes('name  = "SOLDGRAPH_ACCOUNT_ID"')||!apiConfig.includes('value = env.value'))failures.push("API requires the non-secret shared-account binding for reservations");
+for(const name of ["enable_soldgraph_secrets","enable_soldgraph_runtime"]){
+  if(!new RegExp(`variable "${name}" \\{[\\s\\S]*?default\\s*=\\s*false`).test(soldgraphInfra))failures.push(`Soldgraph opt-in default missing: ${name}`);
+  if(!tfvars.includes(`${name} = false`))failures.push(`Soldgraph example must remain OFF: ${name}`);
+}
+if(!workerConfig.includes('version = env.value')||!workerConfig.includes('var.soldgraph_secret_version != ""'))failures.push("Soldgraph requires pinned secret version and activation precondition");
+if(!soldgraphInfra.includes('member    = "serviceAccount:${google_service_account.worker.email}"')||soldgraphInfra.includes('google_service_account.api.email'))failures.push("Soldgraph secret grant must be Worker-only");
 const countEnv=(name)=>[...main.matchAll(new RegExp(`name\\s*=\\s*"${name}"`,"g"))].length;
 const expectCount=(name,count)=>{const actual=countEnv(name);if(actual!==count)failures.push(`${name}: expected ${count}, got ${actual}`);};
 

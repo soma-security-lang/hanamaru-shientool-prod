@@ -21,6 +21,19 @@ migration_version="${MIGRATION_VERSION:-$latest_migration_version}"
 }
 observe_seconds="${OBSERVE_SECONDS:-900}"
 observe_half_seconds="${OBSERVE_HALF_SECONDS:-1800}"
+ebay_readback_required="${EBAY_RELEASE_READBACK_REQUIRED:-false}"
+case "$ebay_readback_required" in true|false) ;; *) echo "EBAY_RELEASE_READBACK_REQUIRED must be true or false" >&2; exit 2 ;; esac
+if [[ "$ebay_readback_required" == true ]]; then
+  [[ "${E2E_INCLUDE_WEBKIT:-}" == 1 && "${LIVE_EBAY_SYNTHETIC_SCOPE_CONFIRMED:-}" == 1 ]] || {
+    echo "eBay release readback requires both browsers and approved synthetic scope" >&2; exit 2;
+  }
+  for input in "${LIVE_EBAY_CONFIRMED_SEARCH_ID:-}" "${LIVE_EBAY_EXPECTED_MEMBERSHIP_ID:-}"; do
+    [[ "$input" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$ ]] || {
+      echo "eBay release readback requires approved search and membership UUIDs" >&2; exit 2;
+    }
+  done
+  export LIVE_EBAY_READONLY_E2E=1
+fi
 resume_existing="${RESUME_EXISTING_GREEN:-false}"
 api_image="${API_IMAGE:?API_IMAGE must be a digest-pinned Artifact Registry URI}"
 worker_image="${WORKER_IMAGE:?WORKER_IMAGE must be a digest-pinned Artifact Registry URI}"
@@ -337,8 +350,11 @@ run_live_e2e(){
   # part of the gate and must not be saturated by parallel browser contexts.
   # Playwright can include request headers in failures, so redact bearer values
   # before anything reaches release evidence or the terminal.
+  # Empty arrays under nounset fail on macOS Bash 3.2; function arguments are safe.
+  set --
+  if [[ "$ebay_readback_required" == true ]]; then set -- e2e/ebay-live-readonly.spec.ts; fi
   pnpm --filter @hanamaru/web exec playwright test \
-    e2e/routes.spec.ts e2e/real-stack.spec.ts --workers=1 2>&1 |
+    e2e/routes.spec.ts e2e/real-stack.spec.ts --workers=1 "$@" 2>&1 |
     sed -E 's/(authorization: Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g'
 }
 REAL_STACK_E2E=1 E2E_REMOTE=1 \
