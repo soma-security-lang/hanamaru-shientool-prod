@@ -33,6 +33,14 @@
 
 ## 2. 現在地と未完了点
 
+### 外部取得OFF配備の進捗
+
+eBay実装は`bdafa9e2ab37154b55aeb35e98e56e01e9079ef5`として`origin/main`へpushした。経費・SSOの並行変更とPR31は取り込んでいない。初回CIは依存関係auditで失敗し、対応するCloud Buildは配備前にキャンセルした。本番DB・通常配備Revisionは変更していない。
+
+必要最小限の安全更新としてNext／eslint-config-nextを16.3.8、source-map-jsを1.2.2へ揃えた。アプリの画像previewはunoptimized、remotePatterns未設定であり、Next advisoryの攻撃条件が現行設定で成立したとは断定しない。source-mapの外部入力経路も未実証。更新後のprod auditはHIGH／CRITICAL 0・moderate 3、Web250件・型検査・lint・production build・正規source-map変換・秘密情報検査・文書検査が成功した。Linux CIとコンテナscanは別ゲートとして再実行する。検査の除外・閾値低下・無関係な依存更新は行わない。
+
+次の表と後続追記は初回commit以前の調査履歴を含む。現在のOFF配備では、保存期間365日の合意は済んでおり、Soldgraph実接続・実使用量照合・有料試験・組織flag有効化は今回の完了対象外とする。
+
 | 項目 | 確認結果 |
 |---|---|
 | 基準ブランチ | `origin/main` と一致する `6f3fb24afa2027afe3b61f9525157c8dcb03a2c5` から専用ブランチを作成 |
