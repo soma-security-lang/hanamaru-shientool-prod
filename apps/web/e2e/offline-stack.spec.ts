@@ -15,6 +15,13 @@ test('purchase ledger confirms a transaction and updates daily rankings without 
  const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context,'assessor');
  const page=await context.newPage();page.on('dialog',dialog=>void dialog.accept());
  const date=browserName==='webkit'?'2026-05-16':'2026-05-15';
+ // Layout-only synthetic branches: backend ledger assertions remain real DB assertions.
+ await page.route(`${apiBase}/purchase-performance?**`,async route=>{
+  const response=await route.fetch({headers:{...route.request().headers(),'x-dev-role':'assessor'}});
+  const data=await response.json();
+  data.branchOptions.push(...Array.from({length:6},(_,i)=>({id:`00000000-0000-4000-8000-${String(900+i).padStart(12,'0')}`,name:`合成拠点${i+1}`})));
+  await route.fulfill({response,json:data});
+ });
  try{
   await page.goto(`${webBase}/purchase-results`);
   await page.getByLabel('業務日',{exact:true}).fill(date);await page.getByLabel('買取金額（円）').fill('12345');
@@ -35,6 +42,10 @@ test('purchase ledger confirms a transaction and updates daily rankings without 
   await page.reload();await expect(page.getByRole('heading',{name:'実績・ランキング'})).toBeVisible();await expect(page.getByLabel('基準業務日')).toHaveValue(date);await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('12,345円')).toBeVisible();
   await page.getByLabel('期間',{exact:true}).selectOption('week');await expect(page.getByText(/2026-05-11〜2026-05-17 ／ 集計基準/)).toBeVisible();
   await page.getByLabel('期間',{exact:true}).selectOption('month');await expect(page.getByText(/2026-05-01〜2026-05-31 ／ 集計基準/)).toBeVisible();
+  await expect(page.getByRole('list',{name:'グラフの拠点凡例'}).getByRole('listitem')).toHaveCount(7);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.setViewportSize({width:1440,height:1000});
   await expect(page.getByRole('region',{name:'拠点別日次実績表'}).getByRole('columnheader')).toHaveCount(33);
   await expect(page.getByRole('heading',{name:'全拠点別・査定員ランキング'})).toBeVisible();
   await page.getByLabel('対象拠点',{exact:true}).selectOption('00000000-0000-4000-8000-000000000002');await expect(page.getByRole('heading',{name:'拠点内の査定員ランキング',exact:true})).toBeVisible();

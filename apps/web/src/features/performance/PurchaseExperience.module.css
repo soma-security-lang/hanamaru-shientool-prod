@@ -1,4 +1,5 @@
-.page { display:grid;gap:1.25rem;min-inline-size:0;font-size:1rem;line-height:1.7; }
+.page { display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;min-inline-size:0;inline-size:100%;max-inline-size:100%;font-size:1rem;line-height:1.7; }
+.page > * {min-inline-size:0;}
 .page h1 {font-size:clamp(1.625rem,1.3rem + 1vw,2rem);margin-block:.5rem;}
 .page h2 {font-size:1.125rem;}
 .page nav {display:flex;flex-wrap:wrap;gap:1rem;}
@@ -19,7 +20,7 @@
 .table th:first-child {position:sticky;inset-inline-start:0;background:var(--color-surface);}
 .chartCard {background:var(--color-surface);padding:1.25rem;border-radius:var(--radius-lg);min-inline-size:0;}
 .chartHint {font-size:.875rem;}
-.chartScroll {overflow-x:auto;max-inline-size:100%;}
+.chartScroll {overflow-x:auto;inline-size:100%;min-inline-size:0;max-inline-size:100%;}
 .chartFrame {position:relative;min-inline-size:0;}
 .chartAxis {position:absolute;inset-inline-start:0;inset-block-start:0;inline-size:90px;block-size:350px;background:var(--color-surface);pointer-events:none;}
 .chartScroll svg {display:block;inline-size:100%;block-size:350px;}
