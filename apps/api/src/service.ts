@@ -626,7 +626,7 @@ export class BackendService {
       const result = await this.repository.withContext(ctx, async (tx) => {
         // Expense retries may arrive before the first response. Serialize only
         // identical operation keys so the second request observes the saved result.
-        if (endpoint.startsWith("expense.") || endpoint.startsWith("ebay.")) {
+        if (endpoint.startsWith("expense.") || endpoint.startsWith("ebay.") || endpoint.startsWith("purchase.")) {
           await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
             `${ctx.organizationId}:${ctx.membershipId}:${endpoint}`, key,
           ]);

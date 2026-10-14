@@ -84,6 +84,11 @@ export async function seedDevelopment(pool: Pool): Promise<void> {
       await client.query(`INSERT INTO expense_cash_policies(organization_id,branch_id,reconciliation_mode,policy_reference,version)
         VALUES($1,$2,'external_reference','合成データ検証：手動参照額との照合。全支店の業務式ではありません',1) ON CONFLICT DO NOTHING`,[d.organizationId,d.branchId]);
     }
+    const purchaseSchema=await client.query("SELECT to_regclass('purchase_results') AS table_name");
+    if(purchaseSchema.rows[0]?.table_name){
+      await client.query("INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note) VALUES($1,'purchase_results',true,$2,'Anonymous local seed only'),($1,'purchase_performance',true,$2,'Anonymous local seed only') ON CONFLICT DO NOTHING",[d.organizationId,d.managerMembershipId]);
+      await client.query("INSERT INTO purchase_result_policies(organization_id,self_confirm_enabled,changes_enabled,reference) VALUES($1,true,true,'合成ローカル試験のみ。本番権限の決定ではありません') ON CONFLICT DO NOTHING",[d.organizationId]);
+    }
     if(marketPriceSchema)await client.query(`INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note)
       VALUES($1,'market_price_search',false,$2,'Yahoo落札相場の外部取得を即時停止'),
             ($1,'market_price_aucfan',false,$2,'オークファン取得だけを停止'),

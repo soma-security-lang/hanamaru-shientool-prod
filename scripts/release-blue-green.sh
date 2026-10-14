@@ -353,6 +353,7 @@ run_live_e2e(){
   # Empty arrays under nounset fail on macOS Bash 3.2; function arguments are safe.
   set --
   if [[ "$ebay_readback_required" == true ]]; then set -- e2e/ebay-live-readonly.spec.ts; fi
+  if [[ "${LIVE_PURCHASE_READBACK:-0}" == 1 ]]; then set -- "$@" e2e/purchase-live-readonly.spec.ts; fi
   pnpm --filter @hanamaru/web exec playwright test \
     e2e/routes.spec.ts e2e/real-stack.spec.ts --workers=1 "$@" 2>&1 |
     sed -E 's/(authorization: Bearer )[A-Za-z0-9._-]+/\1[REDACTED]/g'

@@ -3,8 +3,9 @@ import { laneBScreens } from "@/features/lane-b/screens";
 import { laneCScreens } from "@/features/lane-c/screens";
 import {marketPriceScreens} from "@/features/market-price/screens";
 import {expenseScreens} from "@/features/expense/screens";
+import {performanceScreens} from "@/features/performance/screens";
 
-export const allScreens = [...laneAScreens, ...laneBScreens, ...laneCScreens, ...marketPriceScreens, ...expenseScreens];
+export const allScreens = [...laneAScreens, ...laneBScreens, ...laneCScreens, ...marketPriceScreens, ...expenseScreens,...performanceScreens];
 
 function routePattern(pattern: string) {
   const normalized = pattern.replace(/:[^/]+/g, "__PARAM__");

@@ -131,7 +131,7 @@ if [[ -n "${OFFLINE_E2E_GREP:-}" ]]; then
   playwright_arguments+=(--grep "$OFFLINE_E2E_GREP")
   hanamaru_info "対象を絞ったoffline browser E2Eを実走します: $OFFLINE_E2E_GREP"
 else
-  hanamaru_info "全21画面、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axeを実走します。画像数は両browser85／Chromium限定81／WebKit限定4を要求します。"
+  hanamaru_info "既存21画面とランキング、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axeを実走します。画像数は両browser89／Chromium限定83／WebKit限定6を要求します。"
 fi
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
@@ -144,15 +144,16 @@ OFFLINE_STACK_E2E=1 \
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
 if [[ -z "${OFFLINE_E2E_GREP:-}" ]]; then
-  expected_screenshots=85
+  expected_screenshots=89
   evidence_browsers=(chromium webkit)
-  if [[ "$browser_project" == "chromium" ]]; then expected_screenshots=81; evidence_browsers=(chromium); fi
-  if [[ "$browser_project" == "webkit" ]]; then expected_screenshots=4; evidence_browsers=(webkit); fi
+  if [[ "$browser_project" == "chromium" ]]; then expected_screenshots=83; evidence_browsers=(chromium); fi
+  if [[ "$browser_project" == "webkit" ]]; then expected_screenshots=6; evidence_browsers=(webkit); fi
   [[ "$screenshot_count" == "$expected_screenshots" ]] || hanamaru_fail "offline E2E screenshot数不一致（expected: $expected_screenshots, actual: $screenshot_count）。"
   for expense_browser in "${evidence_browsers[@]}"; do
     for expense_width in 390 1440; do
       [[ -s "$evidence_dir/screenshots/expense-branch-$expense_browser-$expense_width.png" ]] || hanamaru_fail "拠点経費の画像がありません: $expense_browser/$expense_width"
       [[ -s "$evidence_dir/screenshots/ebay-$expense_browser-$expense_width.png" ]] || hanamaru_fail "eBayの画像がありません: $expense_browser/$expense_width"
+      [[ -s "$evidence_dir/screenshots/purchase-performance-$expense_browser-$expense_width.png" ]] || hanamaru_fail "ランキングの画像がありません: $expense_browser/$expense_width"
     done
   done
 fi

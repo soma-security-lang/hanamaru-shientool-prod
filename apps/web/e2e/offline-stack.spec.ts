@@ -10,6 +10,37 @@ test.describe.configure({mode:"serial"});
 const webBase=process.env.E2E_WEB_BASE_URL??"http://127.0.0.1:3100";
 const apiBase=process.env.E2E_API_BASE_URL??"http://127.0.0.1:3200/api/v1";
 const screenshots=resolve(process.env.OFFLINE_E2E_SCREENSHOT_DIR??".artifacts/offline-e2e-screenshots");
+test('purchase ledger confirms a transaction and updates daily rankings without exposing cash details',async({browser,browserName})=>{
+ test.setTimeout(90000);
+ const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context,'assessor');
+ const page=await context.newPage();page.on('dialog',dialog=>void dialog.accept());
+ const date=browserName==='webkit'?'2026-05-16':'2026-05-15';
+ try{
+  await page.goto(`${webBase}/purchase-results`);
+  await page.getByLabel('業務日',{exact:true}).fill(date);await page.getByLabel('買取金額（円）').fill('12345');
+  await page.getByRole('button',{name:'下書きとして保存'}).click();
+  const card=page.locator('article').filter({hasText:date});await expect(card).toHaveCount(1);
+  await card.getByRole('button',{name:'内容を確認して確定'}).click();await expect(card.getByText('確定 ／ 版2')).toBeVisible();
+  await page.getByRole('link',{name:'実績・ランキング',exact:true}).first().click();await page.getByLabel('基準業務日').fill(date);
+  await expect(page.getByRole('heading',{name:'全拠点の査定員ランキング'})).toBeVisible();
+  await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('12,345円')).toBeVisible();
+  await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('佐藤 花子')).toBeVisible();
+  await expect(page.getByRole('columnheader',{name:'比較グラフ',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('img',{name:/全拠点の日ごとの買取金額の推移/})).toBeVisible();
+  await expect(page.getByRole('list',{name:'グラフの拠点凡例'})).toContainText('中央店');
+  expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>v.impact==='serious'||v.impact==='critical')).toEqual([]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await mkdir(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,`purchase-performance-${browserName}-390.png`),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(screenshots,`purchase-performance-${browserName}-1440.png`),fullPage:true});
+  await page.reload();await expect(page.getByRole('heading',{name:'実績・ランキング'})).toBeVisible();await expect(page.getByLabel('基準業務日')).toHaveValue(date);await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('12,345円')).toBeVisible();
+  await page.getByLabel('期間',{exact:true}).selectOption('week');await expect(page.getByText(/2026-05-11〜2026-05-17 ／ 集計基準/)).toBeVisible();
+  await page.getByLabel('期間',{exact:true}).selectOption('month');await expect(page.getByText(/2026-05-01〜2026-05-31 ／ 集計基準/)).toBeVisible();
+  await expect(page.getByRole('region',{name:'拠点別日次実績表'}).getByRole('columnheader')).toHaveCount(33);
+  await expect(page.getByRole('heading',{name:'全拠点別・査定員ランキング'})).toBeVisible();
+  await page.getByLabel('対象拠点',{exact:true}).selectOption('00000000-0000-4000-8000-000000000002');await expect(page.getByRole('heading',{name:'拠点内の査定員ランキング',exact:true})).toBeVisible();
+  await page.getByLabel('対象拠点',{exact:true}).selectOption('');await expect(page.getByRole('heading',{name:'全拠点の査定員ランキング',exact:true})).toBeVisible();
+ }finally{await context.close();}
+});
 test('expense branch workflow closes with a difference and preserves later corrections',async({browser,browserName})=>{
  test.setTimeout(90000);
  const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context);

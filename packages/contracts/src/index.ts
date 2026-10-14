@@ -113,6 +113,7 @@ export interface ExpenseDayDetailDto {
   totals:{companyWallet:string;personal:string;candidateCount:number};
   nextAction:string; cashReconciliation:"unavailable"; closeEnabled:false;
   branchClosingStatus?:"open"|"closed_balanced"|"closed_difference"|null;
+  purchaseLedger?:{confirmedAmount:string;transactionCount:number;draftCount:number};
 }
 
 export interface AuthorizationScope {
@@ -669,3 +670,4 @@ export interface AuditEvent {
   eventHash: string;
 }
 export * from "./soldgraph.js";
+export * from "./purchase-performance.js";

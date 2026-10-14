@@ -6,6 +6,7 @@ import {useMemo} from "react";
 import {LoaderCircle,LockKeyhole} from "lucide-react";
 import {useViewer,type Viewer} from "@/components/auth/ViewerProvider";
 import {AppShell} from "@/components/shell/AppShell";
+import {PurchaseExperience} from "@/features/performance/PurchaseExperience";
 import {WebExperience} from "@/features/web/Experience";
 import {allScreens,findScreen} from "@/lib/prototype/registry";
 import type {Role,ScreenSpec} from "@/lib/prototype/types";
@@ -29,6 +30,7 @@ export function ScreenHost(){
   if(authState==="required")return <main className={styles.authPage}><AccessState title="ログインが必要です" body="業務用Googleアカウント、または共通IDでログインしてください。" action={<Link className={styles.primaryButton} href={`/login?returnTo=${encodeURIComponent(`${pathname}${searchParams.size?`?${searchParams.toString()}`:""}`)}`}>ログインへ進む</Link>}/></main>;
   if(authState==="failed")return <main className={styles.authPage}><AccessState title="利用者情報を確認できません" body="APIの接続状態を確認して、もう一度お試しください。" action={<button className={styles.secondaryButton} onClick={retryViewer}>再読み込み</button>}/></main>;
   if(!viewer)return null;
+  if(screen.kind==='purchaseResults'||screen.kind==='performance')return <AppShell pathname={pathname} role={primaryRole(viewer)} roles={viewer.roles} displayName={viewer.displayName} organizationName={viewer.organizationName} branchName={viewer.branchName} featureFlags={viewer.featureFlags}>{!viewer.roles.includes('system_admin')&&viewer.roles.some(r=>r==='assessor'||r==='manager')&&Boolean(viewer.featureFlags[screen.featureFlag!])?<PurchaseExperience dashboard={screen.kind==='performance'}/>:<MarketPriceNotFound/>}</AppShell>;
 
   const systemAdminAccount=viewer.roles.includes("system_admin");
   const systemAdminScreen=screen.kind==="usersAdmin"||screen.kind==="operations";

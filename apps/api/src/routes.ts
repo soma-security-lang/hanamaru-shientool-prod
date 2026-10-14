@@ -4,6 +4,7 @@ import type { BackendService } from "./service.js";
 import { denied } from "./errors.js";
 import { ExpenseService } from "./expense.js";
 import {ExpenseCashService} from "./expense-cash.js";
+import {PurchaseResultService} from "./purchase-results.js";
 import { EbayMarketPriceService } from "./ebay-market-price.js";
 
 const body=(request:FastifyRequest)=>(request.body&&typeof request.body==="object"&&!Buffer.isBuffer(request.body)?request.body:{}) as Record<string,unknown>;
@@ -14,6 +15,12 @@ async function send(reply:FastifyReply,promise:Promise<{status:number;body:unkno
 export async function registerRoutes(app:FastifyInstance,service:BackendService){
   const expense=new ExpenseService(service);
   const expenseCash=new ExpenseCashService(service);
+  const purchase=new PurchaseResultService(service);
+  app.get('/api/v1/purchase-results',async r=>purchase.list(r.auth));
+  app.post('/api/v1/purchase-results',async(r,reply)=>send(reply,purchase.create(r.auth,key(r),body(r))));
+  app.get<{Params:{id:string}}>('/api/v1/purchase-results/:id',async r=>purchase.get(r.auth,r.params.id));
+  app.post<{Params:{id:string;action:string}}>('/api/v1/purchase-results/:id/actions/:action',async(r,reply)=>send(reply,purchase.change(r.auth,r.params.id,r.params.action,key(r),body(r))));
+  app.get('/api/v1/purchase-performance',async r=>purchase.performance(r.auth,query(r)));
   const ebay=new EbayMarketPriceService(service);
   app.get<{Params:{key:string}}>('/api/v1/market-price/ebay/operations/:key',async r=>ebay.operationResult(r.auth,r.params.key,query(r).action));
   app.get('/api/v1/market-price/ebay/searches',async r=>ebay.list(r.auth));
