@@ -1,17 +1,18 @@
-.page { display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;min-inline-size:0;inline-size:100%;max-inline-size:100%;font-size:1rem;line-height:1.7; }
+.page { display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;min-inline-size:0;inline-size:100%;max-inline-size:100%;font-size:.875rem;line-height:1.7; }
 .page > * {min-inline-size:0;}
-.page h1 {font-size:clamp(1.625rem,1.3rem + 1vw,2rem);margin-block:.5rem;}
-.page h2 {font-size:1.125rem;}
+.page h1 {font-size: 1.75rem;margin-block:.5rem;}
+.page h2 {font-size: 1rem;}
 .page nav {display:flex;flex-wrap:wrap;gap:1rem;}
 .page a {color:var(--color-accent);min-block-size:44px;display:inline-flex;align-items:center;}
 .filters {display:flex;flex-wrap:wrap;gap:1rem;align-items:end;}
 .page label {display:grid;gap:.375rem;flex:1 1 12rem;}
 .page input,.page select,.page button {min-height:44px;min-block-size:44px;font:inherit;padding:.5rem .75rem;border-radius:var(--radius-md);border:1px solid var(--color-border-strong);max-inline-size:100%;background:var(--color-surface);color:var(--color-ink);}
-.page button {cursor:pointer;background:var(--color-accent);color:var(--color-surface);}
+.page button {cursor:pointer;background:var(--color-surface);color:var(--color-accent);font-weight:700;}
+.filters > button {background:var(--action-background);color:white;border-color:var(--color-accent);}
 .page button:disabled {opacity:.55;cursor:not-allowed;}
 .cards {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:1rem;}
 .cards article {background:var(--color-surface);padding:1.25rem;border-radius:var(--radius-lg);box-shadow:var(--shadow-card);}
-.cards strong {font-size:1.5rem;font-variant-numeric:tabular-nums;}
+.cards strong {font-size:26px;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
 .table {overflow:auto;max-inline-size:100%;border-radius:var(--radius-md);background:var(--color-surface);}
 .table table {border-collapse:collapse;inline-size:100%;}
 .table th,.table td {padding:.75rem;white-space:nowrap;border-block-end:1px solid var(--color-border);text-align:start;font-variant-numeric:tabular-nums;}

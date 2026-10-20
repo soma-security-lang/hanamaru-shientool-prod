@@ -522,14 +522,14 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await expect(page.getByRole("button",{name:"検索結果へ戻る"})).toBeVisible();
 });
 
-test("keyboard focus uses the high-visibility DADS double indicator",async({page})=>{
+test("keyboard focus uses the revision 07 visible outline",async({page})=>{
   await page.goto(`${webBase}/visits`);await waitForResolvedScreen(page,"/visits");
   const action=page.getByRole("link",{name:"PDFから訪問を登録"});
   await action.focus();
   const focusStyle=await action.evaluate(element=>{const style=getComputedStyle(element);return{outlineColor:style.outlineColor,outlineWidth:style.outlineWidth,boxShadow:style.boxShadow};});
-  expect(focusStyle.outlineColor).toBe("rgb(0, 0, 0)");
-  expect(focusStyle.outlineWidth).toBe("2px");
-  expect(focusStyle.boxShadow).toContain("rgb(255, 212, 61)");
+  expect(focusStyle.outlineColor).toBe("rgb(165, 56, 96)");
+  expect(focusStyle.outlineWidth).toBe("3px");
+  expect(focusStyle.boxShadow).toBe("none");
 });
 
 test("smartphone business content and navigation use the readable typography scale",async({page})=>{
@@ -545,22 +545,22 @@ test("smartphone business content and navigation use the readable typography sca
         const style=getComputedStyle(element);const rect=element.getBoundingClientRect();
         if(style.display==="none"||style.visibility==="hidden"||rect.width===0||rect.height===0)return false;
         const hasOwnText=[...element.childNodes].some(node=>node.nodeType===Node.TEXT_NODE&&node.textContent?.trim());
-        const isTextControl=element instanceof HTMLInputElement||element instanceof HTMLTextAreaElement||element instanceof HTMLSelectElement;
+        const isTextControl=(element instanceof HTMLInputElement&&!(["checkbox","radio","hidden"].includes(element.type)))||element instanceof HTMLTextAreaElement||element instanceof HTMLSelectElement;
         if(!hasOwnText&&!isTextControl)return false;
-        return Number.parseFloat(style.fontSize)<13;
+        return Number.parseFloat(style.fontSize)<(isTextControl?16:12);
       }).map(element=>({tag:element.tagName,text:(element.textContent??element.getAttribute("aria-label")??"").trim().slice(0,60),fontSize:getComputedStyle(element).fontSize}));
     });
     allUndersized.push(...undersized.map(item=>({screenId,...item})));
   }
-  expect(allUndersized,"visible smartphone main content below 13px").toEqual([]);
+  expect(allUndersized,"visible smartphone main content below the revision 07 minimum 12px").toEqual([]);
 
   await page.goto(`${webBase}/`);await waitForResolvedScreen(page,"/");
-  await expect(page.locator("main h1")).toHaveCSS("font-size","26px");
+  await expect(page.locator("main h1")).toHaveCSS("font-size","24px");
   await expect(page.locator("main textarea")).toHaveCSS("font-size","16px");
   await expect(page.getByRole("navigation",{name:"モバイルナビゲーション"}).getByRole("link",{name:"ホーム"})).toHaveCSS("font-size","12px");
 
   await page.setViewportSize({width:768,height:1024});
-  await expect(page.locator("main h1")).toHaveCSS("font-size","32px");
+  await expect(page.locator("main h1")).toHaveCSS("font-size","28px");
 });
 
 test("market price input methods stay readable at panel and smartphone widths",async({page})=>{

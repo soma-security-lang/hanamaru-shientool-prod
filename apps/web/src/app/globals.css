@@ -1,8 +1,8 @@
 @import "../styles/tokens.css";
 
 * { box-sizing: border-box; }
-html { min-height: 100%; background: var(--color-canvas); font: 100%/1.62 var(--font-sans); text-rendering: optimizeLegibility; }
-body { min-height: 100vh; margin: 0; color: var(--color-ink); background: var(--color-canvas); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { min-height: 100%; background: var(--color-canvas); font: 100%/1.7 var(--font-sans); text-rendering: optimizeLegibility; }
+body { font-size: .875rem; font-weight: 600; min-height: 100vh; margin: 0; color: var(--color-ink); background: var(--color-canvas); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button, a { touch-action: manipulation; }
@@ -10,8 +10,15 @@ button { padding: 0; border: 0; color: inherit; background: transparent; cursor:
 button:disabled { cursor: not-allowed; }
 a { color: inherit; text-decoration: none; }
 button, [role="button"] { min-width: 2.75rem !important; min-height: 2.75rem !important; }
-:focus-visible { outline: 2px solid var(--dads-color-focus-black) !important; outline-offset: 2px !important; box-shadow: 0 0 0 4px var(--dads-color-focus-yellow) !important; }
-::selection { color: var(--color-ink); background: #cce5ff; }
+:focus-visible { outline: 3px solid var(--color-accent) !important; outline-offset: 4px !important; box-shadow: none !important; }
+::selection { color: var(--color-ink); background: var(--color-accent-soft); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; } }
 @media (prefers-reduced-transparency: reduce) { :root { --color-material: #ffffff; } }
 @media (prefers-contrast: more) { :root { --color-border: rgba(0, 0, 0, 0.52); --color-border-strong: rgba(0, 0, 0, 0.76); --color-material: #ffffff; } }
+
+/* Revision 07: preserve readable controls and metadata on every route. */
+small, time, figcaption { font-weight: 500; }
+h1, h2, h3, h4, strong { font-weight: 700; }
+:root body input:not([type="checkbox"]):not([type="radio"]), :root body select, :root body textarea { font-size: 1rem !important; font-weight: 600; }
+button, a { overflow-wrap: anywhere; }
+img, video { max-width: 100%; }

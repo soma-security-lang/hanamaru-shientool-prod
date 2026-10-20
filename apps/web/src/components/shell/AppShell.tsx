@@ -27,6 +27,12 @@ const secondaryNavigation:Record<string,ReadonlyArray<{href:string;label:string}
   training:[{href:"/training/roleplay",label:"AIロープレ"},{href:"/training/videos",label:"動画ライブラリ"}],
 };
 
+function navigationTone(href: string) {
+  if (href === "/admin/users" || href === "/admin/operations") return "master";
+  if (href.startsWith("/admin") || ["/performance", "/expense-settlement", "/reviews"].includes(href) || href.startsWith("/knowledge") || href.startsWith("/training")) return "management";
+  return "primary";
+}
+
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/knowledge/talks") return pathname.startsWith("/knowledge");
@@ -63,21 +69,35 @@ function mobileParentHref(pathname:string,homeHref:string){
   return null;
 }
 
-function MobileMoreMenu({open,onClose,onLogout,showBusiness,showExpense,showAdmin,adminHref,displayName,role,appSwitchUrl,featureFlags={},showPurchase=false}:{open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showExpense:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role;appSwitchUrl:string|null;featureFlags?:Record<string,boolean>;showPurchase?:boolean}){
+function MobileMoreMenu({pathname,open,onClose,onLogout,showBusiness,showExpense,showAdmin,adminHref,displayName,role,appSwitchUrl,featureFlags={},showPurchase=false}:{pathname:string;open:boolean;onClose:()=>void;onLogout:()=>void;showBusiness:boolean;showExpense:boolean;showAdmin:boolean;adminHref:string;displayName?:string;role:Role;appSwitchUrl:string|null;featureFlags?:Record<string,boolean>;showPurchase?:boolean}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{const dialog=ref.current;if(open&&dialog&&!dialog.open){if(typeof dialog.showModal==="function")dialog.showModal();else dialog.setAttribute("open","");}if(!open&&dialog?.open){if(typeof dialog.close==="function")dialog.close();else dialog.removeAttribute("open");}},[open]);
+  useEffect(()=>{
+    if(!open||typeof window.matchMedia!=="function")return;
+    const desktop=window.matchMedia("(min-width: 768px)");
+    const closeOnDesktop=()=>{
+      if(!desktop.matches)return;
+      const dialog=ref.current;
+      if(dialog?.open)dialog.close();
+      onClose();
+      document.getElementById("main-content")?.focus();
+    };
+    desktop.addEventListener("change",closeOnDesktop);
+    closeOnDesktop();
+    return ()=>desktop.removeEventListener("change",closeOnDesktop);
+  },[open,onClose]);
   return <dialog className={styles.moreDialog} ref={ref} aria-labelledby="mobile-more-title" onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <section>
       <header><div><span>メニュー</span><h2 id="mobile-more-title">その他</h2></div><button type="button" aria-label="メニューを閉じる" onClick={onClose}><X size={22}/></button></header>
       <nav aria-label="その他の機能">
-        {showPurchase&&featureFlags.purchase_results?<Link href="/purchase-results" onClick={onClose}><BriefcaseBusiness size={20}/><span><strong>買取実績</strong><small>取引単位の登録・確認</small></span></Link>:null}
-        {showPurchase&&featureFlags.purchase_performance?<Link href="/performance" onClick={onClose}><Scale size={20}/><span><strong>実績・ランキング</strong><small>全拠点・個人の買取実績</small></span></Link>:null}
-        {showBusiness?<><Link href="/knowledge/talks" onClick={onClose}><BookOpen size={20}/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" onClick={onClose}><GraduationCap size={20}/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
-        {showExpense?<Link href="/expense-settlement" onClick={onClose}><Wallet size={20}/><span><strong>経費・車両金精算</strong><small>支出記録と日次取りまとめ</small></span></Link>:null}
-        {showAdmin?<Link href={adminHref} onClick={onClose}><ShieldCheck size={20}/><span><strong>管理</strong><small>権限に応じた管理機能</small></span></Link>:null}
-        {appSwitchUrl?<a href={appSwitchUrl} onClick={onClose}><Home size={20}/><span><strong>アプリ切替</strong><small>利用できるアプリを選ぶ</small></span></a>:null}
+        {showPurchase&&featureFlags.purchase_results?<Link href="/purchase-results" data-tone={navigationTone("/purchase-results")} aria-current={isActive(pathname,"/purchase-results")?"page":undefined} onClick={onClose}><BriefcaseBusiness size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>買取実績</strong><small>取引単位の登録・確認</small></span></Link>:null}
+        {showPurchase&&featureFlags.purchase_performance?<Link href="/performance" data-tone={navigationTone("/performance")} aria-current={isActive(pathname,"/performance")?"page":undefined} onClick={onClose}><Scale size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>実績・ランキング</strong><small>全拠点・個人の買取実績</small></span></Link>:null}
+        {showBusiness?<><Link href="/knowledge/talks" data-tone={navigationTone("/knowledge/talks")} aria-current={pathname==="/knowledge/talks"?"page":isActive(pathname,"/knowledge/talks")?"location":undefined} onClick={onClose}><BookOpen size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" data-tone={navigationTone("/training/roleplay")} aria-current={pathname==="/training/roleplay"?"page":isActive(pathname,"/training/roleplay")?"location":undefined} onClick={onClose}><GraduationCap size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
+        {showExpense?<Link href="/expense-settlement" data-tone={navigationTone("/expense-settlement")} aria-current={isActive(pathname,"/expense-settlement")?"page":undefined} onClick={onClose}><Wallet size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>経費・車両金精算</strong><small>支出記録と日次取りまとめ</small></span></Link>:null}
+        {showAdmin?<Link href={adminHref} data-tone={navigationTone(adminHref)} aria-current={pathname===adminHref?"page":pathname.startsWith("/admin")?"location":undefined} onClick={onClose}><ShieldCheck size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>管理</strong><small>権限に応じた管理機能</small></span></Link>:null}
+        {appSwitchUrl?<a href={appSwitchUrl} onClick={onClose}><Home size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>アプリ切替</strong><small>利用できるアプリを選ぶ</small></span></a>:null}
       </nav>
-      <footer><div><UserRound size={20}/><span><strong>{displayName??roleLabels[role]}</strong><small>{roleLabels[role]}</small></span></div><button type="button" onClick={onLogout}><LogOut size={19}/>ログアウト</button></footer>
+      <footer><div><UserRound size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>{displayName??roleLabels[role]}</strong><small>{roleLabels[role]}</small></span></div><button type="button" onClick={onLogout}><LogOut size={19}/>ログアウト</button></footer>
     </section>
   </dialog>;
 }
@@ -114,11 +134,11 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
           {navigation.map(({ href, label, icon: Icon }) => {
             const section=href.startsWith("/knowledge")?"knowledge":href.startsWith("/training")?"training":"";
             const children=section?secondaryNavigation[section]:undefined;
-            return <div className={styles.navGroup} key={href}><Link className={styles.navLink} data-active={isActive(pathname, href)} href={href} aria-current={isActive(pathname, href)&&!children ? "page" : undefined}>
-              <Icon aria-hidden="true" size={20} strokeWidth={1.8} /><span>{label}</span>
-            </Link>{children?<nav className={styles.secondaryNav} aria-label={`${label}の機能`}>{children.map(item=><Link href={item.href} key={item.href} aria-current={pathname===item.href?"page":undefined} data-active={pathname===item.href}>{item.label}</Link>)}</nav>:null}</div>;
+            return <div className={styles.navGroup} key={href}><Link className={styles.navLink} data-tone={navigationTone(href)} data-active={isActive(pathname, href)} href={href} aria-current={isActive(pathname, href)&&!children ? "page" : undefined}>
+              <Icon aria-hidden="true" size={18} strokeWidth={1.6} /><span>{label}</span>
+            </Link>{children?<nav className={styles.secondaryNav} aria-label={`${label}の機能`}>{children.map(item=><Link href={item.href} key={item.href} aria-current={pathname===item.href?"page":undefined} data-active={pathname===item.href}><BookOpen aria-hidden="true" size={18} strokeWidth={1.6}/><span>{item.label}</span></Link>)}</nav>:null}</div>;
           })}
-          {showAdmin ? <Link className={styles.navLink} data-active={pathname.startsWith("/admin")} href={adminHref}><ShieldCheck aria-hidden="true" size={20} strokeWidth={1.8} /><span>管理</span></Link> : null}
+          {showAdmin ? <Link className={styles.navLink} data-tone={navigationTone(adminHref)} data-active={pathname.startsWith("/admin")} aria-current={pathname===adminHref?"page":pathname.startsWith("/admin")?"location":undefined} href={adminHref}><ShieldCheck aria-hidden="true" size={18} strokeWidth={1.6} /><span>管理</span></Link> : null}
         </nav>
       </aside>
       <div className={styles.workspace}>
@@ -133,10 +153,10 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
         <main className={styles.main} id="main-content" tabIndex={-1}>{children}</main>
       </div>
       <nav className={styles.bottomNav} data-count={mobileNavigation.length+1} aria-label="モバイルナビゲーション">
-        {mobileNavigation.map(({ href, label, icon: Icon }) => <Link data-active={isActive(pathname, href)} href={href} key={href}><Icon size={21} aria-hidden="true" /><span>{label}</span></Link>)}
-        <button type="button" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={()=>setMoreOpen(true)}><Menu size={21} aria-hidden="true"/><span>その他</span></button>
+        {mobileNavigation.map(({ href, label, icon: Icon }) => <Link data-tone={navigationTone(href)} data-active={isActive(pathname, href)} aria-current={isActive(pathname, href)?"page":undefined} href={href} key={href}><Icon size={18} strokeWidth={1.6} aria-hidden="true" /><span>{label}</span></Link>)}
+        <button type="button" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={()=>setMoreOpen(true)}><Menu size={18} strokeWidth={1.6} aria-hidden="true"/><span>その他</span></button>
       </nav>
-      <MobileMoreMenu open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showExpense={Boolean(featureFlags.expense_settlement)&&navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role} appSwitchUrl={appSwitchUrl} featureFlags={featureFlags} showPurchase={showPurchase}/>
+      <MobileMoreMenu pathname={pathname} open={moreOpen} onClose={()=>setMoreOpen(false)} onLogout={leave} showBusiness={navigation.length>0} showExpense={Boolean(featureFlags.expense_settlement)&&navigation.length>0} showAdmin={showAdmin} adminHref={adminHref} displayName={displayName} role={role} appSwitchUrl={appSwitchUrl} featureFlags={featureFlags} showPurchase={showPurchase}/>
     </div>
   );
 }

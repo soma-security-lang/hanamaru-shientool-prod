@@ -64,3 +64,23 @@ describe("business feature navigation",()=>{
     expect(screen.getByRole("link",{name:"AIロープレ"})).toBeInTheDocument();
   });
 });
+
+
+describe("revision 07 navigation semantics",()=>{
+  it("keeps management identity and current destination in the mobile menu",()=>{
+    const {container}=render(<AppShell pathname="/performance" role="manager" roles={["manager"]} featureFlags={{purchase_performance:true,purchase_results:true}}><h1>実績</h1></AppShell>);
+    expect(screen.getByRole("link",{name:"実績・ランキング"})).toHaveAttribute("aria-current","page");
+    expect(screen.getByRole("link",{name:"実績・ランキング"})).toHaveAttribute("data-tone","management");
+    const mobile=container.querySelector<HTMLElement>('nav[aria-label="モバイルナビゲーション"]')!;
+    fireEvent.click(within(mobile).getByRole("button",{name:"その他",hidden:true}));
+    const dialog=container.querySelector("dialog")!;
+    expect(within(dialog).getByRole("link",{name:/実績・ランキング/,hidden:true})).toHaveAttribute("aria-current","page");
+    expect(within(dialog).getByRole("link",{name:/^買取実績/,hidden:true})).toHaveAttribute("href","/purchase-results");
+  });
+  it("marks the mobile current page and system settings group",()=>{
+    const {container}=render(<AppShell pathname="/admin/operations" role="system_admin" roles={["system_admin"]}><h1>運用</h1></AppShell>);
+    expect(screen.getByRole("link",{name:"管理"})).toHaveAttribute("data-tone","master");
+    const mobile=container.querySelector<HTMLElement>('nav[aria-label="モバイルナビゲーション"]')!;
+    expect(within(mobile).getByRole("link",{name:"運用",hidden:true})).toHaveAttribute("aria-current","page");
+  });
+});

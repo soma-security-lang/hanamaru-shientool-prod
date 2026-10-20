@@ -9,10 +9,10 @@ const webPort = Number(webUrl.port || "3100");
 const projects =
   process.env.E2E_INCLUDE_WEBKIT === "1"
     ? [
-        { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+        { name: "chromium", use: { ...devices["Desktop Chrome"], channel: process.env.E2E_CHROMIUM_CHANNEL } },
         { name: "webkit", use: { ...devices["Desktop Safari"] } },
       ]
-    : [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }];
+    : [{ name: "chromium", use: { ...devices["Desktop Chrome"], channel: process.env.E2E_CHROMIUM_CHANNEL } }];
 
 export default defineConfig({
   testDir: "./e2e",
