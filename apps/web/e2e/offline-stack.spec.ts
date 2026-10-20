@@ -119,6 +119,29 @@ async function waitForResolvedScreen(page:Page,path:string){
   await expect(page.locator("main h1")).toBeVisible();
 }
 
+async function waitForResponsiveLayout(page:Page,path:string){
+  if(/\/visits\/[^/]+\/import$/.test(path)){
+    // Native PDF frames can keep WebKit's networkidle pending after the app
+    // has rendered. Assert the imported form and preview container instead.
+    await expect(page.getByRole("heading",{name:"抽出した訪問情報",exact:true})).toBeVisible();
+    const appraisalItems=page.getByRole("textbox",{name:"査定品",exact:true});
+    await expect(appraisalItems).toBeVisible();
+    await expect(appraisalItems).toHaveValue("Anonymous watch and camera");
+    await expect(page.getByRole("textbox",{name:"お客様表示名",exact:true})).toHaveValue("OfflineE2ECustomer");
+    await expect(page.getByRole("button",{name:"内容を確定して訪問前チェックへ",exact:true})).toBeEnabled();
+    const preview=page.locator('iframe[title="取込済み訪問情報PDF"]');
+    await expect(preview).toHaveAttribute("src",/^blob:/);
+    // On mobile the selected extraction tab intentionally hides the PDF pane.
+    if((page.viewportSize()?.width??0)>=768)await expect(preview).toBeVisible();
+  }else{
+    await page.waitForLoadState("networkidle");
+  }
+  await page.evaluate(async()=>{
+    await document.fonts.ready;
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+  });
+}
+
 async function expectCurrentMobileNavigation(page:Page){
   const mobileNavigation=page.getByRole("navigation",{name:"モバイルナビゲーション"});
   await expect(mobileNavigation).toBeVisible();
@@ -504,6 +527,15 @@ test("mobile navigation and progressive panes preserve URL-addressable state",as
   await expect(page.getByRole("dialog").getByRole("heading",{name:"その他"})).toBeVisible();
   await expect(page.getByRole("navigation",{name:"その他の機能"}).getByRole("link",{name:/研修/})).toBeVisible();
   await page.getByRole("button",{name:"メニューを閉じる"}).click();
+  await mobileNav.getByRole("button",{name:"その他"}).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.setViewportSize({width:1100,height:900});
+  await expect(page.locator("dialog[open]")).toHaveCount(0);
+  await expect(page.locator("#main-content")).toBeFocused();
+  await page.setViewportSize({width:390,height:844});
+  await mobileNav.getByRole("button",{name:"その他"}).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button",{name:"メニューを閉じる"}).click();
 
   await page.goto(`${webBase}/visits`);
   await page.locator("tbody").getByRole("button").first().click();
@@ -537,7 +569,7 @@ test("smartphone business content and navigation use the readable typography sca
   await page.setViewportSize({width:390,height:844});
   const allUndersized:Array<{screenId:string;tag:string;text:string;fontSize:string}>=[];
   for(const [screenId,path] of canonicalRoutes()){
-    await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await page.waitForLoadState("networkidle");
+    await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await waitForResponsiveLayout(page,path);
     const undersized=await page.locator("main").evaluate(main=>{
       const ignoredTags=new Set(["SCRIPT","STYLE","SVG","PATH"]);
       return [...main.querySelectorAll<HTMLElement>("*")].filter(element=>{
@@ -611,7 +643,7 @@ test("all 21 screens remain horizontally bounded at all eight responsive widths"
       await page.goto(`${webBase}${path}`);
       await waitForResolvedScreen(page,path);
       await expect(page.locator("main h1"),`${screenId}-${width}`).toBeVisible();
-      await page.waitForLoadState("networkidle");
+      await waitForResponsiveLayout(page,path);
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId} at ${width}px`).toBe(true);
     }
   }
@@ -626,7 +658,7 @@ test("assessor cannot reach administration and Chromium captures formal and core
   for(const [viewport,width,height] of [["mobile",390,844],["tablet",834,1112],["desktop",1440,900]] as const){
     await page.setViewportSize({width,height});for(const [screenId,path] of canonicalRoutes()){
       await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await expect(page.locator("main h1"),`${screenId}-${viewport}`).toBeVisible();
-      await page.waitForLoadState("networkidle");
+      await waitForResponsiveLayout(page,path);
       expect(await page.locator("body").evaluate(body=>body.scrollWidth<=window.innerWidth),`${screenId}-${viewport}`).toBe(true);
       if(viewport==="mobile"&&path!=="/login")await expectCurrentMobileNavigation(page);
       await page.screenshot({path:resolve(screenshots,`${screenId}-${viewport}.png`),fullPage:viewport!=="mobile",animations:"disabled",caret:"initial"});
@@ -636,7 +668,7 @@ test("assessor cannot reach administration and Chromium captures formal and core
   for(const [width,height] of [[360,800],[430,932]] as const){
     await page.setViewportSize({width,height});
     for(const [screenId,path] of coreRoutes){
-      await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await page.waitForLoadState("networkidle");
+      await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);await waitForResponsiveLayout(page,path);
       await page.screenshot({path:resolve(screenshots,`${screenId}-${width}.png`),fullPage:false,animations:"disabled",caret:"initial"});
     }
   }
