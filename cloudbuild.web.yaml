@@ -1,4 +1,18 @@
 steps:
+  - name: node:22-bookworm-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        corepack enable
+        pnpm install --frozen-lockfile
+        pnpm build:packages
+        pnpm lint
+        pnpm typecheck
+        pnpm test
+        node --test scripts/ui-only-eligibility.test.mjs
+        pnpm docs:validate
+        pnpm test:security
   - name: ubuntu:24.04
     entrypoint: bash
     args: [-ceu, "mkdir -p /workspace/output"]

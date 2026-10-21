@@ -5,6 +5,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/release-guard.sh"
 source "$script_dir/release-tag.sh"
 
+# A separately validated UI-only transaction; the full-release contract below is unchanged.
+case "${RELEASE_SCOPE:-full}" in
+  ui-only) exec bash "$script_dir/release-ui-only.sh" ;;
+  full) ;;
+  *) echo "Unknown RELEASE_SCOPE" >&2; exit 2 ;;
+esac
+
 project_id="${GCP_PROJECT_ID:-monocle-503402}"
 region="${GCP_REGION:-asia-northeast1}"
 release_id="${RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
