@@ -5,7 +5,7 @@ steps:
       - -ceu
       - |
         apt-get update
-        apt-get install --yes --no-install-recommends jq
+        apt-get install --yes --no-install-recommends jq ffmpeg git
         corepack enable
         pnpm install --frozen-lockfile
         pnpm build:packages
@@ -14,6 +14,8 @@ steps:
         pnpm test
         node --test scripts/ui-only-eligibility.test.mjs
         pnpm docs:validate
+        # Source archives lack Git metadata; the unchanged scanner uses Git only to enumerate files.
+        if [ ! -d .git ]; then git init --quiet; fi
         pnpm test:security
   - name: ubuntu:24.04
     entrypoint: bash
