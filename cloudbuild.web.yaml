@@ -7,7 +7,7 @@ steps:
         apt-get update
         apt-get install --yes --no-install-recommends jq ffmpeg git
         corepack enable
-        pnpm install --frozen-lockfile
+        pnpm install --frozen-lockfile --store-dir=/tmp/hanamaru-pnpm-store
         pnpm build:packages
         pnpm lint
         pnpm typecheck
