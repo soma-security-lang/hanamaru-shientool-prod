@@ -442,6 +442,20 @@ test("operations exposes aggregate health and per-visit retention without body d
   await expect(page.getByRole("heading",{name:"稼働状況"})).toBeVisible();
   await expect(page.getByRole("button",{name:"eBay相場取得",exact:true}).first()).toBeVisible();
   await expect(page.getByRole("cell",{name:"eBay相場検索",exact:true}).first()).toBeVisible();
+  await page.getByRole("button",{name:"eBay相場取得",exact:true}).first().click();
+  await page.getByText("技術詳細",{exact:true}).first().click();
+  const copy=page.getByRole("button",{name:"ジョブIDをコピー",exact:true});
+  await expect(copy).toBeVisible();
+  const details=page.locator("details").filter({has:copy});
+  for(const width of [320,390,834,1440]){
+    await page.setViewportSize({width,height:1000});
+    const fonts=await details.locator("dt,dd,button").evaluateAll(elements=>elements.map(element=>parseFloat(getComputedStyle(element).fontSize)));
+    expect(fonts.length).toBeGreaterThan(0);
+    expect(fonts.every(size=>size>=13),`UI-02 font at ${width}px`).toBe(true);
+    const size=await copy.boundingBox();
+    expect(size?.height,`UI-02 touch target at ${width}px`).toBeGreaterThanOrEqual(44);
+    expect(await page.locator("body").evaluate(body=>body.scrollWidth<=innerWidth),`UI-02 overflow at ${width}px`).toBe(true);
+  }
   await page.getByRole("button",{name:"保存・削除"}).click();
   await page.getByLabel("保存期限を確認する案件").selectOption(visitId);
   await expect(page.getByRole("heading",{name:"案件へ実際に適用された保存期限"})).toBeVisible();
