@@ -19,7 +19,7 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: true,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [["list"], ["html", { open: "never" }], ["json", { outputFile: "../../.artifacts/alignment/offline-results.json" }]],
   use: {
     baseURL: webBaseUrl,
     trace: "retain-on-failure",

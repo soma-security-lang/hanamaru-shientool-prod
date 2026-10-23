@@ -7,7 +7,7 @@ import {
   Filter, Headphones, ListChecks, MessageCircle, Mic2,
   Play, RotateCcw, Search, Send, ShieldCheck, Sparkles, UploadCloud, UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {recordingConsentNotice} from "@hanamaru/contracts";
 import {GoogleSignInButton} from "@/components/auth/GoogleSignInButton";
 import {beginCommonLogin,commonLoginConfigured,safeReturnTo} from "@/lib/auth/sso";
@@ -77,10 +77,14 @@ export function WebExperience({ kind,viewerId,capabilities,featureFlags }: Props
   }
 }
 
+const subscribeRuntime = () => () => {};
+const serverCommonLogin = () => false;
 function Login() {
   const router=useRouter();
   const params=useSearchParams();
   const [error,setError]=useState("");
+  // Runtime config is browser-injected. The hydration snapshot must match SSR.
+  const commonLogin = useSyncExternalStore(subscribeRuntime,commonLoginConfigured,serverCommonLogin);
   const returnTo=safeReturnTo(params.get("returnTo")??"/");
   const success=useMemo(()=>()=>{window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace(returnTo);router.refresh();},[router,returnTo]);
   const failed=useMemo(()=>(message:string)=>setError(message),[]);
@@ -91,7 +95,7 @@ function Login() {
         <h1 id="login-title">買取支援ツール</h1>
         <p>業務用Googleアカウント、または共通IDでログインしてください。</p>
         <div className={styles.googleButton}><GoogleSignInButton onSuccess={success} onError={failed}/></div>
-        {commonLoginConfigured() ? <button type="button" className={styles.helpLink}
+        {commonLogin ? <button type="button" className={styles.helpLink}
           onClick={() => void beginCommonLogin(returnTo).catch(() => failed("共通ログインに接続できませんでした"))}>
           共通IDでログイン
         </button> : null}

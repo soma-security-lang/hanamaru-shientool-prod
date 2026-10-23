@@ -1,7 +1,7 @@
 import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {HanamaruRepository,createPool} from "@hanamaru/database";
-import {createProviders} from "@hanamaru/platform";
+import {createProviders,type PlatformProviders} from "@hanamaru/platform";
 import Fastify from "fastify";
 import {dispatchOnce,enqueueRetentionScans} from "./dispatcher.js";
 import {scanOperations} from "./operations.js";
@@ -13,9 +13,9 @@ export function taskDeliveryHttpStatus(result:ProcessResult,currentStatus?:strin
   return result==="not_claimed"&&(currentStatus==="queued"||currentStatus==="running")?503:200;
 }
 
-export function buildWorker(){
-  const repository=new HanamaruRepository(createPool());
-  const providers=createProviders();
+export function buildWorker(options:{repository?:HanamaruRepository;providers?:PlatformProviders}={}){
+  const repository=options.repository??new HanamaruRepository(createPool());
+  const providers=options.providers??createProviders();
   const processor=new WorkerProcessor(repository,providers);
   const app=Fastify({logger:{level:process.env.LOG_LEVEL??"info",redact:["req.headers.authorization","req.headers.x-local-worker-token"]},bodyLimit:64*1024});
   let localTimer:NodeJS.Timeout|undefined;

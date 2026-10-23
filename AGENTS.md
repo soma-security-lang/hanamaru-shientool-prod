@@ -5,7 +5,7 @@
 ## 固定方針
 
 - Next.js 16 App Router、TypeScript strict、pnpm workspaceを使用する。
-- UIはCSS Modulesとsemantic design tokensで実装し、Tailwind CSSを導入しない。
+- UIは勤怠基準への段階移行中。Tailwind CSS 4.3の `tw:` prefix付きutilityと既存semantic tokensを使用する。既存CSS Modulesは画面回帰確認まで併存させ、全体Preflightは導入しない。移行範囲は `docs/adr/2026-10-23-attendance-alignment.md` を参照する。
 - 実行先はGCP Cloud Runを前提とし、Vercel、Supabase、Cloudflare Sitesへ切り替えない。
 - Web、API、Worker、PostgreSQL migration、GCP provider adapterを同一monorepoで管理する。
 - 自動テストの`local` providerと、利用者確認用の`local-connected` providerを分ける。利用者確認ではローカルPostgreSQL/Storage/Taskと正式なGoogle APIを組み合わせる。
@@ -18,7 +18,7 @@
 ## 品質
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:db`、`pnpm build`、`pnpm test:e2e`を成功させる。
-- WebはIdentity PlatformでGoogle認証を行い、APIへ短命ID tokenをBearer送信する。APIはtoken検証とmembership/RBAC判定を行い、独自session cookieやCSRF tokenを発行しない。
+- 通常経路はIdentity Platformの短命ID tokenをBearer送信し、APIがtoken検証とmembership/RBAC判定を行う。勤怠基準移行のCookie/CSRF PoCはローカル専用・既定OFFで併存し、Cloud Runでは起動不可とする。固定Hosting、永続store、失効・認可のゲート合格前に通常認証を切り替えない。
 - state-changing APIは認可、冪等性、楽観ロック、監査を通す。本文、token、署名URL、provider raw errorをlogへ出さない。
 - semantic HTML、keyboard操作、focus管理、44px以上の操作領域、reduced motion/transparency/contrastを守る。
 - SCR-019とSCR-020は既定feature flag無効とし、開発用prototype modeからのみ確認可能にする。

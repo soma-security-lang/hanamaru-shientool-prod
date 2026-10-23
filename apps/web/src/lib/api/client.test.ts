@@ -1,7 +1,38 @@
 import {afterEach,describe,expect,it,vi} from "vitest";
 import {ApiClient} from "./client";
+import * as runtime from "@/lib/runtime-config";
 
 afterEach(()=>vi.restoreAllMocks());
+
+describe("local persistent cookie client",()=>{
+  it("preserves a session-store outage and does not attempt a write or bearer login",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(true);
+    const bearer=vi.fn();const client=new ApiClient("/api/v1",bearer);
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValue(Response.json({error:{code:"SESSION_UNAVAILABLE"}},{status:503}));
+    await expect(client.request("/expense-days",{method:"POST",body:"{}"})).rejects.toMatchObject({status:503,code:"SESSION_UNAVAILABLE"});
+    expect(send).toHaveBeenCalledTimes(1);expect(bearer).not.toHaveBeenCalled();
+  });
+  it("uses CSRF for a write without bearer fallback or automatic retry",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(true);
+    const bearer=vi.fn();const client=new ApiClient("/api/v1",bearer);
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(Response.json({authenticated:true,csrfToken:"synthetic"}))
+      .mockResolvedValueOnce(Response.json({error:{code:"RESULT_UNKNOWN"}},{status:502}));
+    await expect(client.request("/expense-days",{method:"POST",body:"{}"})).rejects.toMatchObject({status:502});
+    expect(send).toHaveBeenCalledTimes(2);expect(bearer).not.toHaveBeenCalled();
+    const options=send.mock.calls[1]![1]!;
+    expect(new Headers(options.headers).get("x-csrf-token")).toBe("synthetic");
+    expect(new Headers(options.headers).has("authorization")).toBe(false);expect(options.credentials).toBe("same-origin");
+  });
+  it("does not send the session or CSRF to signed external uploads",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(true);
+    const client=new ApiClient("/api/v1",vi.fn());
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValue(Response.json({authenticated:true,csrfToken:"synthetic"}));
+    expect((await client.uploadHeadersFor("/api/v1/local-uploads/synthetic")).get("x-csrf-token")).toBe("synthetic");
+    expect(client.uploadCredentialsFor("/api/v1/local-uploads/synthetic")).toBe("same-origin");
+    expect((await client.uploadHeadersFor("https://storage.googleapis.com/synthetic")).has("x-csrf-token")).toBe(false);
+    expect(client.uploadCredentialsFor("https://storage.googleapis.com/synthetic")).toBe("omit");expect(send).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("Identity Platform bearer contract",()=>{
   it("adds the current Firebase ID token to every API request and omits credentials",async()=>{

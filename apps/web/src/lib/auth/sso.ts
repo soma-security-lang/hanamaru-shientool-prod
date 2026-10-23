@@ -1,7 +1,7 @@
 "use client";
 
 import * as oidc from "openid-client";
-import { runtimeSsoIssuer } from "@/lib/runtime-config";
+import { runtimeSsoIssuer, runtimeLocalSession } from "@/lib/runtime-config";
 
 const FLOW_KEY = "hanamaru.sso.flow";
 const TOKEN_KEY = "hanamaru.sso.access";
@@ -43,6 +43,18 @@ export function commonLoginConfigured(): boolean {
 }
 
 export async function beginCommonLogin(returnTo = "/"): Promise<void> {
+  if (runtimeLocalSession()) {
+    const initial = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
+    if (!initial.ok) throw new Error("ログイン状態を準備できませんでした");
+    const session = await initial.json() as { csrfToken: string };
+    const response = await fetch(`/api/auth/sso/start?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`, {
+      method: "POST", credentials: "same-origin", headers: { "x-csrf-token": session.csrfToken }, cache: "no-store",
+    });
+    if (!response.ok) throw new Error("共通ログインを開始できませんでした");
+    const result = await response.json() as { authorizationUrl: string };
+    if (new URL(result.authorizationUrl).origin !== issuer().origin) throw new Error("ログイン先が一致しません");
+    window.location.assign(result.authorizationUrl); return;
+  }
   const configuration = await client();
   const flow: Flow = {
     state: oidc.randomState(), verifier: oidc.randomPKCECodeVerifier(),

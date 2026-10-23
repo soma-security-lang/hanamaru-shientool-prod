@@ -1,4 +1,4 @@
-type RuntimeConfig = { apiBaseUrl?: string; ssoIssuer?: string };
+type RuntimeConfig = { apiBaseUrl?: string; ssoIssuer?: string; localSession?: boolean };
 
 declare global {
   interface Window { __HANAMARU_RUNTIME_CONFIG?: RuntimeConfig }
@@ -6,6 +6,9 @@ declare global {
 
 function runtime(): RuntimeConfig | undefined {
   return typeof window === "undefined" ? undefined : window.__HANAMARU_RUNTIME_CONFIG;
+}
+export function runtimeLocalSession(): boolean {
+  return typeof window !== "undefined" && window.location.hostname === "127.0.0.1" && runtime()?.localSession === true;
 }
 
 export function runtimeApiBaseUrl(): string {

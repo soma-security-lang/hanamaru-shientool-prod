@@ -17,7 +17,7 @@ import {
   type UserCredential,
 } from "firebase/auth";
 import {getCommonAccessToken} from "./sso";
-import {runtimeApiBaseUrl} from "@/lib/runtime-config";
+import {runtimeApiBaseUrl,runtimeLocalSession} from "@/lib/runtime-config";
 
 export const driveScope="https://www.googleapis.com/auth/drive.file";
 const accessTokenLifetimeMs=45*60_000;
@@ -79,7 +79,7 @@ export async function loginWithGooglePopup(){
   const auth=await readyAuth();
   if(!auth)throw new Error("Googleログインの設定が完了していません");
   const result=await signInWithPopup(auth,loginProvider());
-  await result.user.getIdToken(true);
+  await establishLocalSession(await result.user.getIdToken(true));
 }
 
 export async function loginWithGoogleCredential(idToken:string){
@@ -87,7 +87,7 @@ export async function loginWithGoogleCredential(idToken:string){
   if(!auth)throw new Error("Googleログインの設定が完了していません");
   const credential=GoogleAuthProvider.credential(idToken);
   const result=await signInWithCredential(auth,credential);
-  await result.user.getIdToken(true);
+  await establishLocalSession(await result.user.getIdToken(true));
 }
 
 export async function completeGoogleLoginRedirect(){
@@ -96,7 +96,7 @@ export async function completeGoogleLoginRedirect(){
   await getRedirectResult(auth);
   await auth.authStateReady();
   if(!auth.currentUser)return false;
-  await auth.currentUser.getIdToken(true);
+  await establishLocalSession(await auth.currentUser.getIdToken(true));
   return true;
 }
 
@@ -134,10 +134,26 @@ export async function getDriveAccessToken(){
 }
 
 export async function logout(){
+  if(runtimeLocalSession()) {
+    const initial=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});
+    if(!initial.ok)throw new Error("ログアウト状態を確認できませんでした");
+    const session=await initial.json() as {csrfToken:string};
+    const response=await fetch("/api/auth/session",{method:"DELETE",credentials:"same-origin",headers:{"x-csrf-token":session.csrfToken}});
+    if(!response.ok)throw new Error("ログアウトを完了できませんでした");
+  }
   googleAccessToken=null;
   driveVerifiedSsoToken=null;
   const auth=await readyAuth();
   if(auth)await signOut(auth);
+}
+
+async function establishLocalSession(token:string) {
+  if(!runtimeLocalSession())return;
+  const initial=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});
+  if(!initial.ok)throw new Error("ログイン状態を準備できませんでした");
+  const session=await initial.json() as {csrfToken:string};
+  const response=await fetch("/api/auth/session",{method:"POST",credentials:"same-origin",headers:{"x-csrf-token":session.csrfToken,authorization:`Bearer ${token}`}});
+  if(!response.ok)throw new Error("ログインを完了できませんでした");
 }
 
 declare global{

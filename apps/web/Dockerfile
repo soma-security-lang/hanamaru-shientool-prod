@@ -4,10 +4,16 @@ RUN corepack enable
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
+COPY apps/api/package.json apps/api/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/market-price/package.json packages/market-price/package.json
+COPY packages/platform/package.json packages/platform/package.json
+COPY packages/alignment/package.json packages/alignment/package.json
 RUN pnpm install --frozen-lockfile --filter @hanamaru/web...
 COPY apps/web apps/web
-COPY packages/contracts packages/contracts
+COPY apps/api apps/api
+COPY packages packages
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY
 ARG NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN
@@ -19,7 +25,7 @@ ARG NEXT_PUBLIC_SSO_ISSUER
 ARG NEXT_DEPLOYMENT_ID
 ENV NEXT_TELEMETRY_DISABLED=1 NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY=$NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN=$NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID=$NEXT_PUBLIC_IDENTITY_PLATFORM_PROJECT_ID NEXT_PUBLIC_GOOGLE_PICKER_API_KEY=$NEXT_PUBLIC_GOOGLE_PICKER_API_KEY NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER=$NEXT_PUBLIC_GOOGLE_CLOUD_PROJECT_NUMBER NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID NEXT_PUBLIC_SSO_ISSUER=$NEXT_PUBLIC_SSO_ISSUER
 RUN test -n "$NEXT_DEPLOYMENT_ID"
-RUN pnpm --filter @hanamaru/contracts build && pnpm --filter @hanamaru/web build
+RUN pnpm -r --filter @hanamaru/web... --if-present build
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=8080 HOSTNAME=0.0.0.0

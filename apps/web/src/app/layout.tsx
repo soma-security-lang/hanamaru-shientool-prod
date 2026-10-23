@@ -14,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   const runtime = {
     apiBaseUrl: process.env.HANAMARU_RUNTIME_API_BASE_URL || undefined,
     ssoIssuer: process.env.SSO_ISSUER || undefined,
+    localSession: process.env.K_SERVICE === undefined && process.env.HANAMARU_LOCAL_SESSION_POC === "true" && process.env.HANAMARU_SESSION_STORE === "postgres",
   };
   const serialized = JSON.stringify(runtime).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")
     .replace(/&/g, "\\u0026");

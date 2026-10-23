@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {"./alignment": {"types": "./dist/alignment.d.ts", "default": "./dist/alignment.js"}, "./testing": {"types": "./dist/app.d.ts", "default": "./dist/app.js"}},
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",

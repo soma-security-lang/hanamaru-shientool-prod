@@ -6,12 +6,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/database/package.json packages/database/package.json
+COPY packages/market-price/package.json packages/market-price/package.json
 COPY packages/platform/package.json packages/platform/package.json
 RUN pnpm install --frozen-lockfile --filter @hanamaru/api...
 COPY apps/api apps/api
 COPY apps/web/src/mocks/poc-content.json apps/web/src/mocks/poc-content.json
 COPY packages packages
-RUN pnpm build:packages && pnpm --filter @hanamaru/api build \
+RUN pnpm -r --filter @hanamaru/api... --if-present build \
   && pnpm --filter @hanamaru/api deploy --prod --legacy /opt/hanamaru/api
 
 FROM node:22-bookworm-slim AS runtime

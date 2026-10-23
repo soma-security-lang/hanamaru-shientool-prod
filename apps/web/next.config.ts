@@ -5,10 +5,17 @@ const noStoreHeaders = [
   { key: "Cache-Control", value: "private, no-cache, no-store, max-age=0, must-revalidate" },
 ];
 
+// Local checks retain compilation/type checks but omit reusable disk cache and
+// unused deployment packaging. Default and Cloud Run builds remain unchanged.
+const localLowDisk = process.env.HANAMARU_ALIGNMENT_LOW_DISK === "true" && process.env.K_SERVICE === undefined;
+
 const nextConfig: NextConfig = {
+  // Existing Node-only business/provider modules must not be browser-bundled.
+  serverExternalPackages: ["@hanamaru/api", "@hanamaru/alignment", "@hanamaru/database", "@hanamaru/platform"],
   distDir: process.env.HANAMARU_E2E_NEXT_DIST_DIR ?? ".next",
   devIndicators: false,
-  output: "standalone",
+  output: localLowDisk ? undefined : "standalone",
+  ...(localLowDisk ? { experimental: { turbopackFileSystemCacheForBuild: false } } : {}),
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
   async headers() {
     return [
@@ -25,6 +32,11 @@ const nextConfig: NextConfig = {
       { source: "/knowledge/:path*", headers: noStoreHeaders },
       { source: "/training/:path*", headers: noStoreHeaders },
       { source: "/admin/:path*", headers: noStoreHeaders },
+      { source: "/market-price/:path*", headers: noStoreHeaders },
+      { source: "/expense-settlement/:path*", headers: noStoreHeaders },
+      { source: "/performance/:path*", headers: noStoreHeaders },
+      { source: "/api/:path*", headers: noStoreHeaders },
+      { source: "/sso/:path*", headers: noStoreHeaders },
       { source: "/__prototype/:path*", headers: noStoreHeaders },
     ];
   },

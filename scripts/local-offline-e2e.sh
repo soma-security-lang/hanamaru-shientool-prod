@@ -122,7 +122,14 @@ hanamaru_wait_url "http://127.0.0.1:$api_port/health/ready" 120 || hanamaru_fail
 hanamaru_wait_url "http://127.0.0.1:$worker_port/health/ready" 120 || hanamaru_fail "offline Worker readinessに失敗しました。"
 hanamaru_wait_url "http://127.0.0.1:$web_port/login" 120 || hanamaru_fail "offline Web readinessに失敗しました。"
 
-playwright_arguments=(e2e/offline-stack.spec.ts --trace=retain-on-failure)
+trace_mode="${OFFLINE_E2E_TRACE:-retain-on-failure}"
+case "$trace_mode" in
+  retain-on-failure|off) ;;
+  *) hanamaru_fail "OFFLINE_E2E_TRACE は retain-on-failure または off だけ指定できます。" ;;
+esac
+# Low-disk runs keep logs, result JSON and all required screenshots. Assertions
+# and the dual-browser gate are identical; only optional trace recording differs.
+playwright_arguments=(e2e/offline-stack.spec.ts "--trace=$trace_mode")
 if [[ -n "$browser_project" ]]; then
   playwright_arguments+=(--project "$browser_project")
   hanamaru_info "単一browserの診断実行です。正式な両browser release gateとは別扱い: $browser_project"
@@ -164,8 +171,9 @@ jq -n \
   --argjson screenshots "$screenshot_count" \
   --arg filter "${OFFLINE_E2E_GREP:-}" \
   --arg browserProject "$browser_project" \
+  --arg traceMode "$trace_mode" \
   --argjson workingTreeDirty "$(if [[ -n "$(git status --porcelain)" ]]; then printf true; else printf false; fi)" \
-  '{status:(if ($filter|length)==0 and ($browserProject|length)==0 then "PASS" else "PASS_SCOPED" end),formalBrowserGatePassed:(($filter|length)==0 and ($browserProject|length)==0),browserProject:(if ($browserProject|length)>0 then $browserProject else "chromium+webkit" end),mode:"offline-deterministic-browser-to-db",filter:(if ($filter|length)>0 then $filter else null end),gitSha:$gitSha,workingTreeDirty:$workingTreeDirty,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
+  '{status:(if ($filter|length)==0 and ($browserProject|length)==0 then "PASS" else "PASS_SCOPED" end),formalBrowserGatePassed:(($filter|length)==0 and ($browserProject|length)==0),browserProject:(if ($browserProject|length)>0 then $browserProject else "chromium+webkit" end),mode:"offline-deterministic-browser-to-db",traceMode:$traceMode,filter:(if ($filter|length)>0 then $filter else null end),gitSha:$gitSha,workingTreeDirty:$workingTreeDirty,node:$node,screenshots:$screenshots,completedAt:$completedAt,googleAcceptance:false}' \
   >"$evidence_dir/result.json"
 
 hanamaru_info "offline browser E2E結果: $(jq -r '.status' "$evidence_dir/result.json")。証跡: $evidence_dir"

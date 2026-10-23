@@ -28,7 +28,8 @@ test('purchase ledger confirms a transaction and updates daily rankings without 
   await page.getByRole('button',{name:'下書きとして保存'}).click();
   const card=page.locator('article').filter({hasText:date});await expect(card).toHaveCount(1);
   await card.getByRole('button',{name:'内容を確認して確定'}).click();await expect(card.getByText('確定 ／ 版2')).toBeVisible();
-  await page.getByRole('link',{name:'実績・ランキング',exact:true}).first().click();await page.getByLabel('基準業務日').fill(date);
+  await Promise.all([page.waitForResponse(r=>r.url().startsWith(`${apiBase}/purchase-performance?`)&&r.ok()),page.getByRole('link',{name:'実績・ランキング',exact:true}).first().click()]);
+  await Promise.all([page.waitForResponse(r=>r.url().includes(`/purchase-performance?date=${date}`)&&r.ok()),page.getByLabel('基準業務日').fill(date)]);
   await expect(page.getByRole('heading',{name:'全拠点の査定員ランキング'})).toBeVisible();
   await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('12,345円')).toBeVisible();
   await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('佐藤 花子')).toBeVisible();
@@ -40,17 +41,17 @@ test('purchase ledger confirms a transaction and updates daily rankings without 
   await mkdir(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,`purchase-performance-${browserName}-390.png`),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(screenshots,`purchase-performance-${browserName}-1440.png`),fullPage:true});
   await page.reload();await expect(page.getByRole('heading',{name:'実績・ランキング'})).toBeVisible();await expect(page.getByLabel('基準業務日')).toHaveValue(date);await expect(page.getByRole('region',{name:'全拠点の査定員ランキング'}).getByText('12,345円')).toBeVisible();
-  await page.getByLabel('期間',{exact:true}).selectOption('week');await expect(page.getByText(/2026-05-11〜2026-05-17 ／ 集計基準/)).toBeVisible();
-  await page.getByLabel('期間',{exact:true}).selectOption('month');await expect(page.getByText(/2026-05-01〜2026-05-31 ／ 集計基準/)).toBeVisible();
+  await Promise.all([page.waitForResponse(r=>r.url().includes('period=week')&&r.ok()),page.getByLabel('期間',{exact:true}).selectOption('week')]);await expect(page.getByText(/2026-05-11〜2026-05-17 ／ 集計基準/)).toBeVisible();
+  await Promise.all([page.waitForResponse(r=>r.url().includes('period=month')&&r.ok()),page.getByLabel('期間',{exact:true}).selectOption('month')]);await expect(page.getByText(/2026-05-01〜2026-05-31 ／ 集計基準/)).toBeVisible();
   await expect(page.getByRole('list',{name:'グラフの拠点凡例'}).getByRole('listitem')).toHaveCount(7);
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.setViewportSize({width:1440,height:1000});
   await expect(page.getByRole('region',{name:'拠点別日次実績表'}).getByRole('columnheader')).toHaveCount(33);
   await expect(page.getByRole('heading',{name:'全拠点別・査定員ランキング'})).toBeVisible();
-  await page.getByLabel('対象拠点',{exact:true}).selectOption('00000000-0000-4000-8000-000000000002');await expect(page.getByRole('heading',{name:'拠点内の査定員ランキング',exact:true})).toBeVisible();
-  await page.getByLabel('対象拠点',{exact:true}).selectOption('');await expect(page.getByRole('heading',{name:'全拠点の査定員ランキング',exact:true})).toBeVisible();
- }finally{await context.close();}
+  await Promise.all([page.waitForResponse(r=>r.url().includes('branchId=00000000-0000-4000-8000-000000000002')&&r.ok()),page.getByLabel('対象拠点',{exact:true}).selectOption('00000000-0000-4000-8000-000000000002')]);await expect(page.getByRole('heading',{name:'拠点内の査定員ランキング',exact:true})).toBeVisible();
+  await Promise.all([page.waitForResponse(r=>r.url().includes('/purchase-performance?')&&!r.url().includes('branchId=')&&r.ok()),page.getByLabel('対象拠点',{exact:true}).selectOption('')]);await expect(page.getByRole('heading',{name:'全拠点の査定員ランキング',exact:true})).toBeVisible();
+ }finally{await page.unrouteAll({behavior:'wait'});await context.close();}
 });
 test('expense branch workflow closes with a difference and preserves later corrections',async({browser,browserName})=>{
  test.setTimeout(90000);
@@ -276,9 +277,13 @@ test("expense day records survive reload and mobile entry keeps cash operations 
     await page.getByRole("button",{name:"その他"}).click();
     await page.getByRole("link",{name:/経費・車両金精算/}).click();
     await expect(page.getByRole("heading",{name:"経費・車両金精算"})).toBeVisible();
-    await page.getByLabel("業務日",{exact:true}).fill(browserName==="webkit"?"2026-09-30":"2026-09-29");
+    const businessDate=browserName==="webkit"?"2026-09-30":"2026-09-29";
+    await page.getByLabel("業務日",{exact:true}).fill(businessDate);
     await page.getByRole("button",{name:"日次記録を開く"}).click();
-    await expect(page.getByRole("heading",{name:/の取りまとめ/})).toBeVisible();
+    // The previous day's heading stays visible while the new day loads.
+    // Wait for the requested day, not any existing detail, before typing.
+    await expect(page.getByRole("heading",{name:new RegExp(`${businessDate}.*の取りまとめ`)})).toBeVisible();
+    await expect(page.getByRole("button",{name:"入力値を保存"})).toBeEnabled();
     await page.getByLabel("実際の開始財布残高（任意）").fill("0");
     await page.getByLabel("買取金の参照元メモ（任意）").fill("匿名の当日買取一覧");
     await page.getByRole("button",{name:"入力値を保存"}).click();

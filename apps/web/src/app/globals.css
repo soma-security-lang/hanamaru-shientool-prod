@@ -1,4 +1,6 @@
 @import "../styles/tokens.css";
+@import "tailwindcss/theme.css" layer(theme) prefix(tw);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(tw) source("../");
 
 * { box-sizing: border-box; }
 html { min-height: 100%; background: var(--color-canvas); font: 100%/1.7 var(--font-sans); text-rendering: optimizeLegibility; }

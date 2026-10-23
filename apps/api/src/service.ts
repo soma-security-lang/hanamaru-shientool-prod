@@ -16,7 +16,7 @@ import type {
   UploadDeclaration,
   ReviewDimension,
 } from "@hanamaru/platform";
-import { acceptLocalUploadStream, createTokenCipher } from "@hanamaru/platform";
+import { acceptLocalUploadStream, createTokenCipher } from "@hanamaru/platform/runtime";
 import { ApiProblem, denied, invalid, notFound } from "./errors.js";
 
 type Json = Record<string, unknown>;
