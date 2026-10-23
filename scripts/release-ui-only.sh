@@ -9,7 +9,6 @@ region=asia-northeast1
 account="${GCP_ACCOUNT:?Explicit approved existing GCP account is required}"
 web=hanamaru-pilot-web
 stage=hanamaru-pilot-stage-web
-sha="$(git rev-parse HEAD)"
 base="${UI_RELEASE_BASE_SHA:?Confirmed active product source SHA is required}"
 image="${WEB_IMAGE:?Digest-pinned approved Web image is required}"
 build="${BUILD_ID:?Successful Cloud Build ID is required}"
@@ -18,11 +17,18 @@ request_file="${UI_GATE_REQUEST_FILE:?Operator browser gate request path is requ
 status_file="${UI_GATE_STATUS_FILE:?Operator browser gate status path is required}"
 drift_file="${UI_DRIFT_EVIDENCE:?Sanitized current Terraform drift evidence is required}"
 state_dir="${UI_RELEASE_STATE_DIR:-.artifacts/ui-release/$(date -u +%Y%m%dT%H%M%SZ)}"
+case "${WEB_RELEASE_PROFILE:-ui-only}" in
+  ui-only) eligibility_script="$script_dir/ui-only-eligibility.mjs" ;;
+  next-security-20261023) eligibility_script="$script_dir/web-security-eligibility.mjs" ;;
+  *) echo 'Unknown Web release profile' >&2;exit 2 ;;
+esac
+sha="$(git rev-parse HEAD)"
 [[ "$image" =~ ^asia-northeast1-docker.pkg.dev/monocle-503402/hanamaru-pilot/web@sha256:[0-9a-f]{64}$ ]] || { echo 'Only the existing digest-pinned Web repository is permitted' >&2; exit 2; }
 [[ "$(git remote get-url origin)" =~ ^https://github.com/soma-security-lang/hanamaru-shientool-prod(\.git)?$ ]] || { echo 'Unexpected origin repository' >&2; exit 2; }
 git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]] || { echo 'Clean checkout required' >&2; exit 2; }
 [[ "$(git ls-remote origin refs/heads/main | awk 'NR==1{print $1}')" == "$sha" ]] || { echo 'HEAD must equal real origin/main' >&2; exit 2; }
-node "$script_dir/ui-only-eligibility.mjs" "$base" "$sha" "$evidence" >/dev/null
+eligibility="$(node "$eligibility_script" "$base" "$sha" "$evidence")"
+backend_base="$(jq -r --arg base "$base" '.backendBaseSha // $base' <<<"$eligibility")"
 jq -e '.stage.authenticated and .stage.manager and .fixed.authenticated and .fixed.manager' "$status_file" >/dev/null || { echo 'Normal operator app login is required at both fixed origins' >&2; exit 4; }
 jq -e --arg sha "$sha" '.status=="PASS" and .phase=="pre-release" and .sourceSha==$sha and .resourceChanges==0 and .mutationPerformed==false' "$drift_file" >/dev/null || { echo 'Current read-only Terraform drift gate is not satisfied' >&2; exit 4; }
 gc=(gcloud --project="$project" --account="$account")
@@ -38,11 +44,12 @@ blue_web="$(active_revision "$web")"
 blue_stage="$(active_revision "$stage")"
 blue_api="$(active_revision hanamaru-pilot-api)"
 blue_worker="$(active_revision hanamaru-pilot-worker)"
-for revision in "$blue_web" "$blue_stage" "$blue_api" "$blue_worker"; do [[ "$(source_of "$revision")" == "$base" ]] || { echo 'Live product sources changed since compatibility review' >&2; exit 2; }; done
+for revision in "$blue_web" "$blue_stage"; do [[ "$(source_of "$revision")" == "$base" ]] || { echo 'Live Web sources changed since compatibility review' >&2; exit 2; }; done
+for revision in "$blue_api" "$blue_worker"; do [[ "$(source_of "$revision")" == "$backend_base" ]] || { echo 'Live backend sources changed since compatibility review' >&2; exit 2; }; done
 build_json="$("${gc[@]}" builds describe "$build" --region="$region" --format='json(status,results.images)')"
 jq -e --arg tag "asia-northeast1-docker.pkg.dev/$project/hanamaru-pilot/web:$sha" --arg digest "${image##*@}" '.status=="SUCCESS" and any(.results.images[]; .name==$tag and .digest==$digest)' <<<"$build_json" >/dev/null
 mkdir -p "$state_dir";chmod 700 "$state_dir"
-node "$script_dir/ui-only-eligibility.mjs" "$base" "$sha" "$evidence" > "$state_dir/eligibility.json"
+node "$eligibility_script" "$base" "$sha" "$evidence" > "$state_dir/eligibility.json"
 jq -n --arg web "$blue_web" --arg stage "$blue_stage" --arg api "$blue_api" --arg worker "$blue_worker" --arg sha "$sha" --arg image "$image" --arg build "$build" '{blue:{web:$web,stage:$stage,api:$api,worker:$worker},sourceSha:$sha,image:$image,buildId:$build}' > "$state_dir/before.json"
 changed=false
 rollback(){

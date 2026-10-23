@@ -13,6 +13,8 @@ steps:
         pnpm typecheck
         pnpm test
         node --test scripts/ui-only-eligibility.test.mjs
+        node --test scripts/web-security-eligibility.test.mjs
+        pnpm audit --prod --audit-level high
         pnpm docs:validate
         # Source archives lack Git metadata; the unchanged scanner uses Git only to enumerate files.
         if [ ! -d .git ]; then git init --quiet; fi

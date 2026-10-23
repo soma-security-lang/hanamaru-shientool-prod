@@ -41,3 +41,7 @@
 監査はバージョン検出であり、実配備での悪用可能性を確定したものではない。他にModerate 3件・Low 1件がある。今回のCSS変更で依存は変えていない。通常のUI-only gateを削除したり、lockfile更新禁止を黙って緩めたりせず、Web安全更新を含める範囲と手順の確認を求めている。
 
 従ってUI-01/02のローカル結果と、未実行のUI-03/04・依存監査FAILを分離する。既存scriptのローカル`PASS`を公開全体のPASSとは扱わない。main・公開URL・本番data/role/trafficは変更していない。UI差分だけを`release/ui-alignment-20261023`へpushし、全体SSO移行branchは混ぜていない。
+
+## 後続の明示承認
+
+上記は安全更新前の履歴として保持する。Next.js安全更新の追加承認後は、通常UI-only条件を緩めず、[Web安全更新の専用profile](2026-10-23-web-security-release.md)で進める。
