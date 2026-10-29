@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource, assertImageRuntimeConfiguration } from "./manual-alignment-policy.mjs";
 
 // Separate, human-authorized release path. Standard GitHub gates are untouched.
 const [action, path] = process.argv.slice(2);
@@ -67,6 +67,7 @@ if (build.status !== "SUCCESS" || releaseBuildSource(build) !== manifest.sourceS
   !build.results?.images?.some(image => `${image.name.split(":")[0]}@${image.digest}` === manifest.image)) throw new Error("Cloud Build image/source evidence differs");
 const stage = getService(target.stage), production = getService(target.service);
 assertReleaseRuntime(manifest, production);
+assertImageRuntimeConfiguration(manifest, build, production);
 if (!stage.status.traffic?.some(row => row.percent === 100 && row.revisionName === manifest.stage.revision)) throw new Error("Stage is not serving the accepted revision");
 const stageRevision = JSON.parse(cloud(["run", "revisions", "describe", manifest.stage.revision, "--region=asia-northeast1", "--format=json"]));
 if (stageRevision.spec.containers[0].image !== manifest.image || !stageRevision.status.conditions?.some(c => c.type === "Ready" && c.status === "True")) throw new Error("Stage image is not ready");

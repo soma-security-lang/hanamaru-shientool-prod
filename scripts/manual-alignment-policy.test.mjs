@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource, assertImageRuntimeConfiguration } from "./manual-alignment-policy.mjs";
+test("Soumu keeps its actual Google client; a matching smoke-test-only client is not sufficient",()=>{
+  const client="12345-syntheticclient.apps.googleusercontent.com";
+  const service={spec:{template:{spec:{containers:[{env:[{name:"SOUMU_AUTH_MODE",value:"app"},{name:"GOOGLE_CLIENT_ID",value:client}]}]}}}};
+  assert.doesNotThrow(()=>assertImageRuntimeConfiguration({product:"soumu"},{substitutions:{_GOOGLE_CLIENT_ID:client}},service));
+  for(const value of [undefined,"12345-differentclient.apps.googleusercontent.com","invalid"])
+    assert.throws(()=>assertImageRuntimeConfiguration({product:"soumu"},{substitutions:{_GOOGLE_CLIENT_ID:value}},service));
+});
 test("immutable Web RELEASE_SHA and legacy GIT_SHA agree; conflicts fail closed",()=>{
   const source="a".repeat(40);
   for(const substitutions of [{_RELEASE_SHA:source},{_GIT_SHA:source},{_RELEASE_SHA:source,_GIT_SHA:source}])

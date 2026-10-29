@@ -14,6 +14,14 @@ export function releaseBuildSource(build) {
   require(values.length > 0 && values.every(value => sha.test(value) && value === values[0]), "Conflicting or missing immutable build source");
   return values[0];
 }
+export function assertImageRuntimeConfiguration(manifest, build, service) {
+  if (manifest.product !== "soumu") return;
+  const values = Object.fromEntries((service.spec?.template?.spec?.containers?.[0]?.env ?? []).map(entry => [entry.name, entry.value]));
+  const client = build.substitutions?._GOOGLE_CLIENT_ID;
+  require(typeof client === "string" && /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(client) &&
+    client === values.GOOGLE_CLIENT_ID && values.SOUMU_AUTH_MODE === "app",
+  "Built Google client does not match the preserved production authentication configuration");
+}
 export function validateManualManifest(value, { forRollback = false } = {}) {
   require(value?.version === 1 && Object.hasOwn(releaseTargets, value?.product ?? ""), "Unsupported release manifest");
   const target = releaseTargets[value.product];
