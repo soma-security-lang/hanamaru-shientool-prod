@@ -1,0 +1,1141 @@
+{
+  "source": "09d6fb1432e85a8bebd5342df078c2baba18e6ad",
+  "screens": [
+    [
+      "/expense-settlement",
+      "経費・車両金精算",
+      "expense",
+      "apps/web/src/features/expense/screens.ts"
+    ],
+    [
+      "/login",
+      "ログイン",
+      "start",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/",
+      "買取支援AI",
+      "start",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits",
+      "訪問支援",
+      "visits",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits/:id/import",
+      "PDFから訪問を登録",
+      "visits",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits/:id/preparation",
+      "訪問前チェック",
+      "visits",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits/:id/transcription",
+      "録音・文字起こし",
+      "recording",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits/:id/review/input",
+      "振り返りを作成",
+      "reviews",
+      "apps/web/src/features/lane-a/screens.ts"
+    ],
+    [
+      "/visits/:id/review",
+      "AI振り返り結果",
+      "reviews",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/reviews",
+      "振り返り履歴",
+      "reviews",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/knowledge/talks",
+      "切り返しトーク集",
+      "knowledge",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/knowledge/flows",
+      "困ったときのフロー集",
+      "knowledge",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/knowledge/reference",
+      "用語集・金券買取価格表",
+      "knowledge",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/knowledge/manuals",
+      "接客マニュアル・法務",
+      "knowledge",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/training/videos",
+      "動画ライブラリ",
+      "training",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/training/roleplay",
+      "AIロープレ",
+      "training",
+      "apps/web/src/features/lane-b/screens.ts"
+    ],
+    [
+      "/admin/contents",
+      "コンテンツ管理",
+      "contents-admin",
+      "apps/web/src/features/lane-c/screens.ts"
+    ],
+    [
+      "/admin/users",
+      "利用者・権限",
+      "system-admin",
+      "apps/web/src/features/lane-c/screens.ts"
+    ],
+    [
+      "/admin/operations",
+      "システム運用",
+      "system-admin",
+      "apps/web/src/features/lane-c/screens.ts"
+    ],
+    [
+      "/admin/approvals",
+      "コンテンツ承認",
+      "approvals",
+      "apps/web/src/features/lane-c/screens.ts"
+    ],
+    [
+      "/admin/analytics",
+      "チーム分析",
+      "start",
+      "apps/web/src/features/lane-c/screens.ts"
+    ],
+    [
+      "/market-price",
+      "買取相場（仮）",
+      "market-price",
+      "apps/web/src/features/market-price/screens.ts"
+    ],
+    [
+      "/purchase-results",
+      "買取実績",
+      "purchase-results",
+      "apps/web/src/features/performance/screens.ts"
+    ],
+    [
+      "/performance",
+      "実績・ランキング",
+      "performance",
+      "apps/web/src/features/performance/screens.ts"
+    ],
+    [
+      "/help",
+      "/help",
+      "ヘルプ自身：本仕様書 第3・5章",
+      "apps/web/src/app/help/page.tsx"
+    ],
+    [
+      "/help/[slug]",
+      "/help/[slug]",
+      "ヘルプ自身：本仕様書 第3・5章",
+      "apps/web/src/app/help/[slug]/page.tsx"
+    ],
+    [
+      "/sso/start",
+      "/sso/start",
+      "start",
+      "apps/web/src/app/sso/start/page.tsx"
+    ],
+    [
+      "/sso/callback",
+      "/sso/callback",
+      "start",
+      "apps/web/src/app/sso/callback/page.tsx"
+    ]
+  ],
+  "apis": [
+    [
+      "GET",
+      "/api/v1/purchase-results",
+      "purchase.list",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/purchase-results",
+      "purchase.create",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/purchase-results/:id",
+      "purchase.get",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/purchase-performance",
+      "purchase.performance",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/ebay/operations/:key",
+      "ebay.operationResult",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/ebay/searches",
+      "ebay.list",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches",
+      "ebay.create",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/ebay/searches/:id",
+      "ebay.get",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/next-page",
+      "ebay.nextPage",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/confirm",
+      "ebay.confirm",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/cancel",
+      "ebay.cancel",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/retry",
+      "ebay.retry",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/resume",
+      "ebay.resume",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/ebay/searches/:id/repeat",
+      "ebay.repeat",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/market-price/ebay/searches/:id/outlier-policy",
+      "ebay.outlierPolicy",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-branch-options",
+      "expenseCash.options",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-branch-days",
+      "expenseCash.list",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-branch-days",
+      "expenseCash.create",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-branch-days/:id",
+      "expenseCash.read",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-branch-days/:id/logs",
+      "expenseCash.logs",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-branch-operations/:key",
+      "expenseCash.result",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/health/live",
+      "専用ハンドラ",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/health/ready",
+      "service.repository",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/openapi.json",
+      "専用ハンドラ",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/sessions",
+      "専用ハンドラ",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/sessions/current",
+      "専用ハンドラ",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "DELETE",
+      "/api/v1/sessions/current",
+      "専用ハンドラ",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/me",
+      "service.me",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/dashboard",
+      "service.dashboard",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-days",
+      "expense.list",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-operations/:key",
+      "expense.operationResult",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days",
+      "expense.createDay",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/expense-days/:id",
+      "expense.getDay",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/expense-days/:id",
+      "expense.updateDay",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days/:id/items",
+      "expense.addItem",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days/:id/followups",
+      "expense.addFollowup",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days/:id/cash-transfers",
+      "expense.unavailable",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days/:id/reconcile",
+      "expense.unavailable",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/expense-days/:id/close",
+      "expense.unavailable",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/assist/answers",
+      "service.assist",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/visits",
+      "service.listVisits",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits",
+      "service.createVisit",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visit-imports",
+      "service.startVisitImport",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/visits/:id",
+      "service.getVisit",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/visits/:id/workspace",
+      "service.getVisitWorkspace",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/visits/:id/retention-bindings",
+      "service.retentionBindings",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/visits/:id/preparation",
+      "service.getPreparation",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/preparation",
+      "service.createPreparation",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/preparation/confirm",
+      "service.confirmPreparation",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/visits/:id",
+      "service.updateVisit",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/deletion-requests",
+      "service.requestDeletion",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/documents/uploads",
+      "service.startUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/recordings/uploads",
+      "service.startUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PUT",
+      "/api/v1/local-uploads/*",
+      "service.acceptLocalUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/document-uploads/:uploadId/complete",
+      "service.completeUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/recording-uploads/:uploadId/complete",
+      "service.completeUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/documents/:id/extractions",
+      "service.createJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/documents/:id/file",
+      "service.getDocumentFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/documents/:id/file-access",
+      "service.getDocumentFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/recordings/:id/file",
+      "service.getRecordingFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/recordings/:id/file-access",
+      "service.getRecordingFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/extractions/:id",
+      "service.getExtraction",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/extractions/:id",
+      "service.updateExtraction",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/extractions/:id/confirm",
+      "service.confirmExtraction",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/recording-consents",
+      "service.createConsent",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/drive-imports",
+      "service.createDriveImport",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/drive-connections",
+      "service.createDriveConnection",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/drive-connections/picker-token",
+      "service.drivePickerToken",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/drive-files/inspect",
+      "service.inspectDriveFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "DELETE",
+      "/api/v1/drive-connections",
+      "service.revokeDriveConnection",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/recordings/:id/transcriptions",
+      "service.createJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/jobs/:id",
+      "service.getJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/transcripts/:id",
+      "service.getTranscript",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/transcripts/:id",
+      "service.updateTranscript",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/transcripts/:id/confirm",
+      "service.confirmTranscript",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/transcripts/:id/quality-assessment/acknowledgements",
+      "service.acknowledgeTranscriptQuality",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/transcripts/:id/reviews",
+      "service.createJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/visits/:id/manual-transcripts",
+      "service.createManualTranscript",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/reviews/:id",
+      "service.getReview",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/reviews/:id/acknowledgements",
+      "service.acknowledgeReview",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/history",
+      "service.history",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/identifications",
+      "service.createMarketPriceIdentification",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/identifications/:id",
+      "service.getMarketPriceIdentification",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/identifications/:id/image-uploads",
+      "service.startMarketPriceImageUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/image-uploads/:uploadId/complete",
+      "service.completeMarketPriceImageUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/identifications/:id/analyze",
+      "service.analyzeMarketPriceIdentification",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/market-price/identifications/:id",
+      "service.updateMarketPriceIdentification",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/identifications/:id/confirm",
+      "service.confirmMarketPriceIdentification",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/options",
+      "service.marketPriceOptions",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/searches",
+      "service.listMarketPriceSearches",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/searches",
+      "service.createMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/market-price/searches/:id",
+      "service.getMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/market-price/searches/:id/outlier-policy",
+      "service.updateMarketPriceOutlierPolicy",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/searches/:id/confirm",
+      "service.confirmMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/searches/:id/retry",
+      "service.retryMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/searches/:id/cancel",
+      "service.cancelMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/market-price/searches/:id/repeat",
+      "service.repeatMarketPriceSearch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/market-price/source-mappings",
+      "service.listMarketPriceSourceMappings",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PUT",
+      "/api/v1/admin/market-price/source-mappings/:key",
+      "service.upsertMarketPriceSourceMapping",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/contents",
+      "service.listContents",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/contents/:id",
+      "service.getContent",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/contents",
+      "service.createContent",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/contents/:id",
+      "service.updateContent",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/contents/:id/publish",
+      "service.publishContent",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/contents/:id/video-uploads",
+      "service.startVideoUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/video-uploads/:uploadId/complete",
+      "service.completeVideoUpload",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/training/videos/:id/file",
+      "service.getTrainingVideoFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/training/videos/:id/file-access",
+      "service.getTrainingVideoFile",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/training/scenarios",
+      "service.listContents",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/training/roleplay-turns",
+      "service.roleplayTurn",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/training/roleplay-sessions",
+      "service.listRoleplaySessions",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/training/roleplay-sessions/:id",
+      "service.getRoleplaySession",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/training/roleplay-sessions/:id/complete",
+      "service.completeRoleplaySession",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PUT",
+      "/api/v1/training/progress/:id",
+      "service.learningProgress",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/users",
+      "service.listUsers",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/users",
+      "service.inviteUser",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/admin/users/:id",
+      "service.updateUser",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PUT",
+      "/api/v1/admin/users/:id/roles",
+      "service.replaceRoles",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/jobs",
+      "service.listJobs",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/operations/health",
+      "service.operationsHealth",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/jobs/:id/retry",
+      "service.retryJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/jobs/:id/cancel",
+      "service.cancelJob",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/retention-policies",
+      "service.retentionPolicies",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/retention-policies",
+      "service.createRetentionPolicy",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/deletion-requests",
+      "service.deletionRequests",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/legal-holds/:id",
+      "service.createLegalHold",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "DELETE",
+      "/api/v1/admin/legal-holds/:id",
+      "service.releaseLegalHold",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/audit-events",
+      "service.auditEvents",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/feature-flags",
+      "service.featureFlags",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "PATCH",
+      "/api/v1/admin/feature-flags/:key",
+      "service.updateFeatureFlag",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/content-approvals",
+      "service.approvals",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/content-approvals",
+      "service.decideApproval",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/content-approval-batches",
+      "service.approvalBatches",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/content-approval-batches",
+      "service.createApprovalBatch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/admin/content-approval-batches/:id/decisions",
+      "service.decideApprovalBatch",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "GET",
+      "/api/v1/admin/analytics",
+      "service.analytics",
+      "Bearer ID token / membership / capability / scope",
+      "apps/api/src/routes.ts"
+    ],
+    [
+      "POST",
+      "/api/v1/help/questions",
+      "question, history[{question,sourceSlugs}]",
+      "ログイン・同一Origin（cookie認証）・上限・ロール・機能設定",
+      "help/engine.ts と質問ハンドラ"
+    ],
+    [
+      "GET",
+      "/api/v1/help",
+      "なし",
+      "既存Bearer認証、公開可能な記事だけ返す",
+      "apps/api/src/help/routes.ts"
+    ]
+  ]
+}

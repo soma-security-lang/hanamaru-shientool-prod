@@ -11,6 +11,9 @@ COPY packages/market-price/package.json packages/market-price/package.json
 COPY packages/platform/package.json packages/platform/package.json
 COPY packages/alignment/package.json packages/alignment/package.json
 RUN pnpm install --frozen-lockfile --filter @hanamaru/web...
+COPY scripts/build-help.mjs scripts/build-help.mjs
+COPY docs/help docs/help
+COPY docs/help-config.json docs/help-config.json
 COPY apps/web apps/web
 COPY apps/api apps/api
 COPY packages packages

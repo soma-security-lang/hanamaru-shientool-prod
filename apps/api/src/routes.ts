@@ -1,3 +1,4 @@
+import {registerHelpRoutes} from './help/routes.js';
 import type { FastifyInstance,FastifyReply,FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { BackendService } from "./service.js";
@@ -13,6 +14,7 @@ const key=(request:FastifyRequest)=>typeof request.headers["idempotency-key"]===
 async function send(reply:FastifyReply,promise:Promise<{status:number;body:unknown}>){const result=await promise;if(result.status===204)return reply.code(204).send();return reply.code(result.status).send(result.body);}
 
 export async function registerRoutes(app:FastifyInstance,service:BackendService){
+  registerHelpRoutes(app,service);
   const expense=new ExpenseService(service);
   const expenseCash=new ExpenseCashService(service);
   const purchase=new PurchaseResultService(service);

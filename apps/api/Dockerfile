@@ -10,6 +10,9 @@ COPY packages/market-price/package.json packages/market-price/package.json
 COPY packages/platform/package.json packages/platform/package.json
 RUN pnpm install --frozen-lockfile --filter @hanamaru/api...
 COPY apps/api apps/api
+COPY scripts/build-help.mjs scripts/build-help.mjs
+COPY docs/help docs/help
+COPY docs/help-config.json docs/help-config.json
 COPY apps/web/src/mocks/poc-content.json apps/web/src/mocks/poc-content.json
 COPY packages packages
 RUN pnpm -r --filter @hanamaru/api... --if-present build \
@@ -24,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libpcre2
   && useradd --create-home --uid 10001 appuser
 WORKDIR /app
 COPY --from=build --chown=appuser:appuser /opt/hanamaru/api /app/apps/api
+COPY --from=build --chown=appuser:appuser /app/apps/api/dist/help/catalog.json /app/apps/api/dist/help/catalog.json
 COPY --from=build --chown=appuser:appuser /app/apps/web/src/mocks/poc-content.json /app/apps/web/src/mocks/poc-content.json
 USER appuser
 EXPOSE 8080

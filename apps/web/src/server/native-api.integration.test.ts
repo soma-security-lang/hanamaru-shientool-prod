@@ -17,6 +17,12 @@ describe.skipIf(!url)("native business API with existing authorization and Prism
   let old: Awaited<ReturnType<typeof buildApp>>;
   let next: Awaited<ReturnType<typeof nativeApi>>;
   afterAll(async () => { await old?.close(); await modern?.close(); });
+  it("keeps the published FAQ parser and route-specific limits on the legacy API owner", async () => {
+    const selected = await nativeApi(new BackendService(modern!, providers), config);
+    expect(selected.paths.some(path => path.includes("/help"))).toBe(false);
+    expect(await selected.handle(new Request("http://127.0.0.1:3388/api/v1/help"))).toBeNull();
+    expect(await selected.handle(new Request("http://127.0.0.1:3388/api/v1/help/questions", {method:"POST",headers:{"content-type":"application/json"},body:'{"question":"synthetic"}'}))).toBeNull();
+  });
   it("compares every migrated read route and current me against legacy using the same schema", async () => {
     old = await buildApp({ config, repository: legacy, providers });
     next = await nativeApi(new BackendService(modern!, providers), config);

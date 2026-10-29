@@ -1,0 +1,237 @@
+.root {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 0 48px;
+  color: var(--color-text, #322d30);
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.root * {
+  box-sizing: border-box;
+}
+.heading {
+  margin-bottom: 24px;
+}
+.heading h1 {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.heading p {
+  margin: 8px 0;
+}
+.panel {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e6e2e4);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 20px 0;
+}
+.panel h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.root h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+.root h4 {
+  font-size: 14px;
+  font-weight: 700;
+}
+.root a {
+  color: var(--color-primary, #963054);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.root label {
+  display: block;
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+.root textarea,
+.root input,
+.root select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font: inherit;
+  font-size: 16px;
+  padding: 12px;
+  border: 1px solid #95868e;
+  border-radius: 8px;
+  background: #fff;
+  color: #322d30;
+}
+.root textarea {
+  resize: vertical;
+}
+.root button,
+.action {
+  font: inherit;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #95868e;
+  border-radius: 8px;
+  background: #fff;
+  color: #322d30;
+  cursor: pointer;
+}
+.root button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.root :is(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid #a53860;
+  outline-offset: 4px;
+}
+.root .primary {
+  background: var(--color-primary, #a53860);
+  color: #fff;
+  border-color: transparent;
+  font-weight: 700;
+}
+.actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.root .action {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-weight: 700;
+}
+.examples {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.examples button {
+  background: #f8edf1;
+  border-color: #ead5de;
+  color: #8c2e50;
+}
+.meta {
+  font-size: 12px;
+  color: #655d61;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.root .card {
+  display: block;
+  text-decoration: none;
+  border: 1px solid #e6e2e4;
+  border-radius: 8px;
+  padding: 16px;
+  color: inherit;
+}
+.card:hover {
+  background: #f8edf1;
+}
+.card span {
+  font-size: 12px;
+  color: #655d61;
+}
+.card h3 {
+  margin: 4px 0;
+}
+.card p {
+  margin: 0;
+  font-size: 12px;
+}
+.answer {
+  border-top: 1px solid #e6e2e4;
+  padding-top: 16px;
+  margin-top: 20px;
+}
+.markdown p {
+  margin: 10px 0;
+}
+.markdown ul,
+.markdown ol,
+.panel nav ul {
+  padding-inline-start: 24px;
+  margin: 12px 0;
+}
+.markdown li {
+  margin: 8px 0;
+}
+.markdown h2 {
+  margin: 28px 0 12px;
+  scroll-margin-top: 100px;
+}
+.markdown img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #e6e2e4;
+  border-radius: 8px;
+}
+.markdown figure {
+  margin: 20px 0;
+}
+.markdown figcaption {
+  font-size: 12px;
+  color: #655d61;
+}
+.tableWrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.markdown th,
+.markdown td {
+  text-align: start;
+  border: 1px solid #e6e2e4;
+  padding: 10px;
+  vertical-align: top;
+}
+.markdown th {
+  background: #f8f5f6;
+}
+.markdown code {
+  white-space: normal;
+  font-size: 0.95em;
+}
+.root [tabindex="-1"]:focus {
+  outline: none;
+}
+@media (max-width: 600px) {
+  .root {
+    padding: 16px 0 32px;
+  }
+  .heading h1 {
+    font-size: 24px;
+  }
+  .panel {
+    padding: 16px;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .examples {
+    display: grid;
+  }
+  .actions > * {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .root * {
+    scroll-behavior: auto;
+  }
+}

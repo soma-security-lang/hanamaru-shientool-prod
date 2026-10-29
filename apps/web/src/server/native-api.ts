@@ -35,7 +35,7 @@ export async function nativeApi(service: BackendService, config: ApiConfig, veri
     }])) as unknown as Registry;
   await registerRoutes(registry, service);
   const supported = routes.filter(route => route.path.startsWith("/api/v1/") && !route.public &&
-    !/\/file$|local-upload|openapi\.json/.test(route.path));
+    !/\/file$|local-upload|openapi\.json|^\/api\/v1\/help(?:\/|$)/.test(route.path));
   const counts = new Map<string, { until: number; count: number }>();
   return {
     paths: supported.map(r => `${r.method} ${r.path}`),

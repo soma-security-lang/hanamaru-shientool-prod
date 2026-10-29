@@ -12,8 +12,9 @@ const prefixes = ["apps/api/", "apps/worker/", "packages/contracts/", "packages/
 const paths = git(["ls-tree", "-r", "--name-only", "-z", base]).toString().split("\0").filter(path => path && prefixes.some(prefix => path === prefix || path.startsWith(prefix)));
 const hash = data => createHash("sha256").update(data).digest("hex");
 const reviewed = {
-  "apps/api/Dockerfile": "a956ffbbb57348de95a3fb2824716c4831a4ac6cc69d85a543f2dbab48f30ebd",
-  "apps/api/package.json": "3f4d933dd4594bffc615d3d2c3cc1cc4d1c99ddfd3dda65cd9644fc40c72c684",
+  "apps/api/Dockerfile": "a8f70ffb20479affd379d4581ba0b02e7a3302e57535f448eaf05261120e634e",
+  "apps/api/package.json": "9c09e58c93ff61c4bdd7c634f1f4488970958903bfce3a8486aec981647f1b71",
+  "apps/api/src/routes.ts": "56b7167ad842552fb041f2a6884b6c6adefcf3e7f370c09845883a9ace6b8e01",
   "apps/api/src/service.ts": "b8ef80efea9b36fb10e4ebbdd1132c578c94de9f2ba0437bc82c9475743a1af0",
   "apps/api/tsconfig.build.json": "b9151f7d6bf734aaf2853ff056bbe18d9bd3cfc6ee31123b1f2ab0144e426304",
   "apps/worker/package.json": "52fc06f11393805f761953d3f29754ff6b138cc71af9b201cefa06372fe9cb6a",
@@ -23,6 +24,13 @@ const reviewed = {
   "packages/platform/src/index.ts": "1e3a29bb91f7848ff2518b0697b8cf53ad5ee4a3dc2b3c521b593874e69005e4",
 };
 const additions = {
+  // Published API FAQ (5af6b6c) is retained, rather than reverting the live API.
+  "apps/api/src/help/catalog.json": "7c0db08ab410d69c0f06bea421824dbd15930ec6c63988498962de148c1795e2",
+  "apps/api/src/help/engine.test.ts": "29c165f6b6ca5d81ac9d8a5c74bdcf7038e28796e6551062813fd3071c3c302b",
+  "apps/api/src/help/engine.ts": "786db531b38250f0f8340eadad4f923bbf76c933bbf392be09456e07d767c076",
+  "apps/api/src/help/routes.test.ts": "c5d7171cdda3dabfe8b697b592892de10b43f47fa5178ab28f08ef03ba671c35",
+  "apps/api/src/help/routes.ts": "76441c59adfb90546262662f99a5070071a8d5d9c49404935642467f88f3ba63",
+  "apps/api/src/help/vertex.ts": "b6ebbd40c4e3b7f1fa3e026d8c28665e87fa9517653c1eeaaac58595f360e847",
   // Additive session-only schema, reviewed with dedicated-role rejection tests.
   "packages/database/migrations/0071_runtime_sessions.sql": "872cb691ac44b4e31591a4028d954c47b8a172ee67fe1a714b44a0cdd9d80d03",
   "apps/api/src/alignment.ts": "35678c496bf73b5b2a6600ab309a4e6ca6b696f9d14cb428dd66e9e7becafb64",
@@ -33,7 +41,8 @@ const additions = {
   "packages/platform/src/runtime.ts": "70ae78256e6ef0410cd6a52cbb28ddfdb89632ccd91f5efc1dafd2fe2017a61d",
 };
 const changed = paths.filter(path => !existsSync(`${root}${path}`) || hash(readFileSync(`${root}${path}`)) !== hash(git(["show", `${base}:${path}`])));
-const unexpected = git(["ls-files", "--others", "--exclude-standard", "-z"]).toString().split("\0").filter(path => path && prefixes.some(prefix => path === prefix || path.startsWith(prefix)));
+const unexpected = [...new Set(git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).toString().split("\0"))]
+  .filter(path => path && !paths.includes(path) && prefixes.some(prefix => path === prefix || path.startsWith(prefix)));
 const groups = Object.fromEntries(prefixes.map(prefix => [prefix, paths.filter(path => path === prefix || path.startsWith(prefix)).length]));
 const unreviewed = changed.filter(path => reviewed[path] !== hash(readFileSync(`${root}${path}`)));
 const newUnexpected = unexpected.filter(path => additions[path] !== hash(readFileSync(`${root}${path}`)));
