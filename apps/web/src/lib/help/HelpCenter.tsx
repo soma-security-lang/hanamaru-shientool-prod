@@ -44,7 +44,8 @@ export function HelpMarkdown({ body }: { body: string }) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    if (/^#{1,3} /.test(line)) {
+    if (/^### /.test(line)) { blocks.push(<h3 key={i}>{inline(line.replace(/^### /, ""))}</h3>); continue; }
+    if (/^#{1,2} /.test(line)) {
       const text = line.replace(/^#{1,3} /, "");
       blocks.push(
         <h2 id={`section-${section++}`} key={i}>

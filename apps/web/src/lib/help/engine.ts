@@ -244,15 +244,17 @@ export async function answerQuestion(
       "根拠となる手順を特定できませんでした。関連する記事をご確認ください。",
       sources,
     );
-  const sections = article.sections
+  const selectedSections = article.sections
     .filter((s) => choice.sectionIds.includes(s.id))
     .slice(0, 4);
-  if (!sections.length)
+  if (!selectedSections.length)
     return empty(
       "not_found",
       "該当する手順を確認できませんでした。記事全体をご確認ください。",
       sources,
     );
+  const condition = article.sections.find((s) => s.title === "操作前の確認");
+  const sections = condition ? [condition, ...selectedSections.filter((s) => s.id !== condition.id)].slice(0, 4) : selectedSections;
   // The model selects approved excerpts; every displayed instruction is copied from the canonical Markdown.
   return {
     kind: "answer",
