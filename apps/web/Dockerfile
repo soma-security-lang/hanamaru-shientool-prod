@@ -30,6 +30,8 @@ ENV NEXT_TELEMETRY_DISABLED=1 NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID NEXT_PUBLIC
 RUN test -n "$NEXT_DEPLOYMENT_ID"
 RUN pnpm -r --filter @hanamaru/web... --if-present build \
   && pnpm --filter @hanamaru/web deploy --prod --legacy /opt/hanamaru/web-runtime
+COPY scripts/preserve-deployed-prisma.mjs scripts/preserve-deployed-prisma.mjs
+RUN node scripts/preserve-deployed-prisma.mjs /app/packages/alignment/package.json /opt/hanamaru/web-runtime/package.json
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=8080 HOSTNAME=0.0.0.0
@@ -54,7 +56,7 @@ RUN PROVIDER_MODE=gcp GOOGLE_CLOUD_PROJECT=monocle-503402 GCP_LOCATION=asia-nort
   VERTEX_LOCATION=asia-northeast1 VERTEX_AI_MODEL=gemini-2.5-flash \
   GOOGLE_DRIVE_CLIENT_ID=synthetic-container-client GOOGLE_DRIVE_CLIENT_SECRET=synthetic-container-not-a-user-secret \
   GOOGLE_DRIVE_REDIRECT_URI=https://synthetic-container.example.invalid/api/google-drive/callback \
-  node --input-type=module -e 'import{createRequire}from"node:module";const r=createRequire("/app/apps/web/package.json");for(const name of["@hanamaru/api/alignment","@hanamaru/alignment","@hanamaru/platform"])r(name);if(r("@hanamaru/platform").createProviders().mode!=="gcp")throw new Error("Formal GCP providers required");console.log("NATIVE_API_GCP_PRODUCTION_IMPORTS_PASS_NO_EXTERNAL_REQUESTS")'
+  node --input-type=module -e 'import{createRequire}from"node:module";const r=createRequire("/app/apps/web/package.json");for(const name of["@hanamaru/api/alignment","@hanamaru/alignment","@hanamaru/platform"])r(name);const a=createRequire(r.resolve("@hanamaru/alignment"));const{PrismaClient}=a("@prisma/client"),{PrismaPg}=a("@prisma/adapter-pg");const p=new PrismaClient({adapter:new PrismaPg({connectionString:"postgresql://unused:unused@127.0.0.1:1/unused"})});await p.$disconnect();if(r("@hanamaru/platform").createProviders().mode!=="gcp")throw new Error("Formal GCP providers required");console.log("NATIVE_API_GCP_PRODUCTION_IMPORTS_PASS_NO_EXTERNAL_REQUESTS")'
 USER appuser
 EXPOSE 8080
 CMD ["node","apps/web/server.js"]
