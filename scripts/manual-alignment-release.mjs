@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource } from "./manual-alignment-policy.mjs";
 
 // Separate, human-authorized release path. Standard GitHub gates are untouched.
 const [action, path] = process.argv.slice(2);
@@ -63,8 +63,7 @@ if (manifest.quality?.provider === "cloud-build") {
   if (ci.head_sha !== manifest.sourceSha || ci.status !== "completed" || ci.conclusion !== "success") throw new Error("Exact source CI has not passed");
 }
 const build = JSON.parse(cloud(["builds", "describe", manifest.buildId, `--region=${manifest.buildRegion}`, "--format=json"]));
-const sourceKey = manifest.product === "soumu" ? "_RELEASE_SHA" : "_GIT_SHA";
-if (build.status !== "SUCCESS" || build.substitutions?.[sourceKey] !== manifest.sourceSha ||
+if (build.status !== "SUCCESS" || releaseBuildSource(build) !== manifest.sourceSha ||
   !build.results?.images?.some(image => `${image.name.split(":")[0]}@${image.digest}` === manifest.image)) throw new Error("Cloud Build image/source evidence differs");
 const stage = getService(target.stage), production = getService(target.service);
 assertReleaseRuntime(manifest, production);

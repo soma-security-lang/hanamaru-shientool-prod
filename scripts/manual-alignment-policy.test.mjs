@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality, releaseBuildSource } from "./manual-alignment-policy.mjs";
+test("immutable Web RELEASE_SHA and legacy GIT_SHA agree; conflicts fail closed",()=>{
+  const source="a".repeat(40);
+  for(const substitutions of [{_RELEASE_SHA:source},{_GIT_SHA:source},{_RELEASE_SHA:source,_GIT_SHA:source}])
+    assert.equal(releaseBuildSource({substitutions}),source);
+  for(const substitutions of [{},{_RELEASE_SHA:"latest"},{_GIT_SHA:""},{_RELEASE_SHA:source,_GIT_SHA:"b".repeat(40)}])
+    assert.throws(()=>releaseBuildSource({substitutions}));
+});
 const valid = () => ({ version:1, product:"hanamaru", phase:"foundation", repository:"soma-security-lang/hanamaru-shientool-prod",
   sourceSha:"a".repeat(40), baselineSha:"09d6fb1432e85a8bebd5342df078c2baba18e6ad", image:`asia-northeast1-docker.pkg.dev/monocle-503402/hanamaru-pilot/web@sha256:${"c".repeat(64)}`,
   service:"hanamaru-pilot-web", stageService:"hanamaru-alignment-stage-web", publicUrl:"https://monocle-503402.firebaseapp.com/",

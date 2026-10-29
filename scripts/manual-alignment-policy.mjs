@@ -9,6 +9,11 @@ export const releaseTargets = {
     stage: "soumu-alignment-stage-web", registry: "soumu/web", publicUrl: "https://soumu-web-tpqjzqidwa-an.a.run.app/login" },
 };
 const require = (ok, message) => { if (!ok) throw new Error(message); };
+export function releaseBuildSource(build) {
+  const values = [build?.substitutions?._RELEASE_SHA, build?.substitutions?._GIT_SHA].filter(value => value !== undefined);
+  require(values.length > 0 && values.every(value => sha.test(value) && value === values[0]), "Conflicting or missing immutable build source");
+  return values[0];
+}
 export function validateManualManifest(value, { forRollback = false } = {}) {
   require(value?.version === 1 && Object.hasOwn(releaseTargets, value?.product ?? ""), "Unsupported release manifest");
   const target = releaseTargets[value.product];
@@ -52,7 +57,7 @@ export function validateManualManifest(value, { forRollback = false } = {}) {
  */
 export function validateCloudQuality(manifest, build, actualWorkflowHash, actualConfigHash) {
   const quality = manifest.quality;
-  const source = build.substitutions?._RELEASE_SHA ?? build.substitutions?._GIT_SHA;
+  const source = releaseBuildSource(build);
   const requiredSteps = manifest.product === "hanamaru" ? ["workflow-verify"] :
     ["quality-db-infra-private-checkout-cross-product", "original-sso-container-runtime"];
   require(quality?.provider === "cloud-build" && build.id === quality.buildId && build.status === "SUCCESS" &&
