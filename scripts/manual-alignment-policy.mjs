@@ -23,6 +23,9 @@ export function validateManualManifest(value, { forRollback = false } = {}) {
   if (value.quality?.provider === "cloud-build") {
     require(/^[a-f0-9-]{36}$/.test(value.quality.buildId ?? "") && value.quality.region === "asia-northeast1" &&
       digest.test(value.quality.workflowSha256 ?? "") && digest.test(value.quality.configSha256 ?? "") &&
+      typeof value.quality.sourceStorage?.bucket === "string" && value.quality.sourceStorage.bucket.length > 10 &&
+      typeof value.quality.sourceStorage?.object === "string" && value.quality.sourceStorage.object.startsWith("source/") &&
+      /^[1-9][0-9]*$/.test(String(value.quality.sourceStorage?.generation ?? "")) &&
       value.quality.approvalScope === "github-no-additional-billing-20261030", "Pinned audited Cloud Build quality evidence required");
   } else require(!value.quality && Number.isSafeInteger(value.ciRunId) && value.ciRunId > 0, "A completed CI run is required");
   require(value.approvalScope === "attendance-stack-20261029" && typeof value.approvalRecord === "string" && value.approvalRecord.length >= 10, "Task-specific approval record required");
@@ -57,9 +60,9 @@ export function validateCloudQuality(manifest, build, actualWorkflowHash, actual
     quality.workflowSha256 === actualWorkflowHash && quality.configSha256 === actualConfigHash &&
     Array.isArray(build.steps) && build.steps.length > 0 && build.steps.every(step => step.status === "SUCCESS") &&
     requiredSteps.every(id => build.steps.some(step => step.id === id)) &&
-    build.sourceProvenance?.resolvedStorageSource?.bucket &&
-    build.sourceProvenance.resolvedStorageSource.object &&
-    /^[1-9][0-9]*$/.test(String(build.sourceProvenance.resolvedStorageSource.generation ?? "")),
+    build.sourceProvenance?.resolvedStorageSource?.bucket === quality.sourceStorage.bucket &&
+    build.sourceProvenance.resolvedStorageSource.object === quality.sourceStorage.object &&
+    String(build.sourceProvenance.resolvedStorageSource.generation) === String(quality.sourceStorage.generation),
   "Exact workflow/source/config Cloud Build quality has not passed");
 }
 

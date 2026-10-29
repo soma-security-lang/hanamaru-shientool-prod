@@ -10,12 +10,12 @@ const valid = () => ({ version:1, product:"hanamaru", phase:"foundation", reposi
   rollbackTraffic:[{revision:"hanamaru-pilot-web-baseline",percent:100}] });
 test("admits only the fixed, immutable, evidenced product",()=>assert.equal(validateManualManifest(valid()).service,"hanamaru-pilot-web"));
 test("audited Cloud Build is an alternative to paid Actions, not a CI bypass",()=>{
-  const quality={provider:"cloud-build",buildId:"00000000-0000-4000-8000-000000000002",region:"asia-northeast1",workflowSha256:"e".repeat(64),configSha256:"f".repeat(64),approvalScope:"github-no-additional-billing-20261030"};
+  const quality={provider:"cloud-build",buildId:"00000000-0000-4000-8000-000000000002",region:"asia-northeast1",workflowSha256:"e".repeat(64),configSha256:"f".repeat(64),sourceStorage:{bucket:"reviewed-source",object:"source/immutable.tgz",generation:"1234"},approvalScope:"github-no-additional-billing-20261030"};
   const value={...valid(),ciRunId:undefined,quality};
   assert.doesNotThrow(()=>validateManualManifest(value));
-  const build={id:quality.buildId,status:"SUCCESS",substitutions:{_RELEASE_SHA:value.sourceSha,_WORKFLOW_SHA256:quality.workflowSha256},steps:[{id:"workflow-verify",status:"SUCCESS"}],sourceProvenance:{resolvedStorageSource:{bucket:"reviewed-source",object:"immutable.tgz",generation:"1234"}}};
+  const build={id:quality.buildId,status:"SUCCESS",substitutions:{_RELEASE_SHA:value.sourceSha,_WORKFLOW_SHA256:quality.workflowSha256},steps:[{id:"workflow-verify",status:"SUCCESS"}],sourceProvenance:{resolvedStorageSource:{...quality.sourceStorage}}};
   assert.doesNotThrow(()=>validateCloudQuality(value,build,quality.workflowSha256,quality.configSha256));
-  for(const mutate of[b=>b.status="FAILURE",b=>b.status="WORKING",b=>b.steps[0].status="SKIPPED",b=>b.steps[0].id="noop",b=>b.substitutions._RELEASE_SHA="b".repeat(40),b=>b.substitutions._WORKFLOW_SHA256="0".repeat(64),b=>delete b.sourceProvenance]){
+  for(const mutate of[b=>b.status="FAILURE",b=>b.status="WORKING",b=>b.steps[0].status="SKIPPED",b=>b.steps[0].id="noop",b=>b.substitutions._RELEASE_SHA="b".repeat(40),b=>b.substitutions._WORKFLOW_SHA256="0".repeat(64),b=>delete b.sourceProvenance,b=>b.sourceProvenance.resolvedStorageSource.generation="5678"]){
     const bad=structuredClone(build);mutate(bad);assert.throws(()=>validateCloudQuality(value,bad,quality.workflowSha256,quality.configSha256));
   }
   assert.throws(()=>validateCloudQuality(value,build,"0".repeat(64),quality.configSha256));
