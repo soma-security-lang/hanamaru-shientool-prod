@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Script from "next/script";
 import { ViewerProvider } from "@/components/auth/ViewerProvider";
 import "./globals.css";
+import "@/styles/attendance-foundation.css";
 
 export const metadata: Metadata = {
   title: "買取支援ツール｜華丸",
@@ -15,6 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     apiBaseUrl: process.env.HANAMARU_RUNTIME_API_BASE_URL || undefined,
     ssoIssuer: process.env.SSO_ISSUER || undefined,
     localSession: process.env.K_SERVICE === undefined && process.env.HANAMARU_LOCAL_SESSION_POC === "true" && process.env.HANAMARU_SESSION_STORE === "postgres",
+    serverSession: process.env.HANAMARU_PRODUCTION_SESSION === "true",
   };
   const serialized = JSON.stringify(runtime).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")
     .replace(/&/g, "\\u0026");

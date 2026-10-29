@@ -25,7 +25,8 @@ function parserFailure(reply: Reply, id: string) {
 /** Native Request/Response execution; no HTTP loopback or second business writer.
  * Binary/redirect and infrastructure endpoints deliberately remain legacy-owned.
  */
-export async function nativeApi(service: BackendService, config: ApiConfig, verifier?: IdentityTokenVerifier) {
+export async function nativeApi(service: BackendService, config: ApiConfig, verifier?: IdentityTokenVerifier,
+  distributedLimit?: (membershipId: string) => Promise<boolean>) {
   const routes: Array<{ method: string; path: string; handler: Handler; public: boolean }> = [];
   const registry = Object.fromEntries(["get", "post", "put", "patch", "delete"].map(method => [method,
     (path: string, options: Handler | { config?: { public?: boolean } }, handler?: Handler) => {
@@ -66,11 +67,13 @@ export async function nativeApi(service: BackendService, config: ApiConfig, veri
         for (const [key, value] of url.searchParams) query[key] = key in query ? [...[query[key]].flat() as string[], value] : value;
         const request = { id, headers: Object.fromEntries(input.headers), params, query } as unknown as AuthRequest;
         request.auth = await authenticate(request, config, service.repository, verifier);
+        if (distributedLimit && !await distributedLimit(request.auth.membershipId))
+          return Response.json({ error: { code: "RATE_LIMITED" } }, { status: 429, headers: reply.headers });
         const now = Date.now();
         for (const [key, value] of counts) if (value.until <= now) counts.delete(key);
         const limit = counts.get(request.auth.membershipId) ?? { until: now + 60_000, count: 0 };
         counts.set(request.auth.membershipId, limit);
-        if (++limit.count > config.rateLimitMax) return Response.json({ error: { code: "RATE_LIMITED" } }, { status: 429, headers: reply.headers });
+        if (!distributedLimit && ++limit.count > config.rateLimitMax) return Response.json({ error: { code: "RATE_LIMITED" } }, { status: 429, headers: reply.headers });
         if (!["GET", "HEAD"].includes(input.method)) {
           const type = input.headers.get("content-type")?.split(";")[0];
           const reader = input.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0;

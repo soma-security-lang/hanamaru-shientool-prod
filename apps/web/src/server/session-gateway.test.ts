@@ -166,6 +166,39 @@ describe("local-only server session boundary", () => {
   });
 });
 
+describe("production session boundary with explicit login intent",()=>{
+  const origin="https://monocle-503402.firebaseapp.com";
+  const host="hanamaru-pilot-web-tpqjzqidwa-an.a.run.app";
+  const request=(path:string,method="GET",headers:Record<string,string>={})=>new Request(`${origin}${path}`,{
+    method,headers:{host,origin,...headers}});
+  function deployed(){
+    let now=1_700_000_000_000;
+    const send=vi.fn<typeof fetch>().mockImplementation(async()=>Response.json(viewer));
+    return {gateway:new LocalSessionGateway({publicOrigin:origin,upstream:"https://api.example.invalid/api/v1",allowLocal:false,
+      transportHosts:[host],explicitSessionBootstrap:true},send,()=>now),send,expire:()=>{now+=301_000;}};
+  }
+  it("does not create cookies for a legacy Google session probe",async()=>{
+    const {gateway}=deployed();const response=await gateway.session(request("/api/auth/session"));
+    expect(await response.json()).toEqual({authenticated:false});expect(response.headers.has("set-cookie")).toBe(false);
+  });
+  it("requires same-origin explicit intent, issues Secure cookie and ignores forged forwarded hosts",async()=>{
+    const {gateway}=deployed();
+    expect((await gateway.restart(request("/api/auth/session/start","POST"))).status).toBe(403);
+    expect((await gateway.restart(request("/api/auth/session/start","POST",{"x-session-intent":"login",host:"evil.invalid","x-forwarded-host":host}))).status).toBe(403);
+    const response=await gateway.restart(request("/api/auth/session/start","POST",{"x-session-intent":"login"}));
+    expect(response.status).toBe(200);expect(response.headers.get("set-cookie")).toContain("; Secure");
+  });
+  it("denies expired or malformed cookies until an explicit login or logout",async()=>{
+    const {gateway,expire}=deployed();
+    const start=await gateway.restart(request("/api/auth/session/start","POST",{"x-session-intent":"login"}));
+    const cookie=cookieOf(start);expire();
+    expect((await gateway.session(request("/api/auth/session","GET",{cookie}))).status).toBe(401);
+    expect((await gateway.session(request("/api/auth/session","GET",{cookie:"__session=malformed"}))).status).toBe(401);
+    const logout=await gateway.session(request("/api/auth/session","DELETE",{cookie,"x-session-intent":"logout"}));
+    expect(logout.status).toBe(200);expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+});
+
 describe("eight-hour OIDC session renewal without business replay", () => {
   function longFixture() {
     let now = Date.now();

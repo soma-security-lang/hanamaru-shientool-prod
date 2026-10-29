@@ -109,7 +109,7 @@ export class LocalSessionGateway {
     const supplied = request.headers.get("origin");
     // Next may construct Request.url using its internal server hostname. Match
     // Host against the fixed configuration, never a client-supplied forwarded host.
-    return request.headers.get("host") === new URL(origin).host && request.headers.get("sec-fetch-site") !== "cross-site" &&
+    return [new URL(origin).host, ...(this.config.transportHosts ?? [])].includes(request.headers.get("host") ?? "") && request.headers.get("sec-fetch-site") !== "cross-site" &&
       (!supplied || supplied === origin) && (!unsafeMethods.has(request.method) || supplied === origin);
   }
   private csrf(request: Request, session: Session) {
@@ -165,6 +165,11 @@ export class LocalSessionGateway {
   async session(request: Request, sso?: Session["sso"]): Promise<Response> {
     if (!this.allowedOrigin(request)) return this.fail(403, "ORIGIN_REJECTED");
     if (!["GET", "POST", "DELETE"].includes(request.method)) return this.fail(405, "METHOD_NOT_ALLOWED");
+    if (this.config.explicitSessionBootstrap && request.method === "DELETE" && request.headers.get("x-session-intent") === "logout") {
+      const key = this.key(request);
+      if (key) await this.store.remove(key);
+      return this.reply(200, { authenticated: false }, this.cookie("", true));
+    }
     const current = request.method === "GET" ? await this.validated(request) : { ...await this.current(request), viewer: undefined, response: undefined };
     if (current.response) return current.response;
     const old = current.session;
@@ -173,6 +178,11 @@ export class LocalSessionGateway {
         return this.reply(200, { authenticated: true, csrfToken: old.csrf, viewer: current.viewer, expiresAt: old.expiresAt });
       }
       if (old) return this.reply(200, { authenticated: false, csrfToken: old.csrf });
+      if (this.config.explicitSessionBootstrap) {
+        // An expired SSO Cookie must never silently restore a Google identity.
+        return (request.headers.get("cookie") ?? "").split(";").some(part => part.trim().startsWith("__session="))
+          ? this.fail(401, "SESSION_EXPIRED") : this.reply(200, { authenticated: false });
+      }
       const fresh = this.issue();
       if (!await this.store.create(digest(fresh.id), fresh.session)) return this.fail(429, "SESSION_CAPACITY");
       return this.reply(200, { authenticated: false, csrfToken: fresh.session.csrf }, this.cookie(fresh.id));
@@ -195,6 +205,29 @@ export class LocalSessionGateway {
     const fresh = this.issue({ credential, organizationId, membershipId: checked.viewer!.id, expiresAt, ...(sso ? { sso } : {}) });
     if (!await this.store.replace(current.key!, current.version, digest(fresh.id), fresh.session)) return this.fail(409, "SESSION_CHANGED");
     return this.reply(200, { authenticated: true, csrfToken: fresh.session.csrf, viewer: checked.viewer, expiresAt }, this.cookie(fresh.id, false, Math.max(1, Math.floor((expiresAt - this.now()) / 1000))));
+  }
+
+  /** Only an explicit same-origin login action may restart an expired flow. */
+  async restart(request: Request): Promise<Response> {
+    if (request.method !== "POST" || !this.allowedOrigin(request) || request.headers.get("x-session-intent") !== "login")
+      return this.fail(403, "ORIGIN_REJECTED");
+    const key = this.key(request);
+    if (key) await this.store.remove(key);
+    const fresh = this.issue();
+    if (!await this.store.create(digest(fresh.id), fresh.session)) return this.fail(429, "SESSION_CAPACITY");
+    return this.reply(200, { authenticated: false, csrfToken: fresh.session.csrf }, this.cookie(fresh.id));
+  }
+
+  /** Drive consent must belong to the currently authenticated product member. */
+  async verifyGoogleIdentity(request: Request): Promise<Response> {
+    if (request.method !== "POST" || !this.allowedOrigin(request)) return this.fail(403, "ORIGIN_REJECTED");
+    const current = await this.validated(request);
+    if (current.response) return current.response;
+    if (!current.session?.credential || !current.viewer || !this.csrf(request, current.session)) return this.fail(403, "CSRF_REJECTED");
+    const credential = request.headers.get("authorization") ?? "";
+    if (!/^Bearer [^\s]{1,8192}$/i.test(credential)) return this.fail(400, "INVALID_CREDENTIAL_REQUEST");
+    const checked = await this.identity(credential, current.session.organizationId);
+    return checked.viewer?.id === current.viewer.id ? this.reply(200, { verified: true }) : this.fail(403, "IDENTITY_CHANGED");
   }
 
   async forward(request: Request): Promise<Response> {

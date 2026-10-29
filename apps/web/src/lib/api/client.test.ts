@@ -99,3 +99,34 @@ describe("Identity Platform bearer contract",()=>{
     await expect(client.request("/extractions/extraction-1/confirm",{method:"POST",body:"{}"})).rejects.toEqual(expect.objectContaining({status:422,code:"VALIDATION_FAILED",requestId:"request-1",fieldErrors:[{field:"appraisalItems",message:"値が必要です"}]}));
   });
 });
+
+describe("production SSO and legacy Google coexistence",()=>{
+  it("keeps an expired SSO session from silently falling back to Google",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(false);
+    vi.spyOn(runtime,"runtimeSessionAvailable").mockReturnValue(true);
+    const bearer=vi.fn().mockResolvedValue("another-google-user");
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValue(Response.json({error:{code:"SESSION_EXPIRED"}},{status:401}));
+    await expect(new ApiClient("/api/v1",bearer).request("/expense-days",{method:"POST",body:"{}"})).rejects.toMatchObject({status:401,code:"SESSION_EXPIRED"});
+    expect(send).toHaveBeenCalledTimes(1);expect(bearer).not.toHaveBeenCalled();
+  });
+  it("retains Google bearer for an explicitly unlinked, cookie-free user",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(false);
+    vi.spyOn(runtime,"runtimeSessionAvailable").mockReturnValue(true);
+    const bearer=vi.fn().mockResolvedValue("synthetic-google-token");
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(Response.json({authenticated:false}))
+      .mockResolvedValueOnce(Response.json({saved:true}));
+    await expect(new ApiClient("/api/v1",bearer).request("/expense-days",{method:"POST",body:"{}"})).resolves.toEqual({saved:true});
+    expect(new Headers(send.mock.calls[1]![1]!.headers).get("authorization")).toBe("Bearer synthetic-google-token");
+    expect(send.mock.calls[1]![1]!.credentials).toBe("omit");
+  });
+  it("uses one session check and CSRF for an authenticated SSO write",async()=>{
+    vi.spyOn(runtime,"runtimeLocalSession").mockReturnValue(false);
+    vi.spyOn(runtime,"runtimeSessionAvailable").mockReturnValue(true);
+    const bearer=vi.fn();
+    const send=vi.spyOn(globalThis,"fetch").mockResolvedValueOnce(Response.json({authenticated:true,csrfToken:"synthetic"}))
+      .mockResolvedValueOnce(Response.json({saved:true}));
+    await expect(new ApiClient("/api/v1",bearer).request("/expense-days",{method:"POST",body:"{}"})).resolves.toEqual({saved:true});
+    expect(send).toHaveBeenCalledTimes(2);expect(bearer).not.toHaveBeenCalled();
+    expect(new Headers(send.mock.calls[1]![1]!.headers).get("x-csrf-token")).toBe("synthetic");
+  });
+});

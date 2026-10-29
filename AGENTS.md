@@ -20,5 +20,6 @@
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:db`、`pnpm build`、`pnpm test:e2e`を成功させる。
 - 通常経路はIdentity Platformの短命ID tokenをBearer送信し、APIがtoken検証とmembership/RBAC判定を行う。勤怠基準移行のCookie/CSRF PoCはローカル専用・既定OFFで併存し、Cloud Runでは起動不可とする。固定Hosting、永続store、失効・認可のゲート合格前に通常認証を切り替えない。
 - state-changing APIは認可、冪等性、楽観ロック、監査を通す。本文、token、署名URL、provider raw errorをlogへ出さない。
+- 本番対応は `docs/adr/2026-10-29-production-alignment.md` の別設定経路で進める。旧ローカルPoCの制限は維持する。本番経路も既定OFFとし、明示したStage・鍵・永続DB・失効・認可・復旧のゲート合格前に有効化しない。既存Google Bearer互換と共通SSO Cookieを区別する。
 - semantic HTML、keyboard操作、focus管理、44px以上の操作領域、reduced motion/transparency/contrastを守る。
 - SCR-019とSCR-020は既定feature flag無効とし、開発用prototype modeからのみ確認可能にする。

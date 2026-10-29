@@ -3,6 +3,8 @@ export interface ForwarderConfig {
   upstream: string;
   publicOrigin: string;
   allowLocal: boolean;
+  transportHosts?: readonly string[];
+  explicitSessionBootstrap?: boolean;
 }
 
 const noStore = "private, no-store";

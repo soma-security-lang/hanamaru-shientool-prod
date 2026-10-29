@@ -18,15 +18,22 @@ export class ServerSso {
   private client?: Promise<oidc.Configuration>;
   constructor(private readonly issuer: string, private readonly origin: string,
     private readonly store: SessionStore, private readonly gateway: LocalSessionGateway, private readonly longSessions = false,
-    private readonly diagnostic?: (stage: string, code: string) => void) {
-    if (process.env.K_SERVICE !== undefined || [issuer, origin].some(value => {
+    private readonly diagnostic?: (stage: string, code: string) => void,
+    private readonly production?: { transportHosts: readonly string[] }) {
+    if (production) {
+      if (process.env.NODE_ENV !== "production" || !/^hanamaru-(?:pilot-web|pilot-stage-web|alignment-stage-web)$/.test(process.env.K_SERVICE ?? "") ||
+          process.env.HANAMARU_PRODUCTION_SESSION !== "true" || process.env.HANAMARU_SERVER_SSO !== "true" ||
+          !longSessions || [issuer, origin].some(value => { const url = new URL(value); return url.protocol !== "https:" || value !== url.origin; }))
+        throw new Error("PRODUCTION_SSO_CONFIGURATION_REQUIRED");
+    } else if (process.env.K_SERVICE !== undefined || [issuer, origin].some(value => {
       const url = new URL(value); return url.protocol !== "http:" || url.hostname !== "127.0.0.1" || value !== url.origin;
     })) throw new Error("LOCAL_SSO_ONLY");
     if (longSessions) gateway.setSsoRenewal(session => this.renew(session));
   }
   private configuration() {
     return this.client ??= (async () => {
-      const config = await oidc.discovery(new URL(this.issuer), "sso-hanamaru", { token_endpoint_auth_method: "none" }, oidc.None(), { execute: [oidc.allowInsecureRequests] });
+      const config = await oidc.discovery(new URL(this.issuer), "sso-hanamaru", { token_endpoint_auth_method: "none" }, oidc.None(),
+        this.production ? undefined : { execute: [oidc.allowInsecureRequests] });
       const metadata = config.serverMetadata();
       for (const endpoint of [metadata.authorization_endpoint, metadata.token_endpoint, metadata.jwks_uri])
         if (!endpoint || new URL(endpoint).origin !== this.issuer) throw new Error("OIDC_ENDPOINT_REJECTED");
@@ -37,7 +44,8 @@ export class ServerSso {
   }
   private failure() { return Response.json({ error: { code: "SSO_RESTART_REQUIRED" } }, { status: 401, headers: { "cache-control": "private, no-store" } }); }
   async start(request: Request) {
-    if (request.method !== "POST" || request.headers.get("origin") !== this.origin || request.headers.get("host") !== new URL(this.origin).host) return this.failure();
+    if (request.method !== "POST" || request.headers.get("origin") !== this.origin ||
+      ![new URL(this.origin).host, ...(this.production?.transportHosts ?? [])].includes(request.headers.get("host") ?? "")) return this.failure();
     const owner = cookieKey(request), session = owner ? await this.store.get(owner) : null;
     if (!owner || !session || request.headers.get("x-csrf-token") !== session.value.csrf) return this.failure();
     const state = oidc.randomState(), verifier = oidc.randomPKCECodeVerifier(), nonce = oidc.randomNonce();
@@ -51,7 +59,7 @@ export class ServerSso {
   }
   async callback(request: Request) {
     try {
-      if (request.headers.get("host") !== new URL(this.origin).host) return this.failure();
+      if (request.method !== "GET" || ![new URL(this.origin).host, ...(this.production?.transportHosts ?? [])].includes(request.headers.get("host") ?? "")) return this.failure();
       const url = new URL(new URL(request.url).pathname + new URL(request.url).search, this.origin);
       const state = url.searchParams.get("state");
       if (!state || url.searchParams.getAll("state").length !== 1) return this.failure();

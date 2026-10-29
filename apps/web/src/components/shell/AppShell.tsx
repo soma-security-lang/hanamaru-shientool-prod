@@ -105,6 +105,8 @@ function MobileMoreMenu({pathname,open,onClose,onLogout,showBusiness,showExpense
 export function AppShell({ children, pathname, role,roles,displayName,organizationName,branchName,featureFlags={} }: { children: ReactNode; pathname: string; role: Role;roles:Role[];displayName?:string;organizationName?:string;branchName?:string;featureFlags?:Record<string,boolean> }) {
   const router=useRouter();
   const [moreOpen,setMoreOpen]=useState(false);
+  const [logoutError,setLogoutError]=useState<string|null>(null);
+  const [loggingOut,setLoggingOut]=useState(false);
   const systemAdminAccount=roles.includes("system_admin");
   const showAdmin = roles.some(value=>value === "manager" || value === "system_admin" || value === "content_approver");
   const adminHref = systemAdminAccount ? "/admin/operations" : roles.includes("manager") ? "/admin/contents" : roles.includes("content_approver") ? "/admin/approvals" : "/admin/operations";
@@ -121,7 +123,13 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
       ...(featureFlags.market_price_search?[{href:"/market-price",label:"買取相場",icon:Scale}]:[]),
       {href:"/reviews",label:"振り返り",icon:MessageSquareText},
     ];
-  async function leave(){clearCommonAccessToken();try{const {logout}=await import("@/lib/auth/google");await logout();}catch{/* 移動後に再認証を要求する */}window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/login");router.refresh();}
+  async function leave(){
+    if(loggingOut)return;
+    setLoggingOut(true);setLogoutError(null);
+    try{const {logout}=await import("@/lib/auth/google");await logout();clearCommonAccessToken();window.dispatchEvent(new Event("hanamaru:auth-changed"));router.replace("/login");router.refresh();}
+    catch{setLogoutError("ログアウトを完了できませんでした。接続を確認し、もう一度ログアウトしてください。");}
+    finally{setLoggingOut(false);}
+  }
   return (
     <div className={styles.frame}>
       <a className={styles.skip} href="#main-content">本文へ移動</a>
@@ -150,7 +158,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
             <button className={styles.profile} onClick={leave} title="ログアウト"><span><strong>{displayName??roleLabels[role]}</strong></span><UserRound size={20} aria-hidden="true" /></button>
           </div>
         </header>
-        <main className={styles.main} id="main-content" tabIndex={-1}>{children}</main>
+        <main className={styles.main} id="main-content" tabIndex={-1}>{logoutError?<p role="alert">{logoutError}</p>:null}{children}</main>
       </div>
       <nav className={styles.bottomNav} data-count={mobileNavigation.length+1} aria-label="モバイルナビゲーション">
         {mobileNavigation.map(({ href, label, icon: Icon }) => <Link data-tone={navigationTone(href)} data-active={isActive(pathname, href)} aria-current={isActive(pathname, href)?"page":undefined} href={href} key={href}><Icon size={18} strokeWidth={1.6} aria-hidden="true" /><span>{label}</span></Link>)}

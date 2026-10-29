@@ -65,3 +65,15 @@
 ## 現在の結果
 
 E2E-01／02は `playwright.alignment.config.ts` の実Next＋合成upstreamで3件合格。E2E-03の全業務fixtureはChrome／WebKitで35合格・画像生成の重複回避1skip、89画像、21画面×8幅を完了。容量制限によりtraceだけOFF、ログ・JSON・画像・判定条件は維持。実Google認証・外部AI・本番DBの合格とは分離する。詳細は [検証記録](adr/2026-10-23-alignment-test-results.md)。
+# 追加：本番対応の段階公開検証（2026-10-29）
+
+対象は `docs/adr/2026-10-29-production-alignment.md` の PROD-01〜08。今回SHAのCIで `pnpm test:e2e:offline`、総務の同時固定SHAから `CROSS_PRODUCT_ALIGNMENT=true node e2e/cross-product/run.mjs` を実行する。最新勤怠mainを固定し、古い10月23日の横断合格を今回の合格として使わない。
+
+- E2E-PROD-01：既存Googleと既存画面・APIの回帰。fixtureのみ、実利用者情報・外部送信なし。
+- E2E-PROD-02：共通ログイン→勤怠→買取→総務→勤怠、製品内認可、製品logoutと共通logout。Chromium／WebKit。
+- E2E-PROD-03：SSO期限切れ時にGoogleへ自動fallbackしない、logout通信失敗の明示、再試行。
+- E2E-PROD-04：360／390／430／834／1440px、keyboard・200%・axe serious/critical 0。既存画面の本文16px・補足13px・44px操作を維持。
+- Stage-PROD-01：独立DB・合成データ・同一digest、Hosting相当の入口でCookie／callback／保存を確認。既存の別セッション用 `sso-review-*` 環境を上書きしない。
+- PROD-ACCEPT-01：固定3URL、実Google・停止／権限・保存再表示・Job、通常traffic read-back。実利用者データの変更は禁止。
+
+ローカルの64重点unit・隔離DB契約の合格はブラウザ合格とは数えない。今回のCI・Stage・本番E2Eは未実行。失敗・skip・起動不能は未完了として残す。生成画像・認証state・ログはGit対象外。

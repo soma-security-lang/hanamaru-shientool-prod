@@ -10,7 +10,7 @@
 
 | 項目 | 確認結果 | 判断 |
 | --- | --- | --- |
-| GCP認証 | `ext.s.ri@2ndvillage.co.jp` のaccess-token取得が成功（値は非表示） | 認証切れが停止理由ではない |
+| GCP認証 | 承認済みの運用アカウントのaccess-token取得が成功（値・個人識別子は非収録） | 認証切れが停止理由ではない |
 | CLI既定project | `legalassistai-dev` | GCP操作は必ず対象project `monocle-503402` とregionを明示する。既定値は変更しない |
 | 買取origin/main | `09d6fb1432e85a8bebd5342df078c2baba18e6ad` | 専用worktreeの基点と一致 |
 | 総務origin/main | `204a4791a7f1abf7d726a0e89a58e816d6156cd4` | 専用worktreeの基点と一致 |

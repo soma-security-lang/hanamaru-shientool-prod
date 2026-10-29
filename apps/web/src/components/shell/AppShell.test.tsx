@@ -3,8 +3,17 @@ import {afterEach,describe,expect,it,vi} from "vitest";
 import {AppShell} from "./AppShell";
 
 vi.mock("next/navigation",()=>({useRouter:()=>({replace:vi.fn(),refresh:vi.fn(),back:vi.fn(),push:vi.fn()})}));
+vi.mock("@/lib/auth/google",()=>({logout:vi.fn()}));
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+
+it("shows a retryable error when server logout fails instead of hiding the failure",async()=>{
+  const {logout}=await import("@/lib/auth/google");
+  vi.mocked(logout).mockRejectedValueOnce(new Error("unavailable"));
+  render(<AppShell pathname="/" role="assessor" roles={["assessor"]}><h1>ホーム</h1></AppShell>);
+  fireEvent.click(screen.getByTitle("ログアウト"));
+  expect(await screen.findByRole("alert")).toHaveTextContent("ログアウトを完了できませんでした");
+});
 
 describe("system-admin navigation separation",()=>{
   it("shows only the management entry even when business roles are also assigned",()=>{

@@ -23,6 +23,8 @@ const reviewed = {
   "packages/platform/src/index.ts": "1e3a29bb91f7848ff2518b0697b8cf53ad5ee4a3dc2b3c521b593874e69005e4",
 };
 const additions = {
+  // Additive session-only schema, reviewed with dedicated-role rejection tests.
+  "packages/database/migrations/0071_runtime_sessions.sql": "872cb691ac44b4e31591a4028d954c47b8a172ee67fe1a714b44a0cdd9d80d03",
   "apps/api/src/alignment.ts": "35678c496bf73b5b2a6600ab309a4e6ca6b696f9d14cb428dd66e9e7becafb64",
   "apps/api/vitest.native.config.ts": "ec167ce13967f90ac002c2ec8acfdc1751060b3f1b29523269bb8892c759b230",
   "apps/worker/src/alignment-local.ts": "0d82ebef5eac2ad89b3ea714d256e0ed5b38dc44b8348b3e965051a9a26df359",

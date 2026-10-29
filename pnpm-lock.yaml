@@ -11,6 +11,7 @@ overrides:
   fastify@^5.12.2: 5.12.6
   qs@^6.14.2: 6.16.0
   '@prisma/config@6.19.3>deepmerge-ts': 8.0.0
+  '@firebase/firestore>re2js': 2.8.7
   '@grpc/grpc-js': 1.14.5
   sharp: 0.35.5
   source-map-js: 1.2.2
@@ -3759,9 +3760,9 @@ packages:
   rc9@2.1.2:
     resolution: {integrity: sha512-btXCnMmRIBINM2LDZoEmOogIZU7Qe7zn4BpomSKZ/ykbLObuBdvG+mFq11DL6fjH1DRwHhrlgtYWG96bJiC7Cg==}
 
-  re2js@2.8.6:
-    resolution: {integrity: sha512-xLgQil4kIUCrAzVk9fRSkxkFNwmygLFjVxXrLc65aE1F0+Zsb8rxumFBy4XKyvgMCTL6kilDq3EZ0piE2dP/Dg==}
-    engines: {node: '>=18.0.0'}
+  re2js@2.8.7:
+    resolution: {integrity: sha512-bRSL/vn3KAmlGfGNoVpcsBXLaVvl6AbuvMMWbz0m3vBj60nj+p2/biozfBUOSBP+5XTduF6mr6IO/ZVjmqqkVQ==}
+    engines: {node: '>=20.0.0'}
 
   react-dom@19.2.8:
     resolution: {integrity: sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==}
@@ -4972,7 +4973,7 @@ snapshots:
       '@firebase/webchannel-wrapper': 1.0.6
       '@grpc/grpc-js': 1.14.5
       '@grpc/proto-loader': 0.7.15
-      re2js: 2.8.6
+      re2js: 2.8.7
       tslib: 2.8.1
 
   '@firebase/functions-compat@0.4.6(@firebase/app-compat@0.5.16)(@firebase/app@0.16.0)':
@@ -8059,7 +8060,7 @@ snapshots:
       defu: 6.1.7
       destr: 2.0.5
 
-  re2js@2.8.6: {}
+  re2js@2.8.7: {}
 
   react-dom@19.2.8(react@19.2.8):
     dependencies:

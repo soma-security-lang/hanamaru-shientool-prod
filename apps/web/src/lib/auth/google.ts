@@ -16,8 +16,8 @@ import {
   type Auth,
   type UserCredential,
 } from "firebase/auth";
-import {getCommonAccessToken} from "./sso";
-import {runtimeApiBaseUrl,runtimeLocalSession} from "@/lib/runtime-config";
+import {clearCommonAccessToken,getCommonAccessToken} from "./sso";
+import {runtimeApiBaseUrl,runtimeLocalSession,runtimeSessionAvailable} from "@/lib/runtime-config";
 
 export const driveScope="https://www.googleapis.com/auth/drive.file";
 const accessTokenLifetimeMs=45*60_000;
@@ -93,7 +93,8 @@ export async function loginWithGoogleCredential(idToken:string){
 export async function completeGoogleLoginRedirect(){
   const auth=identityAuth();
   if(!auth)return false;
-  await getRedirectResult(auth);
+  const redirectResult=await getRedirectResult(auth);
+  if(runtimeSessionAvailable()&&!runtimeLocalSession()&&!redirectResult)return false;
   await auth.authStateReady();
   if(!auth.currentUser)return false;
   await establishLocalSession(await auth.currentUser.getIdToken(true));
@@ -108,7 +109,14 @@ export async function getIdentityToken(forceRefresh=false){
 
 export async function getDriveAccessToken(){
   const commonToken=getCommonAccessToken();
-  if(googleAccessToken&&googleAccessToken.expiresAt>Date.now()&&(!commonToken||driveVerifiedSsoToken===commonToken))return googleAccessToken.value;
+  let serverSession:{authenticated?:boolean;csrfToken?:string}|undefined;
+  if(runtimeSessionAvailable()&&!runtimeLocalSession()){
+    const response=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});
+    if(!response.ok)throw new Error("現在の利用者を確認してからGoogle Driveへ接続してください");
+    serverSession=await response.json();
+  }
+  const binding=serverSession?.authenticated?serverSession.csrfToken:commonToken;
+  if(googleAccessToken&&googleAccessToken.expiresAt>Date.now()&&(!binding||driveVerifiedSsoToken===binding))return googleAccessToken.value;
   const auth=await readyAuth();
   if(!auth)throw new Error("Google Driveの認証設定がありません");
   const result=auth.currentUser
@@ -116,6 +124,12 @@ export async function getDriveAccessToken(){
     : await signInWithPopup(auth,driveProvider());
   rememberGoogleAccessToken(result);
   if(!googleAccessToken)throw new Error("Google Driveの認可を確認できませんでした");
+  if(serverSession?.authenticated){
+    const response=await fetch("/api/auth/google/verify",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{
+      authorization:`Bearer ${await result.user.getIdToken(true)}`,"x-csrf-token":serverSession.csrfToken??""}});
+    if(!response.ok){googleAccessToken=null;driveVerifiedSsoToken=null;throw new Error("共通IDとGoogle Driveの利用者が一致しません");}
+    driveVerifiedSsoToken=serverSession.csrfToken??null;
+  }
   if(commonToken){
     const googleIdToken=await result.user.getIdToken(true);
     const base=runtimeApiBaseUrl();
@@ -134,7 +148,10 @@ export async function getDriveAccessToken(){
 }
 
 export async function logout(){
-  if(runtimeLocalSession()) {
+  if(runtimeSessionAvailable()&&!runtimeLocalSession()){
+    const response=await fetch("/api/auth/session",{method:"DELETE",credentials:"same-origin",headers:{"x-session-intent":"logout"}});
+    if(!response.ok)throw new Error("ログアウトを完了できませんでした");
+  }else if(runtimeLocalSession()) {
     const initial=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});
     if(!initial.ok)throw new Error("ログアウト状態を確認できませんでした");
     const session=await initial.json() as {csrfToken:string};
@@ -145,9 +162,20 @@ export async function logout(){
   driveVerifiedSsoToken=null;
   const auth=await readyAuth();
   if(auth)await signOut(auth);
+  clearCommonAccessToken();
 }
 
 async function establishLocalSession(token:string) {
+  clearCommonAccessToken();
+  if(runtimeSessionAvailable()&&!runtimeLocalSession()){
+    // Google remains an explicit legacy login, not an automatic SSO fallback.
+    const initial=await fetch("/api/auth/session/start",{method:"POST",credentials:"same-origin",cache:"no-store",headers:{"x-session-intent":"login"}});
+    if(!initial.ok)throw new Error("ログイン状態を準備できませんでした");
+    const session=await initial.json() as {csrfToken:string};
+    const cleared=await fetch("/api/auth/session",{method:"DELETE",credentials:"same-origin",headers:{"x-csrf-token":session.csrfToken}});
+    if(!cleared.ok)throw new Error("ログイン経路を切り替えられませんでした");
+    return;
+  }
   if(!runtimeLocalSession())return;
   const initial=await fetch("/api/auth/session",{credentials:"same-origin",cache:"no-store"});
   if(!initial.ok)throw new Error("ログイン状態を準備できませんでした");

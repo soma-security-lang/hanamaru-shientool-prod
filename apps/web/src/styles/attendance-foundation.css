@@ -1,0 +1,22 @@
+/* Attendance-alignment contract v1. Product layouts and semantic colours remain. */
+:root {
+  --ui-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+  --ui-font-body: 1rem;
+  --ui-font-meta: .8125rem;
+  --ui-line-body: 1.7;
+  --ui-control-min: 44px;
+  --ui-space-unit: 4px;
+}
+html body {
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-font-body);
+  line-height: var(--ui-line-body);
+  letter-spacing: 0;
+}
+@layer base {
+  button, input, select, textarea { min-height: var(--ui-control-min); }
+  input, select, textarea { font-size: var(--ui-font-body); }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, input, select, textarea) { transition-duration: .01ms; }
+}

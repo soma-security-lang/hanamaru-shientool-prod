@@ -1,7 +1,7 @@
 "use client";
 
 import * as oidc from "openid-client";
-import { runtimeSsoIssuer, runtimeLocalSession } from "@/lib/runtime-config";
+import { runtimeSsoIssuer, runtimeLocalSession, runtimeSessionAvailable } from "@/lib/runtime-config";
 
 const FLOW_KEY = "hanamaru.sso.flow";
 const TOKEN_KEY = "hanamaru.sso.access";
@@ -43,8 +43,11 @@ export function commonLoginConfigured(): boolean {
 }
 
 export async function beginCommonLogin(returnTo = "/"): Promise<void> {
-  if (runtimeLocalSession()) {
-    const initial = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
+  if (runtimeSessionAvailable()) {
+    clearCommonAccessToken();
+    const initial = runtimeLocalSession()
+      ? await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" })
+      : await fetch("/api/auth/session/start", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "x-session-intent": "login" } });
     if (!initial.ok) throw new Error("ログイン状態を準備できませんでした");
     const session = await initial.json() as { csrfToken: string };
     const response = await fetch(`/api/auth/sso/start?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`, {

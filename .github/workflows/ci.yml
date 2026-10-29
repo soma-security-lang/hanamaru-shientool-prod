@@ -2,7 +2,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/attendance-stack-*']
 permissions:
   contents: read
 concurrency:
@@ -28,6 +28,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:quality-gate
+      - run: pnpm test:manual-alignment
       - name: PostgreSQL 16 integration and migration checksum
         run: |
           sudo apt-get update
@@ -35,6 +36,8 @@ jobs:
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
           pnpm test:db
       - run: pnpm test:db:roles
+      - name: Native API, Prisma and persistent-session contracts
+        run: ALIGNMENT_FULL_CONTRACTS=true pnpm test:alignment
       - run: pnpm build
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.9.8 }

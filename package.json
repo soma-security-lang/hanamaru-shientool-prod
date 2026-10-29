@@ -18,6 +18,7 @@
     "typecheck:scripts": "pnpm --filter @hanamaru/platform build && pnpm --filter @hanamaru/market-price build && tsc --allowJs --checkJs --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --types node scripts/live-google-e2e.mjs scripts/live-product-auth-e2e.mjs scripts/live-delete-race-e2e.mjs scripts/mint-live-e2e-identity.mjs scripts/local-market-price-connected-smoke.mjs",
     "test": "pnpm build:packages && pnpm --filter @hanamaru/api build && pnpm test:release-guard && pnpm -r --if-present test",
     "test:alignment": "bash scripts/test-alignment-local.sh",
+    "test:manual-alignment": "node --test scripts/manual-alignment-policy.test.mjs",
     "test:release-guard": "bash scripts/release-guard.test.sh",
     "test:workflows": "bash scripts/check-workflows.sh",
     "test:db": "bash scripts/test-postgres.sh",
