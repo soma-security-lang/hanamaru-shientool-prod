@@ -417,6 +417,19 @@ test("all 21 API-backed screens render and remain free of serious accessibility 
   }
 });
 
+test("tablet icon rail keeps named destinations and serious accessibility violations at zero",async({page})=>{
+  test.setTimeout(120_000);
+  await page.setViewportSize({width:834,height:1000});
+  for(const path of ["/visits","/knowledge/talks","/training/roleplay","/admin/users"]){
+    await page.goto(`${webBase}${path}`);await waitForResolvedScreen(page,path);
+    await expect(page.locator("main h1")).toBeVisible();
+    const sidebar=page.getByRole("complementary",{name:"メインナビゲーション"});
+    for(const link of await sidebar.getByRole("link").all())await expect(link).toHaveAccessibleName(/\S/);
+    const result=await new AxeBuilder({page}).analyze();
+    expect(result.violations.filter(item=>item.impact==="serious"||item.impact==="critical"),path).toEqual([]);
+  }
+});
+
 test("PDF registration reaches confirmed visit preparation through API, worker and PostgreSQL",async({page})=>{
   test.setTimeout(120_000);await page.goto(`${webBase}/visits`);await page.getByRole("link",{name:"PDFから訪問を登録"}).click();
   await page.locator('input[type="file"]').setInputFiles({name:"offline-visit.pdf",mimeType:"application/pdf",buffer:await anonymousVisitPdf()});

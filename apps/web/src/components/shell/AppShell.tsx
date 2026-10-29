@@ -143,11 +143,11 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
           {navigation.map(({ href, label, icon: Icon }) => {
             const section=href.startsWith("/knowledge")?"knowledge":href.startsWith("/training")?"training":"";
             const children=section?secondaryNavigation[section]:undefined;
-            return <div className={styles.navGroup} key={href}><Link className={styles.navLink} data-tone={navigationTone(href)} data-active={isActive(pathname, href)} href={href} aria-current={isActive(pathname, href)&&!children ? "page" : undefined}>
+            return <div className={styles.navGroup} key={href}><Link className={styles.navLink} aria-label={label} data-tone={navigationTone(href)} data-active={isActive(pathname, href)} href={href} aria-current={isActive(pathname, href)&&!children ? "page" : undefined}>
               <Icon aria-hidden="true" size={18} strokeWidth={1.6} /><span>{label}</span>
-            </Link>{children?<nav className={styles.secondaryNav} aria-label={`${label}の機能`}>{children.map(item=><Link href={item.href} key={item.href} aria-current={pathname===item.href?"page":undefined} data-active={pathname===item.href}><BookOpen aria-hidden="true" size={18} strokeWidth={1.6}/><span>{item.label}</span></Link>)}</nav>:null}</div>;
+            </Link>{children?<nav className={styles.secondaryNav} aria-label={`${label}の機能`}>{children.map(item=><Link href={item.href} aria-label={item.label} key={item.href} aria-current={pathname===item.href?"page":undefined} data-active={pathname===item.href}><BookOpen aria-hidden="true" size={18} strokeWidth={1.6}/><span>{item.label}</span></Link>)}</nav>:null}</div>;
           })}
-          {showAdmin ? <Link className={styles.navLink} data-tone={navigationTone(adminHref)} data-active={pathname.startsWith("/admin")} aria-current={pathname===adminHref?"page":pathname.startsWith("/admin")?"location":undefined} href={adminHref}><ShieldCheck aria-hidden="true" size={18} strokeWidth={1.6} /><span>管理</span></Link> : null}
+          {showAdmin ? <Link className={styles.navLink} aria-label="管理" data-tone={navigationTone(adminHref)} data-active={pathname.startsWith("/admin")} aria-current={pathname===adminHref?"page":pathname.startsWith("/admin")?"location":undefined} href={adminHref}><ShieldCheck aria-hidden="true" size={18} strokeWidth={1.6} /><span>管理</span></Link> : null}
         </nav>
       </aside>
       <div className={styles.workspace}>

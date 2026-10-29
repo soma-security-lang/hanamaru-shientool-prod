@@ -7,6 +7,18 @@ vi.mock("@/lib/auth/google",()=>({logout:vi.fn()}));
 
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 
+it("keeps sidebar destinations named when the tablet rail hides visible text",()=>{
+  const {container}=render(<AppShell pathname="/visits" role="manager" roles={["manager"]} featureFlags={{market_price_search:true,expense_settlement:true,purchase_results:true,purchase_performance:true}}><h1>訪問支援</h1></AppShell>);
+  const sidebar=container.querySelector('aside[aria-label="メインナビゲーション"]')!;
+  const links=within(sidebar as HTMLElement).getAllByRole("link");
+  expect(links.length).toBeGreaterThan(10);
+  for(const link of links){
+    expect(link.getAttribute("aria-label")).toBeTruthy();
+    for(const text of link.querySelectorAll("span"))text.setAttribute("hidden","");
+    expect(link).toHaveAccessibleName(link.getAttribute("aria-label")!);
+  }
+});
+
 it("shows a retryable error when server logout fails instead of hiding the failure",async()=>{
   const {logout}=await import("@/lib/auth/google");
   vi.mocked(logout).mockRejectedValueOnce(new Error("unavailable"));
