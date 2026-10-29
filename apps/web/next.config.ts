@@ -11,7 +11,8 @@ const localLowDisk = process.env.HANAMARU_ALIGNMENT_LOW_DISK === "true" && proce
 
 const nextConfig: NextConfig = {
   // Existing Node-only business/provider modules must not be browser-bundled.
-  serverExternalPackages: ["@hanamaru/api", "@hanamaru/alignment", "@hanamaru/database", "@hanamaru/platform"],
+  serverExternalPackages: ["@hanamaru/api", "@hanamaru/alignment", "@hanamaru/database", "@hanamaru/platform",
+    "@google-cloud/storage", "@google-cloud/tasks", "@google-cloud/speech", "@google/genai", "googleapis"],
   distDir: process.env.HANAMARU_E2E_NEXT_DIST_DIR ?? ".next",
   devIndicators: false,
   output: localLowDisk ? undefined : "standalone",

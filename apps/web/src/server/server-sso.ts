@@ -58,6 +58,7 @@ export class ServerSso {
     return Response.json({ authorizationUrl: url.toString() }, { headers: { "cache-control": "private, no-store" } });
   }
   async callback(request: Request) {
+    let stage = "callback-request";
     try {
       if (request.method !== "GET" || ![new URL(this.origin).host, ...(this.production?.transportHosts ?? [])].includes(request.headers.get("host") ?? "")) return this.failure();
       const url = new URL(new URL(request.url).pathname + new URL(request.url).search, this.origin);
@@ -68,9 +69,11 @@ export class ServerSso {
       const flow = row.value.flow;
       // Atomic consume before exchanging code: retries never exchange twice.
       if (!await this.store.replace(key, row.version, key, { csrf: "consumed", attempts: 5, expiresAt: Date.now() - 1 })) return this.failure();
+      stage = "callback-token-exchange";
       const tokens = await oidc.authorizationCodeGrant(await this.configuration(), url, {
         pkceCodeVerifier: flow.verifier, expectedState: flow.state, expectedNonce: flow.nonce, idTokenExpected: true,
       });
+      stage = "callback-claims";
       const claims = tokens.claims();
       if (!tokens.access_token || !claims?.sub) return this.failure();
       let sso: StoredSession["sso"];
@@ -78,17 +81,23 @@ export class ServerSso {
         if (!tokens.refresh_token || !tokens.expires_in || !Number.isSafeInteger(claims.auth_time) || claims.auth_time! * 1000 > Date.now() + 30_000) return this.failure();
         sso = { issuer: this.issuer, subject: claims.sub, authTime: claims.auth_time!, accessExpiresAt: Date.now() + tokens.expires_in * 1000, refreshToken: tokens.refresh_token };
       }
+      stage = "callback-session-owner";
       const initial = await this.store.get(owner);
       if (!initial) return this.failure();
+      stage = "callback-session-exchange";
       const result = await this.gateway.session(new Request(`${this.origin}/api/auth/session`, { method: "POST", headers: {
         host: new URL(this.origin).host, origin: this.origin, cookie: request.headers.get("cookie")!,
         "x-csrf-token": initial.value.csrf, authorization: `Bearer ${tokens.access_token}`,
       } }), sso);
-      if (!result.ok) return result;
+      if (!result.ok) { this.diagnostic?.(stage, `HTTP_${result.status}`); return result; }
       const cookie = result.headers.get("set-cookie");
       if (!cookie) return this.failure();
       return new Response(null, { status: 303, headers: { location: `${this.origin}${flow.returnTo}`, "set-cookie": cookie, "cache-control": "private, no-store" } });
-    } catch { return this.failure(); }
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^[A-Z_]{1,80}$/.test(error.code) ? error.code : "CALLBACK_REJECTED";
+      this.diagnostic?.(stage, code);
+      return this.failure();
+    }
   }
 
   private async active(session: StoredSession) {

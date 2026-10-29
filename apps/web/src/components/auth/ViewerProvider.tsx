@@ -25,7 +25,7 @@ interface ViewerContextValue{
 
 const ViewerContext=createContext<ViewerContextValue|undefined>(undefined);
 
-function isPublicPath(pathname:string){return pathname==="/login"||pathname==="/__prototype";}
+function isPublicPath(pathname:string){return ["/login","/__prototype","/sso/start","/sso/callback"].includes(pathname);}
 
 export function ViewerProvider({children}:{children:ReactNode}){
   const pathname=usePathname();
