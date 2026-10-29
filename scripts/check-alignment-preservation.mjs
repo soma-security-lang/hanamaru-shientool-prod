@@ -20,7 +20,7 @@ const reviewed = {
   "apps/worker/package.json": "52fc06f11393805f761953d3f29754ff6b138cc71af9b201cefa06372fe9cb6a",
   "apps/worker/Dockerfile": "b7fff340dffba153a27496e31c37869bc44e620bb7e2e29cba62beb0a54a1f60",
   "apps/worker/src/server.ts": "71dcc088ca788f21eb75f0f8fbddcde05090088c03bd99369e18e21893e5bd7f",
-  "packages/platform/package.json": "40616be5e1ab9446c3df18d537bd26d217525658205fa9087063613e159529bc",
+  "packages/platform/package.json": "ba4d8b9dcaa42aa1afbeb5f50e47471a3785d98b25c463490c7667bf30b69e21",
   "packages/platform/src/index.ts": "1e3a29bb91f7848ff2518b0697b8cf53ad5ee4a3dc2b3c521b593874e69005e4",
 };
 const additions = {
