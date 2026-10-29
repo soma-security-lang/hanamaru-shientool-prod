@@ -47,8 +47,11 @@ COPY --from=build --chown=appuser:appuser /app/apps/web/public ./apps/web/public
 # Next's standalone tracing is not the production dependency manifest for the
 # lazily constructed native API/GCP providers. Keep the complete frozen-lock
 # production graph, with workspace exports and SDK data files resolvable.
-RUN rm -rf /app/apps/web/node_modules
-COPY --from=build --chown=appuser:appuser /opt/hanamaru/web-runtime/node_modules ./apps/web/node_modules
+RUN rm -rf /app/node_modules /app/apps/web/node_modules
+# Turbopack's external paths retain the monorepo-root pnpm layout. Both the
+# traced root references and normal Web imports must use one complete graph.
+COPY --from=build --chown=appuser:appuser /opt/hanamaru/web-runtime/node_modules ./node_modules
+RUN ln -s ../../node_modules /app/apps/web/node_modules
 RUN PROVIDER_MODE=gcp GOOGLE_CLOUD_PROJECT=monocle-503402 GCP_LOCATION=asia-northeast1 \
   GCS_PRIVATE_BUCKET=synthetic-container-no-objects CLOUD_TASKS_QUEUE=synthetic-container-no-tasks \
   WORKER_TASK_URL=https://synthetic-worker.example.invalid/internal/tasks \
@@ -56,7 +59,7 @@ RUN PROVIDER_MODE=gcp GOOGLE_CLOUD_PROJECT=monocle-503402 GCP_LOCATION=asia-nort
   VERTEX_LOCATION=asia-northeast1 VERTEX_AI_MODEL=gemini-2.5-flash \
   GOOGLE_DRIVE_CLIENT_ID=synthetic-container-client GOOGLE_DRIVE_CLIENT_SECRET=synthetic-container-not-a-user-secret \
   GOOGLE_DRIVE_REDIRECT_URI=https://synthetic-container.example.invalid/api/google-drive/callback \
-  node --input-type=module -e 'import{createRequire}from"node:module";const r=createRequire("/app/apps/web/package.json");for(const name of["@hanamaru/api/alignment","@hanamaru/alignment","@hanamaru/platform"])r(name);const a=createRequire(r.resolve("@hanamaru/alignment"));const{PrismaClient}=a("@prisma/client"),{PrismaPg}=a("@prisma/adapter-pg");const p=new PrismaClient({adapter:new PrismaPg({connectionString:"postgresql://unused:unused@127.0.0.1:1/unused"})});await p.$disconnect();if(r("@hanamaru/platform").createProviders().mode!=="gcp")throw new Error("Formal GCP providers required");console.log("NATIVE_API_GCP_PRODUCTION_IMPORTS_PASS_NO_EXTERNAL_REQUESTS")'
+  node --input-type=module -e 'import{createRequire}from"node:module";const r=createRequire("/app/apps/web/package.json"),root=createRequire("/app/package.json");for(const name of["@hanamaru/api/alignment","@hanamaru/alignment","@hanamaru/platform","@google-cloud/speech","@google-cloud/storage","@google-cloud/tasks","@google/genai","googleapis"]){if(r.resolve(name)!==root.resolve(name))throw new Error("Single production graph required");r(name);await import(name)}const a=createRequire(r.resolve("@hanamaru/alignment"));const{PrismaClient}=a("@prisma/client"),{PrismaPg}=a("@prisma/adapter-pg");const p=new PrismaClient({adapter:new PrismaPg({connectionString:"postgresql://unused:unused@127.0.0.1:1/unused"})});await p.$disconnect();if(r("@hanamaru/platform").createProviders().mode!=="gcp")throw new Error("Formal GCP providers required");console.log("NATIVE_API_GCP_PRODUCTION_IMPORTS_PASS_NO_EXTERNAL_REQUESTS")'
 USER appuser
 EXPOSE 8080
 CMD ["node","apps/web/server.js"]

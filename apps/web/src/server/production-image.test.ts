@@ -7,7 +7,8 @@ describe("production native API image contract", () => {
   it("ships the frozen production graph rather than trusting standalone tracing", () => {
     expect(docker).toContain("pnpm install --frozen-lockfile --filter @hanamaru/web...");
     expect(docker).toContain("pnpm --filter @hanamaru/web deploy --prod --legacy /opt/hanamaru/web-runtime");
-    expect(docker).toContain("/opt/hanamaru/web-runtime/node_modules ./apps/web/node_modules");
+    expect(docker).toContain("/opt/hanamaru/web-runtime/node_modules ./node_modules");
+    expect(docker).toContain("ln -s ../../node_modules /app/apps/web/node_modules");
     expect(docker).toContain("USER appuser");
   });
   it("constructs formal GCP providers and resolves all native workspace exports in the final image", () => {
@@ -17,5 +18,12 @@ describe("production native API image contract", () => {
       expect(runtime).toContain(name);
     expect(runtime).toContain("NATIVE_API_GCP_PRODUCTION_IMPORTS_PASS_NO_EXTERNAL_REQUESTS");
     expect(runtime).not.toContain("PROVIDER_MODE=local");
+  });
+  it("checks root-scoped dynamic SDK imports used by compiled Turbopack externals", () => {
+    expect(docker).toContain('root=createRequire("/app/package.json")');
+    expect(docker).toContain("r.resolve(name)!==root.resolve(name)");
+    expect(docker).toContain("await import(name)");
+    for (const name of ["@google-cloud/speech", "@google-cloud/storage", "@google-cloud/tasks", "@google/genai", "googleapis"])
+      expect(docker).toContain(name);
   });
 });
