@@ -8,6 +8,7 @@ import {clearCommonAccessToken,commonAppsUrl} from "@/lib/auth/sso";
 import styles from "./AppShell.module.css";
 
 const baseNavigation = [
+  {href:"/help",label:"ヘルプ・使い方",icon:BookOpen},
   { href: "/", label: "買取支援AI", icon: Home },
   { href: "/visits", label: "訪問前チェック", icon: BriefcaseBusiness },
   { href: "/market-price", label: "買取相場", icon: Scale, featureFlag:"market_price_search" },
@@ -89,7 +90,7 @@ function MobileMoreMenu({pathname,open,onClose,onLogout,showBusiness,showExpense
   return <dialog className={styles.moreDialog} ref={ref} aria-labelledby="mobile-more-title" onCancel={event=>{event.preventDefault();onClose();}} onClick={event=>{if(event.target===event.currentTarget)onClose();}}>
     <section>
       <header><div><span>メニュー</span><h2 id="mobile-more-title">その他</h2></div><button type="button" aria-label="メニューを閉じる" onClick={onClose}><X size={22}/></button></header>
-      <nav aria-label="その他の機能">
+      <nav aria-label="その他の機能"><Link href="/help" onClick={onClose}><BookOpen size={18} aria-hidden="true"/><span><strong>ヘルプ・使い方</strong><small>操作手順・質問・困ったとき</small></span></Link>
         {showPurchase&&featureFlags.purchase_results?<Link href="/purchase-results" data-tone={navigationTone("/purchase-results")} aria-current={isActive(pathname,"/purchase-results")?"page":undefined} onClick={onClose}><BriefcaseBusiness size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>買取実績</strong><small>取引単位の登録・確認</small></span></Link>:null}
         {showPurchase&&featureFlags.purchase_performance?<Link href="/performance" data-tone={navigationTone("/performance")} aria-current={isActive(pathname,"/performance")?"page":undefined} onClick={onClose}><Scale size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>実績・ランキング</strong><small>全拠点・個人の買取実績</small></span></Link>:null}
         {showBusiness?<><Link href="/knowledge/talks" data-tone={navigationTone("/knowledge/talks")} aria-current={pathname==="/knowledge/talks"?"page":isActive(pathname,"/knowledge/talks")?"location":undefined} onClick={onClose}><BookOpen size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>現場の知識</strong><small>トーク・フロー・用語・価格・マニュアル</small></span></Link><Link href="/training/roleplay" data-tone={navigationTone("/training/roleplay")} aria-current={pathname==="/training/roleplay"?"page":isActive(pathname,"/training/roleplay")?"location":undefined} onClick={onClose}><GraduationCap size={18} strokeWidth={1.6} aria-hidden="true"/><span><strong>研修</strong><small>AIロープレ・動画ライブラリ</small></span></Link></>:null}
@@ -147,7 +148,7 @@ export function AppShell({ children, pathname, role,roles,displayName,organizati
           <div className={styles.desktopContext}><span className={styles.org}>{organizationName||"買取支援ツール"}</span>{branchName?<small>{branchName}</small>:null}</div>
           <div className={styles.actions}>
             {appSwitchUrl?<a href={appSwitchUrl} className={styles.profile}>アプリ切替</a>:null}
-            <button className={styles.profile} onClick={leave} title="ログアウト"><span><strong>{displayName??roleLabels[role]}</strong></span><UserRound size={20} aria-hidden="true" /></button>
+            <Link href="/help" aria-label="ヘルプ・使い方">ヘルプ</Link><button className={styles.profile} onClick={leave} title="ログアウト"><span><strong>{displayName??roleLabels[role]}</strong></span><UserRound size={20} aria-hidden="true" /></button>
           </div>
         </header>
         <main className={styles.main} id="main-content" tabIndex={-1}>{children}</main>

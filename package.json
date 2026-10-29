@@ -43,7 +43,8 @@
     "local:e2e:auth": "bash scripts/local-auth-e2e.sh",
     "local:e2e:google": "bash scripts/local-google-e2e.sh",
     "local:e2e:market-price:connected": "pnpm build:packages && node scripts/local-market-price-connected-smoke.mjs",
-    "local:verify": "bash scripts/local-verify.sh"
+    "local:verify": "bash scripts/local-verify.sh",
+    "help:build": "node scripts/build-help.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

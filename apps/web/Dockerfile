@@ -6,6 +6,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile --filter @hanamaru/web...
+COPY scripts/build-help.mjs scripts/build-help.mjs
+COPY docs/help docs/help
+COPY docs/help-config.json docs/help-config.json
 COPY apps/web apps/web
 COPY packages/contracts packages/contracts
 ARG NEXT_PUBLIC_API_BASE_URL

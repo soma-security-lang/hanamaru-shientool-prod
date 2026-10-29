@@ -1,0 +1,34 @@
+{
+  "name": "買取支援ツール｜華丸",
+  "examples": [
+    "買取相場を調べるには？",
+    "録音を文字起こししたい",
+    "経費を確認するには？"
+  ],
+  "product": "hanamaru",
+  "revision": "09d6fb1432e85a8bebd5342df078c2baba18e6ad",
+  "otherApps": [
+    {
+      "product": "kintai",
+      "label": "勤怠",
+      "href": "https://kintai-web-tpqjzqidwa-an.a.run.app/help",
+      "keywords": [
+        "勤怠",
+        "有給",
+        "打刻",
+        "希望休"
+      ]
+    },
+    {
+      "product": "soumu",
+      "label": "総務",
+      "href": "https://soumu-web-tpqjzqidwa-an.a.run.app/help",
+      "keywords": [
+        "総務",
+        "発注依頼",
+        "梱包材",
+        "備品"
+      ]
+    }
+  ]
+}
