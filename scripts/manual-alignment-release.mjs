@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime, validateCloudQuality } from "./manual-alignment-policy.mjs";
 
 // Separate, human-authorized release path. Standard GitHub gates are untouched.
 const [action, path] = process.argv.slice(2);
@@ -52,8 +52,16 @@ if (manifest.phase !== "foundation") {
 }
 const origin = run("git", ["remote", "get-url", "origin"]).trim();
 if (!origin.includes(target.repository)) throw new Error("Wrong source repository");
-const ci = JSON.parse(run("gh", ["api", `repos/${target.repository}/actions/runs/${manifest.ciRunId}`]));
-if (ci.head_sha !== manifest.sourceSha || ci.status !== "completed" || ci.conclusion !== "success") throw new Error("Exact source CI has not passed");
+if (manifest.quality?.provider === "cloud-build") {
+  const quality = JSON.parse(cloud(["builds", "describe", manifest.quality.buildId, `--region=${manifest.quality.region}`, "--format=json"]));
+  const workflow = run("git", ["show", `${manifest.sourceSha}:.github/workflows/${manifest.product === "soumu" ? "sso-ci.yml" : "ci.yml"}`]);
+  const config = quality.steps.map(step => Object.fromEntries(["id","name","entrypoint","args","dir","env","secretEnv","waitFor","volumes","allowFailure","allowExitCodes"].filter(key => step[key] !== undefined).map(key => [key,step[key]])));
+  validateCloudQuality(manifest, quality, createHash("sha256").update(workflow).digest("hex"),
+    createHash("sha256").update(JSON.stringify(config)).digest("hex"));
+} else {
+  const ci = JSON.parse(run("gh", ["api", `repos/${target.repository}/actions/runs/${manifest.ciRunId}`]));
+  if (ci.head_sha !== manifest.sourceSha || ci.status !== "completed" || ci.conclusion !== "success") throw new Error("Exact source CI has not passed");
+}
 const build = JSON.parse(cloud(["builds", "describe", manifest.buildId, `--region=${manifest.buildRegion}`, "--format=json"]));
 const sourceKey = manifest.product === "soumu" ? "_RELEASE_SHA" : "_GIT_SHA";
 if (build.status !== "SUCCESS" || build.substitutions?.[sourceKey] !== manifest.sourceSha ||

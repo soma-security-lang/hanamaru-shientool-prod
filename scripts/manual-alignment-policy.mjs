@@ -20,7 +20,11 @@ export function validateManualManifest(value, { forRollback = false } = {}) {
   const expected = `asia-northeast1-docker.pkg.dev/monocle-503402/${target.registry}@sha256:`;
   require(typeof value.image === "string" && value.image.startsWith(expected) && digest.test(value.image.slice(expected.length)), "A product-scoped immutable image is required");
   require(/^[a-f0-9-]{36}$/.test(value.buildId ?? "") && ["asia-northeast1", "global"].includes(value.buildRegion), "Cloud Build evidence required");
-  require(Number.isSafeInteger(value.ciRunId) && value.ciRunId > 0, "A completed CI run is required");
+  if (value.quality?.provider === "cloud-build") {
+    require(/^[a-f0-9-]{36}$/.test(value.quality.buildId ?? "") && value.quality.region === "asia-northeast1" &&
+      digest.test(value.quality.workflowSha256 ?? "") && digest.test(value.quality.configSha256 ?? "") &&
+      value.quality.approvalScope === "github-no-additional-billing-20261030", "Pinned audited Cloud Build quality evidence required");
+  } else require(!value.quality && Number.isSafeInteger(value.ciRunId) && value.ciRunId > 0, "A completed CI run is required");
   require(value.approvalScope === "attendance-stack-20261029" && typeof value.approvalRecord === "string" && value.approvalRecord.length >= 10, "Task-specific approval record required");
   require(sha.test(value.stage?.sourceSha ?? "") && value.stage.sourceSha === value.sourceSha &&
     value.stage.image === value.image && value.stage.status === "PASS" && value.stage.failed === 0 &&
@@ -37,6 +41,26 @@ export function validateManualManifest(value, { forRollback = false } = {}) {
   require(Number.isFinite(Date.parse(value.expiresAt)) && (forRollback || (Date.parse(value.expiresAt) > Date.now() &&
     Date.parse(value.expiresAt) - Date.now() <= 24 * 3600_000)), "Release evidence must be current");
   return target;
+}
+
+/** Only the separately reviewed no-additional-GitHub-billing pipeline qualifies.
+ * The config hash binds the actual executed commands, not a summary PASS flag.
+ * The operator reviews that immutable config against the source workflow.
+ */
+export function validateCloudQuality(manifest, build, actualWorkflowHash, actualConfigHash) {
+  const quality = manifest.quality;
+  const source = build.substitutions?._RELEASE_SHA ?? build.substitutions?._GIT_SHA;
+  const requiredSteps = manifest.product === "hanamaru" ? ["workflow-verify"] :
+    ["quality-db-infra-private-checkout-cross-product", "original-sso-container-runtime"];
+  require(quality?.provider === "cloud-build" && build.id === quality.buildId && build.status === "SUCCESS" &&
+    source === manifest.sourceSha && build.substitutions?._WORKFLOW_SHA256 === quality.workflowSha256 &&
+    quality.workflowSha256 === actualWorkflowHash && quality.configSha256 === actualConfigHash &&
+    Array.isArray(build.steps) && build.steps.length > 0 && build.steps.every(step => step.status === "SUCCESS") &&
+    requiredSteps.every(id => build.steps.some(step => step.id === id)) &&
+    build.sourceProvenance?.resolvedStorageSource?.bucket &&
+    build.sourceProvenance.resolvedStorageSource.object &&
+    /^[1-9][0-9]*$/.test(String(build.sourceProvenance.resolvedStorageSource.generation ?? "")),
+  "Exact workflow/source/config Cloud Build quality has not passed");
 }
 
 export function validateDatabaseReceipt(manifest, receipt) {
