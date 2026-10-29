@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync,mkdirSync} from 'node:fs';import {fileURLToPath} from 'node:url';
 const repo=fileURLToPath(new URL('../../../',import.meta.url));
-const session=JSON.parse(readFileSync('/tmp/monocle-help-20261029/hanamaru-stack/session.json','utf8'));
+const session=JSON.parse(readFileSync(process.env.HELP_SESSION!,'utf8'));
 test.describe.configure({mode:'serial'});
 test.beforeEach(async({context})=>{await context.route(`${session.api}/**`,route=>route.continue({headers:{...route.request().headers(),'x-dev-role':'assessor'}}));});
 test('HELP-01 articles, search, responsive views and registered screen',async({page})=>{
