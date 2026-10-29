@@ -29,13 +29,30 @@ export function validateManualManifest(value, { forRollback = false } = {}) {
     value.stage.evidenceFile.startsWith(".artifacts/"), "Matching, completed Stage evidence required");
   if (value.phase !== "foundation") require(value.database?.compatible === true &&
     value.database.backupStatus === "SUCCESSFUL" && value.database.restoreVerified === true &&
-    digest.test(value.database.evidenceHash ?? ""), "Database compatibility and recovery evidence required");
+    digest.test(value.database.evidenceHash ?? "") && typeof value.database.evidenceFile === "string" &&
+    value.database.evidenceFile.startsWith(".artifacts/"), "Database compatibility and recovery evidence required");
   require(Array.isArray(value.rollbackTraffic) && value.rollbackTraffic.length > 0 &&
     value.rollbackTraffic.every(row => new RegExp(`^${target.service}-[a-z0-9-]+$`).test(row.revision) && Number.isInteger(row.percent) && row.percent > 0) &&
     value.rollbackTraffic.reduce((sum, row) => sum + row.percent, 0) === 100, "Exact prior traffic required");
   require(Number.isFinite(Date.parse(value.expiresAt)) && (forRollback || (Date.parse(value.expiresAt) > Date.now() &&
     Date.parse(value.expiresAt) - Date.now() <= 24 * 3600_000)), "Release evidence must be current");
   return target;
+}
+
+export function validateDatabaseReceipt(manifest, receipt) {
+  const checks = ["ids", "rowCounts", "amounts", "timestamps", "nulls", "audit", "evidenceReferences",
+    "newWriteOldRead", "oldWriteNewRead", "rls", "runtimeRoleIsolation", "restoreReadBack"];
+  const instance = manifest.product === "hanamaru" ? "hanamaru-pilot-postgres" : "soumu";
+  require(receipt?.environment === "stage" && receipt.product === manifest.product &&
+    receipt.sourceSha === manifest.sourceSha && receipt.image === manifest.image &&
+    receipt.status === "PASS" && receipt.failed === 0 && receipt.skipped === 0 &&
+    Number.isSafeInteger(receipt.passed) && receipt.passed > 0 &&
+    receipt.migrationMode === "existing-sql-only" && checks.every(key => receipt.checks?.[key] === true) &&
+    receipt.backup?.instance === instance && /^[1-9][0-9]*$/.test(String(receipt.backup?.id ?? "")) &&
+    receipt.backup.status === "SUCCESSFUL" && receipt.restore?.verified === true &&
+    typeof receipt.restore.instance === "string" && receipt.restore.instance.startsWith("alignment-restore-") &&
+    receipt.restore.instance !== instance && typeof receipt.restore.operationId === "string" &&
+    receipt.restore.operationId.length >= 10, "Database receipt does not prove exact-candidate compatibility and isolated recovery");
 }
 
 export function assertReleaseRuntime(manifest, service) {

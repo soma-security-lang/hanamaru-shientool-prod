@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 
 const root=fileURLToPath(new URL("../",import.meta.url));
 const workspaces=new Map();
@@ -27,4 +28,13 @@ for(const app of ["web","api","worker"])test(`${app} image declares every runtim
   assert.ok(docker.includes(`pnpm -r --filter @hanamaru/${app}... --if-present build`),`${app}: build must follow the selected dependency graph`);
   const runtime=docker.slice(docker.indexOf("AS runtime"));
   assert.ok(!/HANAMARU_(?:LOCAL_|BFF_ENABLED|SERVER_SSO)/.test(runtime),"Local migration must not be enabled by runtime image defaults");
+});
+test("Web server externals resolve the same pinned cloud SDKs as the provider workspace",()=>{
+  const web=createRequire(`${root}apps/web/package.json`),platform=createRequire(`${root}packages/platform/package.json`);
+  const webDependencies=workspaces.get("@hanamaru/web").json.dependencies;
+  const platformDependencies=workspaces.get("@hanamaru/platform").json.dependencies;
+  for(const name of ["@google-cloud/speech","@google-cloud/storage","@google-cloud/tasks","@google/genai","googleapis"]){
+    assert.equal(webDependencies[name],platformDependencies[name],`${name}: dependency policies must remain identical`);
+    assert.equal(web.resolve(name),platform.resolve(name),`${name}: Next's base resolver must find the same SDK`);
+  }
 });

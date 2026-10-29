@@ -6,10 +6,20 @@ const config = { url: "postgresql://service:synthetic@localhost/hanamaru?host=%2
 const env = { NODE_ENV: "production", K_SERVICE: "hanamaru-pilot-web", PROVIDER_MODE: "gcp", ALLOW_DEV_AUTH: "false" };
 describe("production Cloud SQL boundary", () => {
   it("accepts the pinned private socket and production service", () => expect(() => assertProductionDatabase(config, env)).not.toThrow());
+  it("accepts only the independent Stage instance and product database", () => {
+    const stage = { ...config, connectionName: "monocle-503402:asia-northeast1:alignment-stage-pg16", databaseName: "hanamaru_alignment_stage",
+      url: "postgresql://service:synthetic@localhost/hanamaru_alignment_stage?host=%2Fcloudsql%2Fmonocle-503402%3Aasia-northeast1%3Aalignment-stage-pg16" };
+    expect(() => assertProductionDatabase(stage, { ...env, K_SERVICE: "hanamaru-alignment-stage-web" })).not.toThrow();
+    expect(() => assertProductionDatabase(stage, env)).toThrow("PRODUCTION_DATABASE_CONFIGURATION_REQUIRED");
+    const review = { ...stage, connectionName: "monocle-503402:asia-northeast1:sso-review-pg16", url: stage.url.replace("alignment-stage-pg16", "sso-review-pg16") };
+    expect(() => assertProductionDatabase(review, { ...env, K_SERVICE: "hanamaru-alignment-stage-web" })).toThrow("PRODUCTION_DATABASE_CONFIGURATION_REQUIRED");
+  });
   it.each([
     { url: "postgresql://service:synthetic@127.0.0.1/hanamaru" }, { databaseName: "other" },
     { connectionName: "other:asia-northeast1:hanamaru-pilot-postgres" }, { max: 10 },
     { url: `${config.url}&options=anything` },
+    { url: config.url.replace("localhost", "unrelated.example.invalid") },
+    { url: `${config.url}&host=%2Fcloudsql%2Fother` },
   ])("rejects an unapproved database or connection: %j", change => expect(() => assertProductionDatabase({ ...config, ...change }, env)).toThrow("PRODUCTION_DATABASE_CONFIGURATION_REQUIRED"));
   it.each([{ NODE_ENV: "development" }, { K_SERVICE: "unrelated" }, { PROVIDER_MODE: "local" }, { ALLOW_DEV_AUTH: "true" },
     { K_SERVICE: "hanamaru-alignment-stage-web" }])("fails closed for runtime drift: %j", change =>

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { validateManualManifest, assertReleaseRuntime } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime } from "./manual-alignment-policy.mjs";
 
 // Separate, human-authorized release path. Standard GitHub gates are untouched.
 const [action, path] = process.argv.slice(2);
@@ -29,14 +29,27 @@ if (action === "rollback") {
   process.exit(0);
 }
 if (run("git", ["rev-parse", "HEAD"]).trim() !== manifest.sourceSha || run("git", ["status", "--porcelain"]).trim()) throw new Error("Release checkout must be the exact clean commit");
-const receiptPath = realpathSync(manifest.stage.evidenceFile);
-if (!receiptPath.startsWith(`${realpathSync(resolve(".artifacts"))}${sep}`)) throw new Error("Stage receipt must stay in the private artifact directory");
-const receiptBytes = readFileSync(receiptPath);
-if (createHash("sha256").update(receiptBytes).digest("hex") !== manifest.stage.evidenceHash) throw new Error("Stage receipt was changed");
-const receipt = JSON.parse(receiptBytes.toString("utf8"));
+function privateReceipt(file, expectedHash) {
+  const receiptPath = realpathSync(file);
+  if (!receiptPath.startsWith(`${realpathSync(resolve(".artifacts"))}${sep}`)) throw new Error("Receipt must stay in the private artifact directory");
+  const bytes = readFileSync(receiptPath);
+  if (createHash("sha256").update(bytes).digest("hex") !== expectedHash) throw new Error("Receipt was changed");
+  return JSON.parse(bytes.toString("utf8"));
+}
+const receipt = privateReceipt(manifest.stage.evidenceFile, manifest.stage.evidenceHash);
 if (receipt.environment !== "stage" || receipt.sourceSha !== manifest.sourceSha || receipt.image !== manifest.image ||
     receipt.status !== "PASS" || receipt.failed !== 0 || receipt.skipped !== 0 || receipt.passed !== manifest.stage.passed)
   throw new Error("Stage receipt does not match the executed candidate");
+if (manifest.phase !== "foundation") {
+  const database = privateReceipt(manifest.database.evidenceFile, manifest.database.evidenceHash);
+  validateDatabaseReceipt(manifest, database);
+  const backup = JSON.parse(cloud(["sql", "backups", "describe", String(database.backup.id),
+    `--instance=${database.backup.instance}`, "--format=json"]));
+  if (backup.status !== "SUCCESSFUL") throw new Error("Recorded production backup is not successful");
+  const restore = JSON.parse(cloud(["sql", "operations", "describe", database.restore.operationId, "--format=json"]));
+  if (restore.status !== "DONE" || restore.operationType !== "RESTORE_VOLUME" || restore.error || restore.targetId !== database.restore.instance)
+    throw new Error("Isolated restore operation has not completed successfully");
+}
 const origin = run("git", ["remote", "get-url", "origin"]).trim();
 if (!origin.includes(target.repository)) throw new Error("Wrong source repository");
 const ci = JSON.parse(run("gh", ["api", `repos/${target.repository}/actions/runs/${manifest.ciRunId}`]));

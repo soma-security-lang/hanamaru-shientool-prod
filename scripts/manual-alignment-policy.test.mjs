@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateManualManifest, assertReleaseRuntime } from "./manual-alignment-policy.mjs";
+import { validateManualManifest, validateDatabaseReceipt, assertReleaseRuntime } from "./manual-alignment-policy.mjs";
 const valid = () => ({ version:1, product:"hanamaru", phase:"foundation", repository:"soma-security-lang/hanamaru-shientool-prod",
   sourceSha:"a".repeat(40), baselineSha:"09d6fb1432e85a8bebd5342df078c2baba18e6ad", image:`asia-northeast1-docker.pkg.dev/monocle-503402/hanamaru-pilot/web@sha256:${"c".repeat(64)}`,
   service:"hanamaru-pilot-web", stageService:"hanamaru-alignment-stage-web", publicUrl:"https://monocle-503402.firebaseapp.com/",
@@ -25,4 +25,23 @@ test("recovery accepts a recorded manifest after the promotion window has expire
   const value={...valid(),expiresAt:new Date(0).toISOString()};
   assert.throws(()=>validateManualManifest(value));
   assert.equal(validateManualManifest(value,{forRollback:true}).service,"hanamaru-pilot-web");
+});
+const databaseReceipt = value => ({ environment:"stage",product:value.product,sourceSha:value.sourceSha,image:value.image,
+  status:"PASS",passed:12,failed:0,skipped:0,migrationMode:"existing-sql-only",
+  checks:Object.fromEntries(["ids","rowCounts","amounts","timestamps","nulls","audit","evidenceReferences",
+    "newWriteOldRead","oldWriteNewRead","rls","runtimeRoleIsolation","restoreReadBack"].map(key=>[key,true])),
+  backup:{instance:"hanamaru-pilot-postgres",id:"123456789",status:"SUCCESSFUL"},
+  restore:{instance:"alignment-restore-synthetic",operationId:"synthetic-operation-id",verified:true} });
+test("non-foundation release requires a private database receipt, not summary booleans",()=>{
+  const value={...valid(),phase:"session",database:{compatible:true,backupStatus:"SUCCESSFUL",restoreVerified:true,evidenceHash:"d".repeat(64)}};
+  assert.throws(()=>validateManualManifest(value));
+  assert.doesNotThrow(()=>validateManualManifest({...value,database:{...value.database,evidenceFile:".artifacts/db.json"}}));
+});
+test("database receipt binds recovery and old/new writer compatibility to the exact candidate",()=>{
+  const value=valid(),receipt=databaseReceipt(value);
+  assert.doesNotThrow(()=>validateDatabaseReceipt(value,receipt));
+  for(const change of [{sourceSha:"f".repeat(40)},{image:"web:latest"},{skipped:1},{migrationMode:"prisma-db-push"},
+    {checks:{...receipt.checks,newWriteOldRead:false}},{backup:{...receipt.backup,instance:"sso-review-pg16"}},
+    {restore:{...receipt.restore,instance:"hanamaru-pilot-postgres"}}])
+    assert.throws(()=>validateDatabaseReceipt(value,{...receipt,...change}));
 });

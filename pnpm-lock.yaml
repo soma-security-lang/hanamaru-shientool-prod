@@ -95,6 +95,18 @@ importers:
 
   apps/web:
     dependencies:
+      '@google-cloud/speech':
+        specifier: ^7.2.1
+        version: 7.5.0(supports-color@7.2.0)
+      '@google-cloud/storage':
+        specifier: ^7.17.3
+        version: 7.21.0(supports-color@7.2.0)
+      '@google-cloud/tasks':
+        specifier: ^6.2.1
+        version: 6.3.0(supports-color@7.2.0)
+      '@google/genai':
+        specifier: ^2.16.0
+        version: 2.16.0(supports-color@7.2.0)
       '@hanamaru/alignment':
         specifier: workspace:*
         version: link:../../packages/alignment
@@ -113,6 +125,9 @@ importers:
       firebase:
         specifier: ^12.2.1
         version: 12.17.1
+      googleapis:
+        specifier: ^166.0.0
+        version: 166.0.0(supports-color@7.2.0)
       lucide-react:
         specifier: ^1.31.0
         version: 1.31.0(react@19.2.8)
