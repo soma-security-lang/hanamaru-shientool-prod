@@ -42,7 +42,8 @@ if (!origin.includes(target.repository)) throw new Error("Wrong source repositor
 const ci = JSON.parse(run("gh", ["api", `repos/${target.repository}/actions/runs/${manifest.ciRunId}`]));
 if (ci.head_sha !== manifest.sourceSha || ci.status !== "completed" || ci.conclusion !== "success") throw new Error("Exact source CI has not passed");
 const build = JSON.parse(cloud(["builds", "describe", manifest.buildId, `--region=${manifest.buildRegion}`, "--format=json"]));
-if (build.status !== "SUCCESS" || build.substitutions?._GIT_SHA !== manifest.sourceSha ||
+const sourceKey = manifest.product === "soumu" ? "_RELEASE_SHA" : "_GIT_SHA";
+if (build.status !== "SUCCESS" || build.substitutions?.[sourceKey] !== manifest.sourceSha ||
   !build.results?.images?.some(image => `${image.name.split(":")[0]}@${image.digest}` === manifest.image)) throw new Error("Cloud Build image/source evidence differs");
 const stage = getService(target.stage), production = getService(target.service);
 assertReleaseRuntime(manifest, production);
