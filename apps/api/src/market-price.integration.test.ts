@@ -1,8 +1,8 @@
 import { createHash,randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { afterAll,beforeAll,describe,expect,it } from "vitest";
+import { afterAll,beforeAll,describe,expect,it,vi } from "vitest";
 import { createPool,developmentIds,HanamaruRepository } from "@hanamaru/database";
-import { createLocalProviders } from "@hanamaru/platform";
+import { createLocalProviders,createYahooMarketPriceSourceProvider } from "@hanamaru/platform";
 import { WorkerProcessor } from "../../worker/src/processor.js";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
@@ -34,6 +34,27 @@ describe.skipIf(!databaseUrl)("market price API and worker",()=>{
     expect(confirmed.statusCode).toBe(200);
     return created;
   }
+
+  it("completes a verified Yahoo HTTP 404 zero-result search without inventing a price",async()=>{
+    const original=fetchMarketPage;
+    const transport=vi.fn(async()=>new Response(pageHtml([]),{status:404}));
+    const provider=createYahooMarketPriceSourceProvider(transport as typeof fetch);
+    fetchMarketPage=async url=>({...await provider.fetchPage(url),retryAfterSeconds:null});
+    try{
+      const queryId=randomUUID();
+      const identified=await createConfirmedIdentification({productName:"合成0件確認",searchQueries:[{id:queryId,keyword:`Synthetic zero ${queryId}`,breadth:"standard",source:"user",decision:"accepted"}]});
+      const accepted=await app.inject({method:"POST",url:"/api/v1/market-price/searches",headers:idem(),payload:{identificationId:identified.json().id,selectedSearchQueryId:queryId,conditions:["good"],sourceProvider:"yahoo_scrape",outlierPolicy:{enabled:true,deviationThreshold:.2,minimumGroupSize:5}}});
+      expect(accepted.statusCode).toBe(202);
+      expect(await worker.process(accepted.json().jobId)).toBe("succeeded");
+      const result=await app.inject({method:"GET",url:`/api/v1/market-price/searches/${accepted.json().searchId}`,headers:{"x-dev-role":"manager"}});
+      expect(result.json()).toMatchObject({status:"ready",coverageStatus:"complete",candidateCount:0,includedCount:0,minimumPrice:null,medianPrice:null,maximumPrice:null,failureClass:null,candidates:[]});
+      const checkpoint=await repository.system("SELECT http_status,source_count,parsed_count,status FROM market_price_search_pages WHERE search_id=$1",[accepted.json().searchId]);
+      expect(checkpoint.rows).toEqual([{http_status:404,source_count:0,parsed_count:0,status:"succeeded"}]);
+      const confirm=await app.inject({method:"POST",url:`/api/v1/market-price/searches/${accepted.json().searchId}/confirm`,headers:idem(),payload:{expectedLockVersion:result.json().lockVersion}});
+      expect(confirm.statusCode).toBe(422);
+      expect(transport).toHaveBeenCalledTimes(1);
+    }finally{fetchMarketPage=original;}
+  });
 
   it("returns a complete empty suggestion contract for manual-only identification",async()=>{
     const created=await app.inject({method:"POST",url:"/api/v1/market-price/identifications",headers:idem(),payload:{inputMode:"manual_direct",productName:"匿名テスト商品",searchQueries:[{id:"manual-query",keyword:"匿名テスト商品",breadth:"standard",source:"user",decision:"accepted"}],conditions:["good"]}});

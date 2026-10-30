@@ -20,7 +20,7 @@ import { createGoogleSpeechProvider } from "./google-speech.js";
 import { createLocalProviders } from "./local.js";
 import { createConfiguredSoldgraphProvider } from "./soldgraph.js";
 import { probeAudioSource,probeVideoSource } from "./media.js";
-import { parseYahooClosedSearchUrl } from "@hanamaru/market-price";
+import { parseYahooClosedSearchHtml,parseYahooClosedSearchUrl } from "@hanamaru/market-price";
 import type { MarketPriceSourceProvider } from "./types.js";
 
 type SpeechLocation = "asia-northeast1"|"us";
@@ -400,9 +400,18 @@ export function createYahooMarketPriceSourceProvider(fetcher:typeof fetch=fetch)
       if(response.status===429&&!rateLimitRetried){rateLimitRetried=true;const waitMs=Math.min(60,Math.max(1,retryAfterSeconds??1))*1000;await new Promise(resolve=>setTimeout(resolve,waitMs));redirectCount-=1;continue;}
       if(response.status===429)throw new Error(`PROVIDER_TEMPORARY: YAHOO_RATE_LIMITED${retryAfterSeconds!=null?` retry_after=${retryAfterSeconds}`:""}`);
       if(response.status>=500)throw new Error(`PROVIDER_TEMPORARY: Yahoo upstream ${response.status}`);
-      if(!response.ok)throw new Error(`PROVIDER_PERMANENT: Yahoo upstream ${response.status}`);
+      if(!response.ok&&response.status!==404)throw new Error(`PROVIDER_PERMANENT: Yahoo upstream ${response.status}`);
       const contentLength=Number(response.headers.get("content-length")??0);if(contentLength>5*1024*1024)throw new Error("PROVIDER_PERMANENT: Yahoo response exceeds the limit");
       const body=await response.text();if(Buffer.byteLength(body)>5*1024*1024)throw new Error("PROVIDER_PERMANENT: Yahoo response exceeds the limit");
+      // Yahoo uses 404 for a valid search with no matches. Never infer zero
+      // results from HTTP status or visible copy alone: the existing strict
+      // parser must confirm newest-first/100, an empty list and a zero total.
+      // Keep the real 404 in the page checkpoint; do not manufacture HTTP 200.
+      if(response.status===404){
+        const parsed=parseYahooClosedSearchHtml(body);
+        if(parsed.sourceItemCount!==0||parsed.totalResultsAvailable!==0||parsed.items.length!==0||parsed.parseFailureCount!==0)
+          throw new Error("PROVIDER_PERMANENT: Yahoo upstream 404");
+      }
       return{status:response.status,body,retryAfterSeconds,fetchedAt:new Date().toISOString()};
     }
     throw new Error("PROVIDER_PERMANENT: Yahoo redirect limit exceeded");
