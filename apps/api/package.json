@@ -13,16 +13,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/cors": "^11.1.0",
-    "@fastify/helmet": "^13.0.2",
-    "@fastify/rate-limit": "^10.3.0",
-    "@fastify/swagger": "^9.6.1",
+    "@fastify/cors": "^11.3.1",
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/swagger": "^9.9.2",
     "@hanamaru/contracts": "workspace:*",
     "@hanamaru/database": "workspace:*",
     "@hanamaru/market-price": "workspace:*",
     "@hanamaru/platform": "workspace:*",
-    "fastify": "^5.12.2",
-    "jose": "^6.1.0"
+    "fastify": "^5.12.7",
+    "jose": "^6.2.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
