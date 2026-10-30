@@ -83,7 +83,13 @@ test('expense branch workflow closes with a difference and preserves later corre
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await mkdir(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,`expense-branch-${browserName}-390.png`),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(screenshots,`expense-branch-${browserName}-1440.png`),fullPage:true});
-  const employee=await browser.newContext({viewport:{width:390,height:844}});await addRole(employee,'assessor');const employeePage=await employee.newPage();await employeePage.goto(url);await expect(employeePage.getByRole('button',{name:'記録ログを表示'})).toHaveCount(0);await expect(employeePage.getByText('役職者による経費の後日追加・訂正',{exact:true})).toHaveCount(0);await expect(employeePage.getByText('締め済み・差異あり',{exact:true})).toBeVisible();const branchData=await employeePage.request.get(`${apiBase}/expense-branch-days/${branchId}`,{headers:{'x-dev-role':'assessor'}});const ownDay=(await branchData.json()).participants[0].id;await employeePage.goto(`${url}&dayId=${ownDay}`);await expect(employeePage.getByText('この業務日は締め済みです。',{exact:false})).toBeVisible();await expect(employeePage.getByRole('button',{name:'候補として保存',exact:true})).toHaveCount(0);await employee.close();
+  const employee=await browser.newContext({viewport:{width:390,height:844}});await addRole(employee,'assessor');const employeePage=await employee.newPage();await employeePage.goto(url);await expect(employeePage.getByRole('button',{name:'記録ログを表示'})).toHaveCount(0);await expect(employeePage.getByText('役職者による経費の後日追加・訂正',{exact:true})).toHaveCount(0);await expect(employeePage.getByText('締め済み・差異あり',{exact:true})).toBeVisible();const branchData=await employeePage.request.get(`${apiBase}/expense-branch-days/${branchId}`,{headers:{'x-dev-role':'assessor'}});const ownDay=(await branchData.json()).participants[0].id;
+  // The shared fixture already has a selected personal day by the second
+  // browser. Replace that parameter; appending it would keep the older first
+  // value and silently test a different, open day instead of this closed day.
+  const ownUrl=new URL(url);ownUrl.searchParams.set('dayId',ownDay);
+  expect(ownUrl.searchParams.getAll('dayId')).toEqual([ownDay]);
+  await employeePage.goto(ownUrl.href);await expect(employeePage.getByText('この業務日は締め済みです。',{exact:false})).toBeVisible();await expect(employeePage.getByRole('button',{name:'候補として保存',exact:true})).toHaveCount(0);await employee.close();
  }finally{await context.close();}
 });
 let api:APIRequestContext;
