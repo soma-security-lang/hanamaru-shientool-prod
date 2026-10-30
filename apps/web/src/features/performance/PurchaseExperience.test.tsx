@@ -1,8 +1,18 @@
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {afterEach,describe,it,expect} from 'vitest';
-import {RankingTable} from './PurchaseExperience';
+import {renderToString} from 'react-dom/server';
+import {PurchaseExperience,RankingTable} from './PurchaseExperience';
 import {DailyPurchaseChart} from './DailyPurchaseChart';
 afterEach(cleanup);
+describe('初回の操作準備',()=>{
+ it('操作準備前のSSRフォームでは金額・日付入力と保存を受け付けない',()=>{
+  const container=document.createElement('div');container.innerHTML=renderToString(<PurchaseExperience/>);
+  const form=container.querySelector('form')!;
+  expect(form.querySelector('input[type="date"]')).toBeDisabled();
+  expect(form.querySelector('input[type="number"]')).toBeDisabled();
+  expect(form.querySelector('button')).toBeDisabled();
+ });
+});
 describe('全件ランキング表示',()=>{
  it('105名と実績なしを表示し、上位100名で切らない',()=>{
   const rows=Array.from({length:105},(_,i)=>({id:String(i),name:`合成査定員${i+1}`,amount:String(10000-i),count:1,rank:i+1}));

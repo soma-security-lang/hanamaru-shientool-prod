@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import {reviewDimensions,type AiProvider,type DriveProvider,type MarketPriceSourceProvider,type PlatformProviders,type ReviewDimension,type SpeechProvider,type StorageProvider,type TaskProvider,type UploadDeclaration } from "./types.js";
 import { probeAudioStream,probeVideoStream } from "./media.js";
 import { createSoldgraphFixtureProvider } from "./soldgraph-fixture.js";
+import {normalizeExpenseReceiptReading,validateExpenseReceiptInput} from "./expense-receipt.js";
 
 const storageRoot=()=>process.env.LOCAL_STORAGE_DIR??join(tmpdir(),"hanamaru-local-storage");
 const objectPath=(objectName:string)=>join(storageRoot(),`${createHash("sha256").update(objectName).digest("hex")}.bin`);
@@ -113,6 +114,12 @@ function labelledValue(text:string,aliases:string[]):string|null{
 }
 
 class LocalAi implements AiProvider {
+  async readExpenseReceipt(input:Parameters<AiProvider["readExpenseReceipt"]>[0]):ReturnType<AiProvider["readExpenseReceipt"]>{
+    // No fabricated OCR values for arbitrary locally uploaded photographs.
+    if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: receipt OCR requires a connected provider or an explicit test mock");
+    validateExpenseReceiptInput(input);const empty={value:null,evidence:null};
+    return normalizeExpenseReceiptReading({documentKind:"unreadable",paidOn:empty,merchant:empty,paidTotal:empty,currency:empty,purposeHint:empty},"test-unreadable-receipt-v1");
+  }
   async identifyMarketProduct(input:Parameters<AiProvider["identifyMarketProduct"]>[0]){
     if(!fixtureMode())throw new Error("PROVIDER_PERMANENT: 商品特定AI補助にはPROVIDER_MODE=local-connectedが必要です");
     const productName=input.productName||"匿名デモ カメラ ボディ";const brand=input.brand||"Canon";const modelNumber=input.modelNumber||"EOS R6";

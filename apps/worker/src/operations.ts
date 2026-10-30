@@ -26,50 +26,53 @@ interface CandidateRow{
 }
 
 const candidateSql=`
-WITH candidates AS (
+WITH current_receipt_jobs AS MATERIALIZED (SELECT job_id FROM expense_receipt_current_jobs()), current_jobs AS (
+  SELECT j.* FROM jobs j WHERE j.job_type<>'expense_receipt_reading'
+    OR EXISTS(SELECT 1 FROM current_receipt_jobs r WHERE r.job_id=j.id)
+), candidates AS (
   SELECT organization_id,requested_by_membership_id membership_id,id job_id,job_type,
          'STT_HEARTBEAT_STALE'::text failure_class,'warning'::text severity,
          attempt_count attempt,max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(heartbeat_at,started_at,updated_at))::int) oldest_age_seconds
-    FROM jobs WHERE job_type='transcribe' AND status='running'
+    FROM current_jobs WHERE job_type='transcribe' AND status='running'
      AND COALESCE(heartbeat_at,started_at,updated_at)<now()-interval '3 minutes'
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'STT_LRO_TIMEOUT','critical',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-provider_operation_started_at)::int)
-    FROM jobs WHERE job_type='transcribe' AND provider_operation_id IS NOT NULL
+    FROM current_jobs jobs WHERE job_type='transcribe' AND provider_operation_id IS NOT NULL
      AND status IN ('running','retry_wait') AND provider_operation_started_at<now()-interval '9 hours'
      AND NOT EXISTS(SELECT 1 FROM transcripts t WHERE t.organization_id=jobs.organization_id AND t.job_id=jobs.id)
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'RETRY_WAIT_OVERDUE','warning',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-available_at)::int)
-    FROM jobs WHERE status='retry_wait' AND available_at<now()-interval '10 minutes'
+    FROM current_jobs WHERE status='retry_wait' AND available_at<now()-interval '10 minutes'
   UNION ALL
   SELECT j.organization_id,j.requested_by_membership_id,j.id,j.job_type,'MODEL_OUTPUT_INVALID','critical',j.attempt_count,j.max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(j.finished_at,j.updated_at))::int)
-    FROM jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='MODEL_OUTPUT_INVALID')
+    FROM current_jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='MODEL_OUTPUT_INVALID')
       OR EXISTS(SELECT 1 FROM transcripts t JOIN transcript_quality_assessments qa ON qa.transcript_id=t.id AND qa.organization_id=t.organization_id
                  WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='MODEL_OUTPUT_INVALID'
                    AND qa.continuation_decision IS NULL)
   UNION ALL
   SELECT j.organization_id,j.requested_by_membership_id,j.id,j.job_type,'EVIDENCE_INVALID','critical',j.attempt_count,j.max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(j.finished_at,j.updated_at))::int)
-    FROM jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='EVIDENCE_INVALID')
+    FROM current_jobs j WHERE (j.status IN ('failed','retry_wait') AND j.error_code='EVIDENCE_INVALID')
       OR EXISTS(SELECT 1 FROM transcripts t JOIN transcript_quality_assessments qa ON qa.transcript_id=t.id AND qa.organization_id=t.organization_id
                  WHERE t.organization_id=j.organization_id AND t.job_id=j.id AND qa.failure_class='EVIDENCE_INVALID'
                    AND qa.continuation_decision IS NULL)
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'RETRY_LIMIT_EXCEEDED','critical',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(finished_at,updated_at))::int)
-    FROM jobs WHERE status='failed' AND attempt_count>=max_attempts
+    FROM current_jobs WHERE status='failed' AND attempt_count>=max_attempts
   UNION ALL
   SELECT organization_id,requested_by_membership_id,id,job_type,'MARKET_PRICE_STALLED','warning',attempt_count,max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(heartbeat_at,started_at,updated_at))::int)
-    FROM jobs WHERE job_type IN ('market_price_search','market_price_ebay_search') AND status='running'
+    FROM current_jobs WHERE job_type IN ('market_price_search','market_price_ebay_search') AND status='running'
      AND COALESCE(heartbeat_at,started_at,updated_at)<now()-interval '3 minutes'
   UNION ALL
   SELECT j.organization_id,j.requested_by_membership_id,j.id,j.job_type,'MARKET_PRICE_BLOCKED','critical',j.attempt_count,j.max_attempts,
          GREATEST(0,extract(epoch FROM now()-COALESCE(s.completed_at,s.updated_at))::int)
-    FROM jobs j JOIN market_price_searches s ON s.organization_id=j.organization_id AND s.job_id=j.id
+    FROM current_jobs j JOIN market_price_searches s ON s.organization_id=j.organization_id AND s.job_id=j.id
    WHERE j.job_type='market_price_search' AND s.status='blocked'
   UNION ALL
   SELECT * FROM soldgraph_operational_candidates()

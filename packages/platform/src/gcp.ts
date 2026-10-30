@@ -15,6 +15,7 @@ import type {
   UploadDeclaration,
 } from "./types.js";
 import { normalizeReviewOutput, normalizeRoleplayOutput, parseModelJson } from "./model-output.js";
+import {EXPENSE_RECEIPT_INSTRUCTION,expenseReceiptOutputSchema,normalizeExpenseReceiptReading,validateExpenseReceiptInput} from "./expense-receipt.js";
 import {reviewDimensions,type ReviewDimension} from "./types.js";
 import { createGoogleSpeechProvider } from "./google-speech.js";
 import { createLocalProviders } from "./local.js";
@@ -234,6 +235,16 @@ export function createGoogleAiProvider(config:AiConfig):AiProvider {
     }catch(error){throw providerFailure(error);}
   };
   return {
+    async readExpenseReceipt(input){
+      validateExpenseReceiptInput(input);
+      const parts:Part[]=[{text:EXPENSE_RECEIPT_INSTRUCTION},...input.images.map(image=>({inlineData:{data:image.content.toString("base64"),mimeType:image.mimeType}}))];
+      const run=async(repair:boolean)=>normalizeExpenseReceiptReading(await generate(repair?[{text:`${EXPENSE_RECEIPT_INSTRUCTION}\n前回は出力契約違反です。不明な値はnullにし、指定のキーだけを返してください。`},...parts.slice(1)]:parts,expenseReceiptOutputSchema,{temperature:0,maxOutputTokens:2048}),config.model);
+      try{return await run(false);}catch(error){
+        // Repair only the JSON contract, never replay transport failures as a new request.
+        if(!(error instanceof Error)||!/^PROVIDER_PERMANENT: (?:invalid expense receipt output|model returned invalid JSON|model output is not an object)$/.test(error.message))throw error;
+        return run(true);
+      }
+    },
     async identifyMarketProduct(input){
       const candidateSchema={type:"OBJECT",required:["productName","category","brand","modelNumber","attributes","confidence"],properties:{productName:{type:"STRING"},category:{type:"STRING",nullable:true},brand:{type:"STRING",nullable:true},modelNumber:{type:"STRING",nullable:true},attributes:{type:"OBJECT",additionalProperties:{type:"STRING"}},confidence:{type:"NUMBER",minimum:0,maximum:1}}};
       const querySchema={type:"OBJECT",required:["keyword","breadth"],properties:{keyword:{type:"STRING"},breadth:{type:"STRING",enum:["strict","standard","broad"]}}};

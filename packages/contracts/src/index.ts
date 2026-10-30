@@ -95,7 +95,7 @@ export interface ExpenseItemDto {
   id:string; dayId:string; spentByMembershipId:string; enteredByMembershipId:string;
   businessDate:string; merchant:string; category:string; amount:string;
   paymentSource:"company_wallet"|"personal"; status:"candidate"|"confirmed"|"excluded";
-  entrySource:"manual"|"synthetic_ocr"; receiptStatus:"not_attached"|"reference_pending";
+  entrySource:"manual"|"synthetic_ocr"|"receipt_ocr"; receiptStatus:"not_attached"|"reference_pending"|"attached_unapproved";
   note:string|null; excludedReason:string|null; excludedAt:Timestamp|null;
   lockVersion:number; confirmedAt:Timestamp|null; createdAt:Timestamp;
 }
@@ -188,6 +188,7 @@ export interface Job {
     | "transcribe"
     | "review"
     | "market_price_identification"
+    | "expense_receipt_reading"
     | "market_price_search"
     | "market_price_ebay_search"
     | "delete"
@@ -616,6 +617,9 @@ export interface AsyncAccepted {
 }
 
 export const errorCodes = [
+  "RECEIPT_POLICY_REQUIRED",
+  "RECEIPT_DUPLICATE_IMAGE",
+  "RECEIPT_SIMILAR_EXPENSE",
   "AUTH_REQUIRED",
   "AUTH_INVALID",
   "SESSION_EXPIRED",

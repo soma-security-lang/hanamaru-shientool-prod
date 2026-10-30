@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {ExpenseBranchWorkspace} from './ExpenseBranchWorkspace';
+import {ExpenseReceiptsWorkspace} from './ExpenseReceiptsWorkspace';
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import type {ExpenseDayDetailDto,ExpenseDayDto,ExpenseFollowupDto,ExpenseItemDto} from "@hanamaru/contracts";
 import {ApiClientError} from "@/lib/api/client";
@@ -249,7 +250,8 @@ export function ExpenseExperience({viewerId,capabilities}:{viewerId?:string;capa
         <button type="submit" disabled={locked}>入力値を保存</button>
       </form><p className={styles.note}>空欄と0円を区別します。参照元メモに顧客情報は入力しないでください。メモは照合済みの証明ではありません。</p></>:<p>開始財布残高：{yen(day.openingWalletCash)} ／ 買取金の入力値：{yen(day.purchaseTotal)} ／ 参照元メモ：{day.purchaseSourceNote??"未記録"}</p>}
     </section>
-    <section className={styles.card}><h2>支出を記録する</h2><p className={styles.note}>領収書画像の取込と実OCRは未接続です。候補は確認まで合計へ入りません。確認済みも証憑未添付であり、支店照合・締めは完了していません。</p>
+    <ExpenseReceiptsWorkspace key={day.id} dayId={day.id} viewerId={viewerId??"unknown"} editable={canEdit} onChanged={()=>refreshSaved(day.id)} onDraftChange={itemDirty}/>
+    <section className={styles.card}><h2>支出を記録する</h2><p className={styles.note}>手入力の候補は確認まで合計へ入りません。領収書から登録した金額の確認と、証憑の承認・支店照合・締めは別です。</p>
       {canEdit?<form onSubmit={onAdd} className={styles.row}><label>支払先<input value={merchant} onChange={e=>setMerchant(e.target.value)} maxLength={200} required/></label><label>費目<select value={category} onChange={e=>setCategory(e.target.value)}><option>駐車場</option><option>燃料</option><option>高速道路</option><option>車両整備</option><option>その他・確認待ち</option></select></label><label>支払額（円）<input type="number" inputMode="numeric" min="1" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><label>支払元<select value={source} onChange={e=>setSource(e.target.value as typeof source)}><option value="company_wallet">会社の財布</option><option value="personal">個人立替</option></select></label><label>用途・補足（任意）<input value={note} onChange={e=>setNote(e.target.value)} maxLength={1000}/></label><button type="submit" disabled={locked}>候補として保存</button></form>:null}
       <h3>明細</h3>{detail.items.length?detail.items.map(item=><ExpenseItemRow key={item.id} item={item} editable={canEdit} busy={locked} onDraftChange={itemDirty} onConfirm={()=>void write("expense.item.confirm",day.id,key=>resources.confirmExpenseItem(day.id,item.id,item.lockVersion,key))} onUpdate={body=>write("expense.item.update",day.id,key=>resources.updateExpenseCandidate(day.id,item.id,{expectedLockVersion:item.lockVersion,...body},key))} onExclude={reason=>write("expense.item.exclude",day.id,key=>resources.excludeExpenseCandidate(day.id,item.id,item.lockVersion,reason,key))}/>):<p>支出明細はありません。</p>}
     </section>
@@ -285,7 +287,7 @@ function ExpenseItemRow({item,editable,busy,onConfirm,onUpdate,onExclude,onDraft
     <div className={styles.itemBody}>
       <strong>{item.merchant}</strong>
       <span>{item.category} · {yen(item.amount)} · {item.paymentSource==="personal"?"個人立替":"会社の財布"}</span>
-      <small>{item.businessDate}に支出 ／ {candidate?"確認待ち候補":item.status==="excluded"?"集計対象外":"金額を確認済み"} ／ 証憑：未添付</small>
+      <small>{item.businessDate}に支出 ／ {candidate?"確認待ち候補":item.status==="excluded"?"集計対象外":"金額を確認済み"} ／ 証憑：{item.receiptStatus==="attached_unapproved"?"添付あり・未承認":"未添付"}</small>
       {item.note?<small>用途・補足：{item.note}</small>:null}
       {item.excludedReason?<small>対象外の理由：{item.excludedReason}</small>:null}
       {editable&&candidate&&editing?<form className={styles.row} onSubmit={e=>{e.preventDefault();void onUpdate({merchant,category,amount:Number(amount),paymentSource,note}).then(ok=>{if(ok)setEditing(false);});}}>

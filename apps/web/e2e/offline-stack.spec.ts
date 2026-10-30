@@ -7,6 +7,41 @@ import {PDFDocument,StandardFonts} from "pdf-lib";
 test.skip(process.env.OFFLINE_STACK_E2E!=="1","OFFLINE_STACK_E2E=1 is required");
 test.describe.configure({mode:"serial"});
 
+test("receipt upload reaches explicit unreadable fixture, human review and one persisted expense",async({browser,browserName})=>{
+  test.setTimeout(90_000);
+  const context=await browser.newContext({viewport:{width:390,height:844}});await addRole(context,"assessor");
+  const page=await context.newPage(),errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
+  try{
+    const businessDate=browserName==="webkit"?"2003-01-06":"2003-01-05";
+    const created=await page.request.post(`${apiBase}/expense-days`,{headers:{"x-dev-role":"assessor","idempotency-key":crypto.randomUUID()},data:{businessDate}});expect(created.status()).toBe(200);const dayId=(await created.json()).id;
+    await page.goto(`${webBase}/expense-settlement?dayId=${dayId}`);
+    const workspace=page.getByRole("region",{name:"領収書一括取込"});await expect(workspace).toBeVisible();
+    const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWMIyOv5D8IMMAYATgAJJbPQh8gAAAAASUVORK5CYII=","base64");
+    await workspace.getByLabel("写真・ファイルを複数選択").setInputFiles({name:"synthetic-receipt.png",mimeType:"image/png",buffer:png});
+    await workspace.getByRole("button",{name:"画像の取込を開始・再開"}).click();
+    await expect(workspace.getByText(/画像を取り込みました/)).toBeVisible();
+    await workspace.getByLabel(/Google CloudのAIで領収書を読み取り/).check();
+    await workspace.getByRole("button",{name:"この領収書を読み取る・再試行"}).click();
+    await expect(workspace.getByText(/ローカル試験用fixtureです/)).toBeVisible({timeout:45_000});
+    await expect(workspace.getByLabel("実際の支払総額（円）")).toHaveValue("");
+    await expect(workspace.getByLabel("支払元（AIでは確定しません）")).toHaveValue("");
+    await workspace.getByRole("button",{name:"画像1を見る"}).click();await expect(workspace.getByAltText("選択した領収書の原画像")).toBeVisible();
+    await workspace.getByLabel("支払日").fill(businessDate);await workspace.getByLabel("支払先").fill("合成の領収書店舗");
+    await workspace.getByLabel("実際の支払総額（円）").fill("1200");await workspace.getByRole("combobox",{name:"通貨",exact:true}).selectOption("JPY");
+    await workspace.getByRole("combobox",{name:"費目",exact:true}).selectOption("駐車場");await workspace.getByRole("combobox",{name:"支払元（AIでは確定しません）",exact:true}).selectOption("personal");
+    await workspace.getByLabel("用途・補足",{exact:true}).fill("合成証憑の手入力確認");
+    await workspace.getByRole("button",{name:"確認内容を下書き保存"}).click();
+    const selected=workspace.getByLabel("画像と保存した内容を確認し、明細への登録対象にする");await expect(selected).toBeEnabled();await selected.check();
+    await workspace.getByRole("button",{name:/確認済みの選択分を明細へ登録/}).click();await expect(workspace.getByText("明細へ登録済み",{exact:true})).toBeVisible();
+    await page.reload();await expect(page.getByText(/証憑：添付あり・未承認/)).toBeVisible();
+    const detail=await page.request.get(`${apiBase}/expense-days/${dayId}`,{headers:{"x-dev-role":"assessor"}});const saved=await detail.json();expect(saved.items).toHaveLength(1);expect(saved.totals).toMatchObject({companyWallet:"0",personal:"1200"});
+    expect((await new AxeBuilder({page}).analyze()).violations.filter(v=>v.impact==="serious"||v.impact==="critical")).toEqual([]);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await mkdir(screenshots,{recursive:true});await page.screenshot({path:resolve(screenshots,`expense-receipt-${browserName}-390.png`),fullPage:true});
+    await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:resolve(screenshots,`expense-receipt-${browserName}-1440.png`),fullPage:true});expect(errors).toEqual([]);
+  }finally{await context.close();}
+});
+
 const webBase=process.env.E2E_WEB_BASE_URL??"http://127.0.0.1:3100";
 const apiBase=process.env.E2E_API_BASE_URL??"http://127.0.0.1:3200/api/v1";
 const screenshots=resolve(process.env.OFFLINE_E2E_SCREENSHOT_DIR??".artifacts/offline-e2e-screenshots");

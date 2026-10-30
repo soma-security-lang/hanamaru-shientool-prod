@@ -1,5 +1,11 @@
 # 勤怠基準移行 P1 のローカル検証
 
+## 2026-10-30追加：領収書の接続
+
+RC-01〜12は [領収書接続仕様](design/expense-settlement/2026-10-30-receipt-integration.md) に定義する。`offline-stack.spec.ts` の `receipt upload reaches explicit unreadable fixture, human review and one persisted expense` は、合成PNG→実API/Worker/PostgreSQL→全値nullの明示fixture→人による確認→明細1件→再読込をChromium/WebKitで確認する。隔離DBだけに1日の試験用保存方針を投入し、本番設定には転用しない。390/1440px画像・axe・page error・会社財布/個人立替の分離を検査する。
+
+SDK mock・offline fixtureは実Vertex OCRの合格ではない。実接続はStageの合成証憑だけで別検査する。既存の全画面回帰・Google・SSO・権限・固定URL・同digest公開ゲートを省略しない。ソースにケースを追加しただけでは実行済みにしない。
+
 ## 最新追加：3製品UI横断
 
 総務worktreeの `CROSS_PRODUCT_ALIGNMENT=true ... pnpm test:cross-product` で実provider・管理API・3製品の実UIを起動する。買取は本worktreeの8時間Cookie／native API／Prisma経路。Chromium／WebKitで共通ログイン1回→勤怠→買取→総務→勤怠→共通logoutを確認し、2 journey合格、失敗・skip・flaky 0。権限の製品間昇格なし、logout後の3 API 401・各画面再ログイン要求を確認した。

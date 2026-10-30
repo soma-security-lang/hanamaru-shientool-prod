@@ -84,6 +84,7 @@ pnpm --filter @hanamaru/database seed:dev >"$evidence_dir/seed.log" 2>&1
 pnpm --filter @hanamaru/database content:import >"$evidence_dir/content-import.log" 2>&1
 "$pg_bin/psql" -h "$pg_socket" -p "$postgres_port" -d hanamaru_offline_e2e -v ON_ERROR_STOP=1 \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key='market_price_search'" \
+  -c "INSERT INTO expense_receipt_policies(organization_id,enabled,retention_days,approved_by_membership_id,approved_at) VALUES('00000000-0000-4000-8000-000000000001',true,1,'00000000-0000-4000-8000-000000000101',now())" \
   -c "INSERT INTO ebay_retention_policies(organization_id,content_days,approved_at,approved_by_membership_id) VALUES('00000000-0000-4000-8000-000000000001',90,now(),'00000000-0000-4000-8000-000000000101')" \
   -c "UPDATE feature_flags SET enabled=true,updated_at=now() WHERE organization_id='00000000-0000-4000-8000-000000000001' AND flag_key IN ('market_price_aucfan','market_price_comparison')" \
   -c "INSERT INTO feature_flags(organization_id,flag_key,enabled,owner_membership_id,rollback_note) VALUES('00000000-0000-4000-8000-000000000001','market_price_ebay',true,'00000000-0000-4000-8000-000000000101','synthetic disposable E2E only') ON CONFLICT(organization_id,flag_key) DO UPDATE SET enabled=true,updated_at=now()" \
@@ -138,7 +139,7 @@ if [[ -n "${OFFLINE_E2E_GREP:-}" ]]; then
   playwright_arguments+=(--grep "$OFFLINE_E2E_GREP")
   hanamaru_info "対象を絞ったoffline browser E2Eを実走します: $OFFLINE_E2E_GREP"
 else
-  hanamaru_info "既存21画面とランキング、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axeを実走します。画像数は両browser89／Chromium限定83／WebKit限定6を要求します。"
+  hanamaru_info "既存21画面と領収書、ランキング、PDF→準備、音声→文字起こし→振り返り、相場検索、経費締め、RBAC、axeを実走します。領収書4枚を含む画像数は両browser93／Chromium限定85／WebKit限定8を要求します。"
 fi
 OFFLINE_STACK_E2E=1 \
   E2E_INCLUDE_WEBKIT=1 \
@@ -151,14 +152,15 @@ OFFLINE_STACK_E2E=1 \
 
 screenshot_count="$(find "$evidence_dir/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
 if [[ -z "${OFFLINE_E2E_GREP:-}" ]]; then
-  expected_screenshots=89
+  expected_screenshots=93
   evidence_browsers=(chromium webkit)
-  if [[ "$browser_project" == "chromium" ]]; then expected_screenshots=83; evidence_browsers=(chromium); fi
-  if [[ "$browser_project" == "webkit" ]]; then expected_screenshots=6; evidence_browsers=(webkit); fi
+  if [[ "$browser_project" == "chromium" ]]; then expected_screenshots=85; evidence_browsers=(chromium); fi
+  if [[ "$browser_project" == "webkit" ]]; then expected_screenshots=8; evidence_browsers=(webkit); fi
   [[ "$screenshot_count" == "$expected_screenshots" ]] || hanamaru_fail "offline E2E screenshot数不一致（expected: $expected_screenshots, actual: $screenshot_count）。"
   for expense_browser in "${evidence_browsers[@]}"; do
     for expense_width in 390 1440; do
       [[ -s "$evidence_dir/screenshots/expense-branch-$expense_browser-$expense_width.png" ]] || hanamaru_fail "拠点経費の画像がありません: $expense_browser/$expense_width"
+      [[ -s "$evidence_dir/screenshots/expense-receipt-$expense_browser-$expense_width.png" ]] || hanamaru_fail "領収書の画像がありません: $expense_browser/$expense_width"
       [[ -s "$evidence_dir/screenshots/ebay-$expense_browser-$expense_width.png" ]] || hanamaru_fail "eBayの画像がありません: $expense_browser/$expense_width"
       [[ -s "$evidence_dir/screenshots/purchase-performance-$expense_browser-$expense_width.png" ]] || hanamaru_fail "ランキングの画像がありません: $expense_browser/$expense_width"
     done

@@ -1567,6 +1567,16 @@ export class BackendService {
       throw notFound();
     try {
       const declaration = await this.repository.withContext(ctx, async (tx) => {
+        if(!ctx.roles.includes("system_admin")&&(ctx.authorizationScopes??[]).some(scope=>scope.scopeType==="self"&&scope.scopeId===ctx.membershipId&&scope.capabilities.includes("visit:self"))){
+          const receipt=await tx.query<any>(`SELECT i.object_name,i.declared_mime_type,i.declared_size_bytes,i.content_sha256,i.upload_expires_at
+            FROM expense_receipt_images i JOIN expense_receipts r ON r.organization_id=i.organization_id AND r.id=i.receipt_id
+            JOIN expense_receipt_batches b ON b.organization_id=r.organization_id AND b.id=r.batch_id
+            JOIN expense_receipt_policies p ON p.organization_id=r.organization_id AND p.enabled
+            JOIN feature_flags f ON f.organization_id=r.organization_id AND f.flag_key='expense_settlement' AND f.enabled AND (f.expires_at IS NULL OR f.expires_at>now())
+            WHERE i.organization_id=$1 AND i.object_name=$2 AND b.owner_membership_id=$3 AND i.completed_at IS NULL
+              AND i.upload_expires_at>now() AND r.expires_at>now() AND r.status IN ('uploading','uploaded')`,[ctx.organizationId,objectName,ctx.membershipId]);
+          if(receipt.rows[0]){const image=receipt.rows[0];return{organizationId:ctx.organizationId,objectName:image.object_name,mimeType:image.declared_mime_type,sizeBytes:Number(image.declared_size_bytes),sha256:image.content_sha256,expiresAt:new Date(image.upload_expires_at)} satisfies UploadDeclaration;}
+        }
         if(ctx.capabilities.includes("market_price:search")){
           const access=this.marketPriceAccess(ctx,"market_price:search");
           const market=await tx.query<any>(`SELECT u.organization_id,u.object_name,u.mime_type,u.size_bytes,u.sha256,u.expires_at

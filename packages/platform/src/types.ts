@@ -72,6 +72,7 @@ export interface SpeechProvider {
   cancelTranscription?(providerOperationId:string,cleanupToken:string|null):Promise<void>;
 }
 export interface AiProvider {
+  readExpenseReceipt(input:import("./expense-receipt.js").ExpenseReceiptReadInput):Promise<import("./expense-receipt.js").ExpenseReceiptReading>;
   identifyMarketProduct(input:{
     searchLanguage?:"ja"|"en";
     inputMode:"image_assisted"|"manual_assisted";

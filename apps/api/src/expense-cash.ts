@@ -73,7 +73,8 @@ export class ExpenseCashService {
   const participants=await tx.query(`SELECT d.id,d.owner_membership_id,u.display_name,d.opening_wallet_cash,d.purchase_total,d.purchase_source_note,p.ready_at,
     (SELECT COALESCE(sum(i.amount),0)::text FROM expense_items i WHERE i.organization_id=d.organization_id AND i.day_id=d.id AND i.status='confirmed' AND i.payment_source='company_wallet') AS company_expense,
     (SELECT COALESCE(sum(i.amount),0)::text FROM expense_items i WHERE i.organization_id=d.organization_id AND i.day_id=d.id AND i.status='confirmed' AND i.payment_source='personal') AS personal_expense,
-    (SELECT count(*)::int FROM expense_items i WHERE i.organization_id=d.organization_id AND i.day_id=d.id AND i.status='candidate') AS candidate_count
+    ((SELECT count(*)::int FROM expense_items i WHERE i.organization_id=d.organization_id AND i.day_id=d.id AND i.status='candidate') +
+     (SELECT count(*)::int FROM expense_receipts r JOIN expense_receipt_batches b ON b.organization_id=r.organization_id AND b.id=r.batch_id WHERE b.organization_id=d.organization_id AND b.day_id=d.id AND r.status IN ('uploading','uploaded','reading','review_required','failed'))) AS candidate_count
     FROM expense_branch_participants p JOIN expense_days d ON d.organization_id=p.organization_id AND d.id=p.day_id JOIN memberships m ON m.organization_id=d.organization_id AND m.id=d.owner_membership_id JOIN users u ON u.id=m.user_id WHERE p.organization_id=$1 AND p.branch_day_id=$2 ORDER BY d.id`,[ctx.organizationId,day.id]);
   const items=await tx.query(`SELECT i.id,i.day_id,i.merchant,i.category,i.amount,i.payment_source,i.status,i.note,i.lock_version::integer FROM expense_items i JOIN expense_branch_participants p ON p.organization_id=i.organization_id AND p.day_id=i.day_id WHERE p.organization_id=$1 AND p.branch_day_id=$2 ORDER BY i.created_at,i.id`,[ctx.organizationId,day.id]);
   const transfers=await tx.query('SELECT id,day_id,amount,performed_by,occurred_at,reverses_id,unreplenished_id FROM expense_cash_transfers WHERE organization_id=$1 AND branch_day_id=$2 ORDER BY created_at,id',[ctx.organizationId,day.id]);
@@ -170,6 +171,8 @@ export class ExpenseCashService {
   const participant=await this.participant(tx,ctx,day,b.dayId);
   if(action==='ready'){
    const candidates=await tx.query("SELECT 1 FROM expense_items WHERE organization_id=$1 AND day_id=$2 AND status='candidate' LIMIT 1",[ctx.organizationId,participant.id]);
+   const receipts=await tx.query("SELECT 1 FROM expense_receipts r JOIN expense_receipt_batches b ON b.organization_id=r.organization_id AND b.id=r.batch_id WHERE b.organization_id=$1 AND b.day_id=$2 AND r.status IN ('uploading','uploaded','reading','review_required','failed') LIMIT 1",[ctx.organizationId,participant.id]);
+   if(receipts.rowCount)throw invalid('未確認の領収書があります。確認して登録するか、理由を付けて登録対象外にしてください');
    if(candidates.rowCount||participant.opening_wallet_cash===null||participant.purchase_total===null||!participant.purchase_source_note)throw invalid('開始財布額・買取金・参照元・未確認候補を確認してください');
    await tx.query('UPDATE expense_branch_participants SET ready_at=now(),ready_by=$4 WHERE organization_id=$1 AND branch_day_id=$2 AND day_id=$3',[ctx.organizationId,day.id,participant.id,ctx.membershipId]);return {dayId:participant.id};
   }

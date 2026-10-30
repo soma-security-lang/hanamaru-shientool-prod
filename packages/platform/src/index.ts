@@ -1,4 +1,5 @@
 export * from "./types.js";
+export {normalizeExpenseReceiptReading,validateExpenseReceiptInput,type ExpenseReceiptReading,type ExpenseReceiptReadInput} from "./expense-receipt.js";
 export { createSoldgraphProvider, createConfiguredSoldgraphProvider, SoldgraphProviderError, type SoldgraphFailureClass } from "./soldgraph.js";
 export { probeAudioSource,probeAudioStream,probeVideoSource,probeVideoStream,type AudioMetadata,type VideoMetadata } from "./media.js";
 export { acceptLocalUpload,acceptLocalUploadStream,createLocalProviders } from "./local.js";

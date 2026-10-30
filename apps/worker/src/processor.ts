@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { processEbayMarketPriceSearch } from "./ebay-market-price.js";
+import {processExpenseReceipt,purgeExpiredExpenseReceipts} from "./expense-receipts.js";
 import sharp from "sharp";
 import type { MarketPriceOutlierPolicy,MarketPriceSourceProvider,ProductCondition,RequestContext,YahooClosedSearchSpec } from "@hanamaru/contracts";
 import type {
@@ -589,6 +590,8 @@ export class WorkerProcessor {
         return this.review(ctx, job);
       case "market_price_identification":
         return this.marketPriceIdentification(ctx,job);
+      case "expense_receipt_reading":
+        return processExpenseReceipt(this.repository,this.providers,ctx,job);
       case "market_price_search":
         return this.marketPriceSearch(ctx,job);
       case "market_price_ebay_search": {
@@ -686,6 +689,8 @@ export class WorkerProcessor {
       await tx.query("UPDATE market_price_searches SET status='failed',coverage_status=CASE WHEN coverage_status='blocked' THEN 'blocked' ELSE 'partial' END,failure_class=COALESCE(failure_class,'WORKER_FAILED'),completed_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('ready','partial','blocked')",[job.organization_id,job.entity_id]);
     } else if(job.job_type==="market_price_identification"){
       await tx.query("UPDATE market_price_identifications SET status='failed',failure_class='IDENTIFICATION_FAILED' WHERE organization_id=$1 AND id=$2 AND status='analyzing'",[job.organization_id,job.entity_id]);
+    } else if(job.job_type==="expense_receipt_reading"){
+      await tx.query("UPDATE expense_receipts SET status='failed',failure_class='RECEIPT_READING_FAILED',lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2 AND job_id=$3 AND status='reading'",[job.organization_id,job.entity_id,job.id]);
     }
   }
 
@@ -710,6 +715,8 @@ export class WorkerProcessor {
       );
     else if(job.job_type==="market_price_identification")
       await tx.query("UPDATE market_price_identifications SET status='draft' WHERE organization_id=$1 AND id=$2 AND status='analyzing'",[job.organization_id,job.entity_id]);
+    else if(job.job_type==="expense_receipt_reading")
+      await tx.query("UPDATE expense_receipts SET status='failed',failure_class='RECEIPT_READING_CANCELLED',lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2 AND job_id=$3 AND status='reading'",[job.organization_id,job.entity_id,job.id]);
     else if(job.job_type==="market_price_search")
       await tx.query("UPDATE market_price_searches SET status='cancelled',completed_at=now() WHERE organization_id=$1 AND id=$2 AND status NOT IN ('ready','partial','confirmed')",[job.organization_id,job.entity_id]);
   }
@@ -2116,6 +2123,7 @@ export class WorkerProcessor {
   }
 
   private async retention(ctx: RequestContext, job: ClaimedJob): Promise<void> {
+    await purgeExpiredExpenseReceipts(this.repository,this.providers,ctx);
     const ebayPurged=await this.repository.system<{count:number}>("SELECT purge_expired_ebay_content($1,100)::int count",[job.organization_id]);
     if(Number(ebayPurged.rows[0]?.count??0)>0)await this.repository.withContext(ctx,tx=>tx.audit("market_price.ebay.content_purged","organization",job.organization_id,"allowed",{count:Number(ebayPurged.rows[0]!.count)}));
     const incompleteUploadsDeleted=await cleanupExpiredUploadObjects(this.repository,this.providers.storage,ctx,job);

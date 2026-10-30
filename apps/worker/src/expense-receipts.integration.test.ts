@@ -1,0 +1,61 @@
+import {randomUUID} from "node:crypto";
+import sharp from "sharp";
+import {describe,it,expect,vi} from "vitest";
+import {createPool,HanamaruRepository,developmentIds as ids} from "@hanamaru/database";
+import {createLocalProviders,type ExpenseReceiptReading} from "@hanamaru/platform";
+import {processExpenseReceipt,purgeExpiredExpenseReceipts} from "./expense-receipts.js";
+import {scanOperations} from "./operations.js";
+
+const databaseUrl=process.env.DATABASE_URL;
+describe.skipIf(!databaseUrl)("receipt Worker with isolated DB, synthetic image and explicit OCR mock",()=>{
+  it("uses least-privilege context, retains the original, reuses normalized images and purges only expired content",async()=>{
+    const pool=createPool(databaseUrl),repository=new HanamaruRepository(pool,"hanamaru_worker","hanamaru_worker_system"),providers=createLocalProviders();
+    const dayId=randomUUID(),batchId=randomUUID(),receiptId=randomUUID(),imageId=randomUUID(),storageId=randomUUID(),jobId=randomUUID();
+    const ctx={organizationId:ids.organizationId,membershipId:ids.membershipId,branchId:ids.branchId,requestId:randomUUID(),traceId:randomUUID(),roles:[],capabilities:[],authorizationScopes:[]};
+    const original=await sharp({create:{width:20,height:30,channels:3,background:"white"}}).jpeg().toBuffer();
+    const stored=await providers.storage.put({organizationId:ids.organizationId,objectName:`synthetic-receipt-${receiptId}`,mimeType:"image/jpeg",body:original});
+    const empty={value:null,evidence:null};
+    const reading:ExpenseReceiptReading={model:"explicit-test-mock",documentKind:"unreadable",paidOn:empty,merchant:empty,paidTotal:empty,currency:empty,purposeHint:empty,warnings:["unreadable"]};
+    const read=vi.spyOn(providers.ai,"readExpenseReceipt").mockResolvedValue(reading);
+    try{
+      await pool.query("INSERT INTO expense_receipt_policies(organization_id,enabled,retention_days,approved_by_membership_id,approved_at) VALUES($1,true,1,$2,now()) ON CONFLICT(organization_id) DO UPDATE SET enabled=true,retention_days=1,approved_by_membership_id=$2,approved_at=now()",[ids.organizationId,ids.managerMembershipId]);
+      await pool.query("INSERT INTO expense_days(id,organization_id,branch_id,owner_membership_id,business_date,created_by_membership_id) VALUES($1,$2,$3,$4,'2002-01-09',$4)",[dayId,ids.organizationId,ids.branchId,ids.membershipId]);
+      await pool.query("INSERT INTO expense_receipt_batches(id,organization_id,day_id,owner_membership_id) VALUES($1,$2,$3,$4)",[batchId,ids.organizationId,dayId,ids.membershipId]);
+      await pool.query("INSERT INTO expense_receipts(id,organization_id,batch_id,status,job_id,expires_at) VALUES($1,$2,$3,'reading',$4,now()+interval '1 hour')",[receiptId,ids.organizationId,batchId,jobId]);
+      await pool.query("INSERT INTO storage_objects(id,organization_id,bucket_name,object_name,object_generation,purpose,status,mime_type,size_bytes,sha256,retention_until) VALUES($1,$2,$3,$4,$5,'expense_receipt_original','available',$6,$7,$8,now()+interval '1 hour')",[storageId,ids.organizationId,stored.bucket,stored.objectName,Number(stored.generation),stored.mimeType,stored.sizeBytes,stored.sha256]);
+      await pool.query("INSERT INTO expense_receipt_images(id,organization_id,receipt_id,object_name,declared_mime_type,declared_size_bytes,content_sha256,original_storage_id,upload_expires_at,completed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+interval '15 minutes',now())",[imageId,ids.organizationId,receiptId,stored.objectName,stored.mimeType,stored.sizeBytes,stored.sha256,storageId]);
+      const job={id:jobId,organization_id:ids.organizationId,entity_id:receiptId,requested_by_membership_id:ids.membershipId};
+      await processExpenseReceipt(repository,providers,ctx,job);
+      expect(read).toHaveBeenCalledTimes(1);const normalized=read.mock.calls[0]![0].images[0]!;
+      expect(normalized.mimeType).toBe("image/webp");expect((await sharp(normalized.content).metadata()).exif).toBeUndefined();
+      const originalRead=await providers.storage.openRead(stored.objectName,stored.generation);const originalParts:Buffer[]=[];
+      for await(const part of originalRead)originalParts.push(Buffer.from(part));expect(Buffer.concat(originalParts).equals(original)).toBe(true);
+      let row=(await pool.query("SELECT status,reading_json,normalized_storage_id FROM expense_receipts r JOIN expense_receipt_images i ON i.receipt_id=r.id WHERE r.id=$1",[receiptId])).rows[0];
+      expect(row.status).toBe("review_required");expect(row.reading_json).toEqual(reading);expect(row.normalized_storage_id).toBeTruthy();
+      const normalizedId=row.normalized_storage_id;
+      await pool.query("UPDATE expense_receipts SET status='reading' WHERE id=$1",[receiptId]);
+      await processExpenseReceipt(repository,providers,ctx,job);
+      expect((await pool.query("SELECT normalized_storage_id FROM expense_receipt_images WHERE id=$1",[imageId])).rows[0].normalized_storage_id).toBe(normalizedId);
+      await processExpenseReceipt(repository,providers,ctx,job);expect(read).toHaveBeenCalledTimes(2);
+      await expect(repository.withContext(ctx,tx=>tx.query("SELECT display_name FROM users"))).rejects.toMatchObject({code:"42501"});
+      await expect(repository.system("SELECT reading_json FROM expense_receipts")).rejects.toMatchObject({code:"42501"});
+      expect((await repository.withContext({...ctx,organizationId:randomUUID()},tx=>tx.query("SELECT id FROM expense_receipts"))).rows).toHaveLength(0);
+      expect((await pool.query("SELECT count(*)::int count FROM expense_items WHERE day_id=$1",[dayId])).rows[0].count).toBe(0);
+      const stoppedJobId=randomUUID();
+      await pool.query("INSERT INTO jobs(id,organization_id,job_type,entity_type,entity_id,status,idempotency_key,input_hash,input_redacted,requested_by_membership_id,attempt_count,max_attempts,error_code,finished_at) VALUES($1,$2,'expense_receipt_reading','expense_receipt',$3,'failed',$4,$5,'{}',$6,2,2,'MODEL_OUTPUT_INVALID',now())",[stoppedJobId,ids.organizationId,receiptId,randomUUID(),"a".repeat(64),ids.membershipId]);
+      await pool.query("UPDATE expense_receipts SET job_id=$2,status='failed' WHERE id=$1",[receiptId,stoppedJobId]);
+      expect(await scanOperations(repository)).toEqual(expect.arrayContaining([expect.objectContaining({jobId:stoppedJobId,failureClass:"MODEL_OUTPUT_INVALID"})]));
+      await pool.query("UPDATE expense_receipts SET job_id=$2,status='review_required' WHERE id=$1",[receiptId,jobId]);
+      expect((await scanOperations(repository)).some(alert=>alert.jobId===stoppedJobId)).toBe(false);
+      expect((await pool.query("SELECT status FROM operational_alerts WHERE job_id=$1 AND failure_class='MODEL_OUTPUT_INVALID'",[stoppedJobId])).rows[0].status).toBe("resolved");
+      await pool.query("UPDATE expense_receipts SET expires_at=now()-interval '1 second',legal_hold=true WHERE id=$1",[receiptId]);
+      expect(await purgeExpiredExpenseReceipts(repository,providers,ctx)).toBe(0);
+      await pool.query("UPDATE expense_receipts SET legal_hold=false WHERE id=$1",[receiptId]);
+      expect(await purgeExpiredExpenseReceipts(repository,providers,ctx)).toBe(1);
+      row=(await pool.query("SELECT status,reading_json,review_json FROM expense_receipts WHERE id=$1",[receiptId])).rows[0];
+      expect(row).toMatchObject({status:"deleted",reading_json:null,review_json:null});
+      expect((await pool.query("SELECT status FROM storage_objects WHERE id=$1",[storageId])).rows[0].status).toBe("deleted");
+      await expect((async()=>{const stream=await providers.storage.openRead(stored.objectName,stored.generation);for await(const part of stream)void part;})()).rejects.toThrow();
+    }finally{read.mockRestore();await pool.end();}
+  });
+});

@@ -5,6 +5,7 @@ import type { BackendService } from "./service.js";
 import { denied } from "./errors.js";
 import { ExpenseService } from "./expense.js";
 import {ExpenseCashService} from "./expense-cash.js";
+import {ExpenseReceiptsService} from "./expense-receipts.js";
 import {PurchaseResultService} from "./purchase-results.js";
 import { EbayMarketPriceService } from "./ebay-market-price.js";
 
@@ -17,6 +18,20 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   registerHelpRoutes(app,service);
   const expense=new ExpenseService(service);
   const expenseCash=new ExpenseCashService(service);
+  const receipts=new ExpenseReceiptsService(service);
+  app.get('/api/v1/expense-receipt-options',async r=>receipts.options(r.auth));
+  app.get<{Params:{key:string}}>('/api/v1/expense-receipt-operations/:key',async r=>receipts.operationResult(r.auth,r.params.key,String(query(r).operation??'')));
+  app.get<{Params:{id:string}}>('/api/v1/expense-days/:id/receipts',async r=>receipts.list(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>('/api/v1/expense-days/:id/receipt-batches',async(r,reply)=>send(reply,receipts.createBatch(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipt-batches/:id/images',async(r,reply)=>send(reply,receipts.addImage(r.auth,r.params.id,key(r),body(r))));
+  app.get<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/upload-access',async r=>receipts.uploadAccess(r.auth,r.params.id));
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/renew',async(r,reply)=>send(reply,receipts.renewImage(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/complete',async(r,reply)=>send(reply,receipts.completeImage(r.auth,r.params.id,key(r),body(r))));
+  app.get<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/file',async(r,reply)=>{const access=await receipts.imageFile(r.auth,r.params.id);reply.header('cache-control','no-store');if(access.kind==='redirect')return reply.redirect(access.url);if(access.kind!=='inline')throw new Error('RECEIPT_FILE_INVALID');return reply.type(access.mimeType).header('x-content-type-options','nosniff').send(access.body);});
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipts/:id/analyze',async(r,reply)=>send(reply,receipts.analyze(r.auth,r.params.id,key(r),body(r))));
+  app.patch<{Params:{id:string}}>('/api/v1/expense-receipts/:id/review',async(r,reply)=>send(reply,receipts.saveReview(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipts/:id/register',async(r,reply)=>send(reply,receipts.register(r.auth,r.params.id,key(r),body(r))));
+  app.post<{Params:{id:string}}>('/api/v1/expense-receipts/:id/exclude',async(r,reply)=>send(reply,receipts.exclude(r.auth,r.params.id,key(r),body(r))));
   const purchase=new PurchaseResultService(service);
   app.get('/api/v1/purchase-results',async r=>purchase.list(r.auth));
   app.post('/api/v1/purchase-results',async(r,reply)=>send(reply,purchase.create(r.auth,key(r),body(r))));
