@@ -189,7 +189,11 @@ export class ExpenseReceiptsService {
       await this.policy(tx,ctx);
       const result=await tx.query("SELECT i.receipt_id,o.object_name,o.object_generation::text,o.mime_type FROM expense_receipt_images i JOIN storage_objects o ON o.organization_id=i.organization_id AND o.id=i.original_storage_id AND o.status='available' JOIN expense_receipts r ON r.organization_id=i.organization_id AND r.id=i.receipt_id AND r.expires_at>now() AND r.status NOT IN ('deleting','deleted') WHERE i.organization_id=$1 AND i.id=$2",[ctx.organizationId,id]);
       const image=result.rows[0];if(!image)throw notFound();await this.receipt(tx,ctx,image.receipt_id);
-      return this.service.providers.storage.createDownload(image.object_name,image.object_generation,image.mime_type,new Date(Date.now()+60_000));
+      // The authenticated same-origin gateway deliberately rejects external
+      // redirects. Stream the exact authorized generation instead of exposing
+      // a signed URL or weakening that transport boundary for receipt images.
+      const source=await this.service.providers.storage.openRead(image.object_name,image.object_generation);
+      return {source,mimeType:image.mime_type};
     });
   }
   async exclude(ctx:RequestContext,id:string,key:string|undefined,b:Input){

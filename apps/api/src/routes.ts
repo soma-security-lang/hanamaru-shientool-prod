@@ -27,7 +27,7 @@ export async function registerRoutes(app:FastifyInstance,service:BackendService)
   app.get<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/upload-access',async r=>receipts.uploadAccess(r.auth,r.params.id));
   app.post<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/renew',async(r,reply)=>send(reply,receipts.renewImage(r.auth,r.params.id,key(r),body(r))));
   app.post<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/complete',async(r,reply)=>send(reply,receipts.completeImage(r.auth,r.params.id,key(r),body(r))));
-  app.get<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/file',async(r,reply)=>{const access=await receipts.imageFile(r.auth,r.params.id);reply.header('cache-control','no-store');if(access.kind==='redirect')return reply.redirect(access.url);if(access.kind!=='inline')throw new Error('RECEIPT_FILE_INVALID');return reply.type(access.mimeType).header('x-content-type-options','nosniff').send(access.body);});
+  app.get<{Params:{id:string}}>('/api/v1/expense-receipt-images/:id/file',async(r,reply)=>{const access=await receipts.imageFile(r.auth,r.params.id);return reply.header('cache-control','private, no-store').type(access.mimeType).header('x-content-type-options','nosniff').send(access.source);});
   app.post<{Params:{id:string}}>('/api/v1/expense-receipts/:id/analyze',async(r,reply)=>send(reply,receipts.analyze(r.auth,r.params.id,key(r),body(r))));
   app.patch<{Params:{id:string}}>('/api/v1/expense-receipts/:id/review',async(r,reply)=>send(reply,receipts.saveReview(r.auth,r.params.id,key(r),body(r))));
   app.post<{Params:{id:string}}>('/api/v1/expense-receipts/:id/register',async(r,reply)=>send(reply,receipts.register(r.auth,r.params.id,key(r),body(r))));

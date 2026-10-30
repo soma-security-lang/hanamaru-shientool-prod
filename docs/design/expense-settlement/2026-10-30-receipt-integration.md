@@ -13,6 +13,8 @@ expense_settlementフラグに加え、組織別expense_receipt_policiesを必�
 
 この保存方針は画像・OCR候補の技術的な期限であり、法令適合・紙原本の廃棄可否の保証ではない。経費明細・監査の既存保存方針は上書きしない。
 
+2026-10-30の追加回答により、自社利用組織の初期保存期間を取込から30日とする。承認の対象は画像・AI候補・未登録の確認下書きであり、登録済み経費明細・監査履歴・紙原本の削除承認ではない。保全指定は既存の削除fenceに従う。他組織へ自動適用しない。本番の収集有効化は、Stage受入と監査付き公開の後に別途記録する。
+
 ## 画面と遷移
 
 既存の `/expense-settlement?dayId=...` に追加する。
@@ -56,7 +58,7 @@ expense_settlementフラグに加え、組織別expense_receipt_policiesを必�
 | GET /expense-receipt-images/:id/upload-access | 再認可した短命write-onceアップロード権限 |
 | POST /expense-receipt-images/:id/renew | 保存期限内の未完了画像だけアップロード期限を再発行。サイズ/hashは不変 |
 | POST /expense-receipt-images/:id/complete | 内容検証と原画像確定 |
-| GET /expense-receipt-images/:id/file | scope・期限付き参照。Native JSON経路から除外 |
+| GET /expense-receipt-images/:id/file | scope・期限・世代固定で原画像をstream返却。private/no-store。Native JSON経路から除外 |
 | POST /expense-receipts/:id/analyze | AI送信の確認を要する専用Job |
 | PATCH /expense-receipts/:id/review | 人が確認した下書き保存 |
 | POST /expense-receipts/:id/register | 明示確認・JPY・日付・版・重複候補を検証して登録 |
@@ -64,6 +66,8 @@ expense_settlementフラグに加え、組織別expense_receipt_policiesを必�
 | GET /expense-receipt-operations/:key | 本人の操作結果を現在scope・フラグで照会 |
 
 0072は追加migration。既存migrationを編集しない。4テーブルにorganization RLSを強制する。Workerに利用者全体のSELECTを追加せず、現在依頼者の有効性だけをbooleanで確認する関数を使う。運用用関数は現在Job IDだけを返し、画像・OCR・金額は返さない。
+
+原画像参照は、既存の同一originゲートウェイが外部redirectを拒否する境界を維持するため、認可済みStorage objectの固定generationをAPIがstream返却する。画像参照のためにredirect許可を広げず、署名付きURLを画面・通常ログへ渡さない。署名付きのwrite-once画像アップロードとは別経路である。
 
 Jobはexpense_receipt_reading。PDF抽出Jobを転用しない。原画像を保持し、EXIFをコピーせず最大辺2048pxのWebPへ正規化する。画素上限、5画像・正規化合計20MB上限を設ける。JSON契約違反だけtemperature 0で1回修復し、通信失敗を修復名目で再送しない。他Providerへ黙ってfallbackしない。
 

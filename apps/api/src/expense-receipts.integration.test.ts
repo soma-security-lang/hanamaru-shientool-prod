@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from "node:crypto";
 import type {FastifyInstance} from "fastify";
-import {afterAll,beforeAll,describe,expect,it} from "vitest";
+import {afterAll,beforeAll,describe,expect,it,vi} from "vitest";
 import {createPool,developmentIds as ids,HanamaruRepository} from "@hanamaru/database";
 import {createLocalProviders} from "@hanamaru/platform";
 import {buildApp} from "./app.js";
@@ -11,11 +11,12 @@ const key=()=>({...actor,"idempotency-key":randomUUID()});
 // Synthetic one-pixel PNG, not a client's receipt. The AI provider is never called by this suite.
 const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j8GQAAAAASUVORK5CYII=","base64");
 describe.skipIf(!databaseUrl)("expense receipt API with isolated DB and synthetic bytes, mocked OCR checkpoint",()=>{
-  let pool:ReturnType<typeof createPool>,app:FastifyInstance,dayId:string,batchId:string,receiptId:string,imageId:string;
+  let pool:ReturnType<typeof createPool>,app:FastifyInstance,providers:ReturnType<typeof createLocalProviders>,dayId:string,batchId:string,receiptId:string,imageId:string;
   const businessDate="2001-01-09";
   beforeAll(async()=>{
     pool=createPool(databaseUrl);
-    app=await buildApp({repository:new HanamaruRepository(pool,"hanamaru_api","hanamaru_api_system"),providers:createLocalProviders(),config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
+    providers=createLocalProviders();
+    app=await buildApp({repository:new HanamaruRepository(pool,"hanamaru_api","hanamaru_api_system"),providers,config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
     await pool.query("INSERT INTO expense_receipt_policies(organization_id,enabled) VALUES($1,false) ON CONFLICT(organization_id) DO UPDATE SET enabled=false",[ids.organizationId]);
     const day=await app.inject({method:"POST",url:"/api/v1/expense-days",headers:key(),payload:{businessDate}});expect(day.statusCode).toBe(200);dayId=day.json().id;
   });
@@ -44,6 +45,18 @@ describe.skipIf(!databaseUrl)("expense receipt API with isolated DB and syntheti
     const outbox=await pool.query("SELECT payload_redacted FROM outbox_events WHERE organization_id=$1 AND aggregate_id=$2",[ids.organizationId,analyzed.json().jobId]);expect(outbox.rows[0].payload_redacted).toEqual({job_id:analyzed.json().jobId,job_type:"expense_receipt_reading"});
     // Emulate only the Worker result boundary; this is NOT a real OCR or Worker integration pass.
     await pool.query("UPDATE expense_receipts SET status='review_required',reading_json=$3,lock_version=lock_version+1 WHERE organization_id=$1 AND id=$2",[ids.organizationId,receiptId,{model:"explicit-test-mock",paidTotal:{value:"1000",evidence:"合成合計1000円"}}]);
+  });
+  it("streams only the authorized immutable original without redirects, signed URLs or cached receipt bytes",async()=>{
+    const download=vi.spyOn(providers.storage,"createDownload").mockRejectedValue(new Error("EXTERNAL_REDIRECT_MUST_NOT_BE_USED"));
+    const open=vi.spyOn(providers.storage,"openRead");
+    try{
+      const stored=(await pool.query("SELECT o.object_name,o.object_generation::text FROM expense_receipt_images i JOIN storage_objects o ON o.id=i.original_storage_id AND o.organization_id=i.organization_id WHERE i.organization_id=$1 AND i.id=$2",[ids.organizationId,imageId])).rows[0];
+      const file=await app.inject({url:`/api/v1/expense-receipt-images/${imageId}/file`,headers:actor});
+      expect(file.statusCode).toBe(200);expect(file.rawPayload).toEqual(png);expect(file.headers["content-type"]).toBe("image/png");expect(file.headers["cache-control"]).toBe("private, no-store");expect(file.headers["x-content-type-options"]).toBe("nosniff");expect(file.headers.location).toBeUndefined();
+      expect(open).toHaveBeenCalledWith(stored.object_name,stored.object_generation);expect(download).not.toHaveBeenCalled();
+      expect((await app.inject({url:`/api/v1/expense-receipt-images/${imageId}/file`,headers:{"x-dev-role":"system_admin"}})).statusCode).toBe(403);
+      expect(open).toHaveBeenCalledTimes(1);
+    }finally{download.mockRestore();open.mockRestore();}
   });
   it("registers human corrections exactly once; payment source and date are never inferred from OCR",async()=>{
     let row=(await app.inject({url:`/api/v1/expense-days/${dayId}/receipts`,headers:actor})).json().receipts[0];
