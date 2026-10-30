@@ -37,6 +37,19 @@ beforeEach(()=>{
 });
 
 describe("SCR-021 market price workflow",()=>{
+  it("restarts polling after retrying a stopped search and opens the saved result without a reload",async()=>{
+    state.view="progress";state.searchId="synthetic-retry-search";
+    let status="blocked";
+    api.marketPriceSearch.mockImplementation(async()=>({id:state.searchId,status,candidateCount:0,medianPrice:null,failureClass:status==="blocked"?"YAHOO_FETCH_BLOCKED":null}));
+    api.retryMarketPriceSearch.mockImplementation(async()=>{status="queued";return{status:"queued"};});
+    render(<MarketPriceExperience/>);
+    await userEvent.click(await screen.findByRole("button",{name:"途中から再試行"}));
+    await screen.findByText("検索待ち");
+    status="ready";
+    await waitFor(()=>expect(state.replace).toHaveBeenCalledWith("/market-price?view=candidates&searchId=synthetic-retry-search",{scroll:false}),{timeout:4000});
+    expect(api.retryMarketPriceSearch).toHaveBeenCalledTimes(1);
+    expect(api.createMarketPriceSearch).not.toHaveBeenCalled();
+  });
   it("requests English AI support only after explicit selection and does not start an eBay search",async()=>{
     api.marketPriceOptions.mockResolvedValue({...options,ebay:{enabled:true}});
     api.createMarketPriceIdentification.mockResolvedValue({id:"synthetic-english-identification"});
