@@ -493,9 +493,13 @@ test("market price completes image-assisted, manual-assisted, and manual-direct 
     await page.getByRole("button",{name:/検索条件を確認/}).click();
     await expect(page).toHaveURL(/\/market-price\?view=identify&searchId=[0-9a-f-]{36}/);
     if(mode!=="手入力のみ"){
+      await expect(page.getByRole("button",{name:"採用して編集"}).first()).toBeVisible({timeout:30_000});
+      await expect(page.getByRole("button",{name:/選択した取得元で検索/})).toBeDisabled();
+      await expect(page.getByRole("status",{name:"検索前の確認"})).toContainText("検索キーワードを1件選択してください");
       await page.getByRole("button",{name:"採用して編集"}).first().click({timeout:30_000});
       await page.getByRole("radio",{name:/Canon EOS R6/}).first().check();
     }
+    await expect(page.getByRole("button",{name:/選択した取得元で検索/})).toBeEnabled();
     await page.getByRole("button",{name:/選択した取得元で検索/}).click();
     await expect(page.getByRole("heading",{name:"落札候補を確認"})).toBeVisible({timeout:60_000});
   }

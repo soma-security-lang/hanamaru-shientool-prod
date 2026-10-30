@@ -222,9 +222,18 @@ describe("SCR-021 market price workflow",()=>{
     api.createMarketPriceSearch.mockResolvedValue({searchId:"search-1",jobId:"job-1",status:"queued",cacheHit:false});
     render(<MarketPriceExperience/>);
     expect(await screen.findByText(/確度 94%・未確認/)).toBeInTheDocument();
+    expect(screen.getByRole("button",{name:/選択した取得元で検索/})).toBeDisabled();
+    expect(screen.getByRole("status",{name:"検索前の確認"})).toHaveTextContent("検索候補から検索キーワードを1件選択してください");
+    expect(api.updateMarketPriceIdentification).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button",{name:"採用して編集"}));
     expect(screen.getByText(/確度 94%・採用済み/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio",{name:/Canon EOS R6 ボディ/}));
+    expect(screen.getByRole("button",{name:/選択した取得元で検索/})).toBeEnabled();
+    expect(screen.getByRole("status",{name:"検索前の確認"})).toHaveTextContent("検索の準備ができました");
+    await userEvent.clear(screen.getByLabelText("選択中の検索キーワード"));
+    expect(screen.getByRole("button",{name:/選択した取得元で検索/})).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("選択中の検索キーワード"),"Canon EOS R6 ボディ");
+    expect(screen.getByRole("button",{name:/選択した取得元で検索/})).toBeEnabled();
     await userEvent.click(screen.getByRole("button",{name:/選択した取得元で検索/}));
     await waitFor(()=>expect(api.updateMarketPriceIdentification).toHaveBeenCalledWith("identification-2",2,expect.objectContaining({productName:"Canon EOS R6 ボディ",searchQueries:[expect.objectContaining({id:"query-1",decision:"accepted"})]}),[expect.objectContaining({id:"product-1",decision:"accepted"})]));
     expect(api.confirmMarketPriceIdentification).toHaveBeenCalledWith("identification-2",3);

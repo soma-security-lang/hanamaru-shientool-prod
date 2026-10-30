@@ -20,6 +20,18 @@
 @media(max-width:47.99rem){.candidateTableWrap{display:none}.candidateCards{margin-top:.75rem;display:grid}.candidateCards article{padding:.9rem 0;display:grid;grid-template-columns:1fr auto;align-items:start}}
 
 /* Digital Agency Design System v2.17.1 — SCR-021 */
+.searchReadiness { grid-column: 1 / -1; padding: 1rem; border-radius: var(--radius-md); background: var(--color-surface-subtle); line-height: 1.7; overflow-wrap: anywhere; }
+.searchReadiness p { margin: .5rem 0 0; }
+.searchReadiness ul { margin: .5rem 0 0; padding-left: 1.5rem; }
+.searchAction { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; gap: .5rem; }
+.searchAction p { margin: 0; max-width: 38rem; font-size: .875rem; line-height: 1.5; overflow-wrap: anywhere; }
+.searchFeedback { color: var(--color-danger); }
+@media(max-width:47.99rem) {
+  .searchAction { flex: 1; }
+  .searchAction p { font-size: .8125rem; }
+  .searchAction .primaryButton { width: 100%; white-space: normal; }
+  .identifyLayout { padding-bottom: 7rem; }
+}
 .feature { gap: 1.5rem; }
 .title { align-items: flex-end; }
 .title > div > span,
