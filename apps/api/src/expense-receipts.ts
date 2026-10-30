@@ -95,14 +95,17 @@ export class ExpenseReceiptsService {
     if(!uuid.test(receiptId))throw invalid("領収書を確認してください");
     const authorize=async(tx:RepositoryTransaction)=>{
       const policy=await this.policy(tx,ctx,true);
-      const batch=await tx.query<{day_id:string}>("SELECT day_id FROM expense_receipt_batches WHERE organization_id=$1 AND id=$2 AND owner_membership_id=$3 FOR UPDATE",[ctx.organizationId,batchId,ctx.membershipId]);
+      // The branch/day lock below serializes image limits and duplicates. The
+      // append-only batch deliberately has no UPDATE grant; do not row-lock it.
+      const batch=await tx.query<{day_id:string}>("SELECT day_id FROM expense_receipt_batches WHERE organization_id=$1 AND id=$2 AND owner_membership_id=$3",[ctx.organizationId,batchId,ctx.membershipId]);
       if(!batch.rows[0])throw notFound();const day=await this.day(tx,ctx,batch.rows[0].day_id,true);return {policy:policy!,day};
     };
     return this.service.write(ctx,"expense.receipt.image.create",key,{batchId,...b},"expense.receipt.image.created","expense_receipt_image",async tx=>{
       const {policy,day}=await authorize(tx);
       const totals=await tx.query<{count:number;bytes:string}>("SELECT count(*)::int count,coalesce(sum(i.declared_size_bytes),0)::text bytes FROM expense_receipt_images i JOIN expense_receipts r ON r.organization_id=i.organization_id AND r.id=i.receipt_id WHERE r.organization_id=$1 AND r.batch_id=$2",[ctx.organizationId,batchId]);
       if(totals.rows[0]!.count>=20||Number(totals.rows[0]!.bytes)+size>104_857_600)throw invalid("1回20枚・合計100MBまでです");
-      if(b.receiptId===undefined)await tx.query("INSERT INTO expense_receipts(id,organization_id,batch_id,expires_at) VALUES($1,$2,$3,now()+make_interval(days=>$4))",[receiptId,ctx.organizationId,batchId,policy.retention_days]);
+      // Prisma binds JS integers as int8; make_interval requires int4 just as pg inference does.
+      if(b.receiptId===undefined)await tx.query("INSERT INTO expense_receipts(id,organization_id,batch_id,expires_at) VALUES($1,$2,$3,now()+make_interval(days=>$4::int))",[receiptId,ctx.organizationId,batchId,policy.retention_days]);
       else{
         const existing=await tx.query("SELECT id FROM expense_receipts WHERE organization_id=$1 AND id=$2 AND batch_id=$3 AND status IN ('uploading','uploaded') AND expires_at>now() FOR UPDATE",[ctx.organizationId,receiptId,batchId]);
         if(!existing.rowCount)throw notFound();

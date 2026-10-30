@@ -15,7 +15,7 @@ describe.skipIf(!databaseUrl)("expense receipt API with isolated DB and syntheti
   const businessDate="2001-01-09";
   beforeAll(async()=>{
     pool=createPool(databaseUrl);
-    app=await buildApp({repository:new HanamaruRepository(pool),providers:createLocalProviders(),config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
+    app=await buildApp({repository:new HanamaruRepository(pool,"hanamaru_api","hanamaru_api_system"),providers:createLocalProviders(),config:{...loadConfig({NODE_ENV:"test",ALLOW_DEV_AUTH:"true"}),port:0}});
     await pool.query("INSERT INTO expense_receipt_policies(organization_id,enabled) VALUES($1,false) ON CONFLICT(organization_id) DO UPDATE SET enabled=false",[ids.organizationId]);
     const day=await app.inject({method:"POST",url:"/api/v1/expense-days",headers:key(),payload:{businessDate}});expect(day.statusCode).toBe(200);dayId=day.json().id;
   });
