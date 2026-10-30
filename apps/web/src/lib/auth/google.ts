@@ -35,6 +35,14 @@ function identityConfig(){
 
 export function identityPlatformConfigured(){return Boolean(identityConfig());}
 
+// Firebase redirect sign-in requires same-origin auth storage on browsers
+// that partition third-party storage. Keep redirect on the fixed Hosting
+// origin; use the SDK's supported popup flow on a different serving domain.
+export function googleLoginUsesPopup(){
+  const config=identityConfig();
+  return Boolean(config&&typeof window!=="undefined"&&window.location.hostname!==config.authDomain);
+}
+
 function identityAuth(){
   if(typeof window==="undefined")return null;
   if(authInstance!==undefined)return authInstance;

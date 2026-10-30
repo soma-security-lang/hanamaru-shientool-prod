@@ -41,7 +41,7 @@ vi.mock("firebase/auth",()=>{
   };
 });
 
-import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,loginWithGoogleCredential,loginWithGooglePopup,logout} from "./google";
+import {beginGoogleLoginRedirect,completeGoogleLoginRedirect,driveScope,getDriveAccessToken,getIdentityToken,googleLoginUsesPopup,loginWithGoogleCredential,loginWithGooglePopup,logout} from "./google";
 
 const originalEnv={
   apiKey:process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY,
@@ -84,6 +84,15 @@ describe("Identity Platform browser authentication",()=>{
     expect(mocks.getRedirectResult).toHaveBeenCalledTimes(1);
     expect(mocks.signInWithPopup).toHaveBeenCalledTimes(2);
     expect(mocks.signInWithCredential).toHaveBeenCalledWith(mocks.auth,{googleIdToken:"google-id-token"});
+  });
+  it("keeps redirect on the configured auth host and selects popup only on a different host",()=>{
+    process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN=window.location.hostname;
+    expect(googleLoginUsesPopup()).toBe(false);
+    process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_AUTH_DOMAIN="monocle-503402.firebaseapp.com";
+    expect(googleLoginUsesPopup()).toBe(true);
+    delete process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY;
+    expect(googleLoginUsesPopup()).toBe(false);
+    process.env.NEXT_PUBLIC_IDENTITY_PLATFORM_API_KEY="public-browser-key";
   });
 });
 

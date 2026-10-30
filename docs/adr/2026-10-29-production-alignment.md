@@ -23,6 +23,8 @@
 
 ## 既存Googleログインの互換
 
+固定Hostingの `firebaseapp.com` 入口では同一ドメインの既存redirectを維持する。別ドメインのStage等では、第三者ストレージ制約を回避するためSDKの正式なpopup認証を使い、同じ `/me` のmembership検証を必須とする。popup拒否・取消時に別の認証へ自動fallbackせず、エラーから利用者が再試行する。ブラウザの保護設定は弱めない。[Firebase公式のredirect認証対応方法](https://firebase.google.com/docs/auth/web/redirect-best-practices) のOption 2に基づく。これは製品権限の追加や未登録利用者の許可ではない。
+
 共通SSOはサーバーCookie、Googleは当初のBearerを明示互換経路として残す。Googleの認証SDKは既存どおりで、サーバーがtokenをブラウザへ返すことはない。GoogleのCookie化完了とは報告しない。
 
 API clientは登録済みサーバーsessionが有効ならCookieを使う。Cookieなし・未移行のGoogle利用者は従来のBearerを使う。期限切れ／停止済みSSO Cookieがある場合は、Googleへ自動fallbackせず401で止める。明示的なログイン操作だけが旧flowを破棄・再作成できる。
